@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.env
+*.db
+*.db-shm
+*.db-wal
+*.log
+.git
+.gitignore
+tests/
+PLAN.md
+CLAUDE.md

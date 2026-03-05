@@ -212,7 +212,8 @@ async def run_migration(
 
     await init_db()
 
-    ym_client = await YandexMusicClient(yandex_token).init()
+    from config import settings
+    ym_client = await YandexMusicClient(yandex_token, proxy_url=settings.ym_proxy_url or None).init()
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
     if migration_id is None:

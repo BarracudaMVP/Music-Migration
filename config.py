@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Admin UI (MVP8)
     admin_password: str = Field(default="admin")
 
+    # Proxy для Яндекс Музыки (RU IP)
+    ym_proxy_url: str = Field(default="")
+
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():
             return set()

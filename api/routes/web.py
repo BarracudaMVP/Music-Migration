@@ -101,9 +101,10 @@ async def auth_yandex(request: Request, code: str = Form(...)):
     try:
         from bot.oauth.yandex import exchange_code
         from core.yandex.client import YandexMusicClient
+        from config import settings
 
         token = await exchange_code(code)
-        client = await YandexMusicClient(token).init()
+        client = await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
         account = client._client.me.account if client._client.me else None
         login = (
             getattr(account, "login", None)

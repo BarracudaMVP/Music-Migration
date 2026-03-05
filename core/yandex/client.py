@@ -16,15 +16,21 @@ _BATCH_SLEEP = 0.3
 
 
 class YandexMusicClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, proxy_url: str | None = None) -> None:
         self._token = token
+        self._proxy_url = proxy_url or None
         self._client: ClientAsync | None = None
         self._uid: str | None = None
 
     async def init(self) -> "YandexMusicClient":
         """Инициализирует клиент и проверяет токен."""
         try:
-            self._client = await ClientAsync(self._token).init()
+            if self._proxy_url:
+                from core.yandex.proxy_request import SocksProxyRequest
+                request = SocksProxyRequest(proxy_url=self._proxy_url)
+                self._client = await ClientAsync(self._token, request=request).init()
+            else:
+                self._client = await ClientAsync(self._token).init()
             account = (
                 self._client.me.account
                 if self._client.me is not None
@@ -57,7 +63,14 @@ class YandexMusicClient:
     async def _fetch_uid_from_yandex_id(self) -> str | None:
         """Получает uid пользователя через Yandex ID API как фолбэк для OAuth-токенов."""
         try:
-            async with aiohttp.ClientSession() as session:
+            if self._proxy_url and (
+                self._proxy_url.startswith("socks4") or self._proxy_url.startswith("socks5")
+            ):
+                from aiohttp_socks import ProxyConnector
+                connector = ProxyConnector.from_url(self._proxy_url)
+            else:
+                connector = None
+            async with aiohttp.ClientSession(connector=connector) as session:
                 resp = await session.get(
                     "https://login.yandex.ru/info",
                     params={"format": "json"},

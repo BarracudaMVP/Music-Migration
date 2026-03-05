@@ -10,6 +10,7 @@ iuliia>=0.13.0
 
 # Async HTTP
 aiohttp>=3.10.0
+aiohttp-socks>=0.8.0
 httpx>=0.28.0
 
 # Database

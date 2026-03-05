@@ -32,7 +32,8 @@ async def exchange_yandex_code(body: YandexCodeRequest):
         from bot.oauth.yandex import exchange_code
         token = await exchange_code(body.code)
         from core.yandex.client import YandexMusicClient
-        client = await YandexMusicClient(token).init()
+        from config import settings
+        client = await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
         account = client._client.me.account if client._client.me else None
         login = (
             getattr(account, "login", None)

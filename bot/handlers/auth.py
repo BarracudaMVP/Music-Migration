@@ -44,7 +44,8 @@ async def start_auth(message: Message, state: FSMContext) -> None:
     # Проверяем YM токен
     try:
         from core.yandex.client import YandexMusicClient
-        await YandexMusicClient(session["yandex_token"]).init()
+        from config import settings
+        await YandexMusicClient(session["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
         logger.info(f"Сохранённый YM токен актуален для user_id={user_id}")
     except Exception:
         await api_client.delete_session(user_id)
@@ -211,7 +212,8 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     track_count = playlist_count = artist_count = "?"
     try:
         from core.yandex.client import YandexMusicClient
-        ym_client = await YandexMusicClient(ym_token).init()
+        from config import settings
+        ym_client = await YandexMusicClient(ym_token, proxy_url=settings.ym_proxy_url or None).init()
         track_count = len(await ym_client.get_liked_tracks())
         playlist_count = len(await ym_client.get_playlists())
         artist_count = len(await ym_client.get_liked_artists())
