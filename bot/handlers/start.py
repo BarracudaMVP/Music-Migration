@@ -30,8 +30,6 @@ async def cmd_migrate(message: Message, state: FSMContext) -> None:
         return
 
     from bot.handlers.auth import start_auth
-    from core.db import init_db
-    await init_db()
     await start_auth(message, state)
 
 

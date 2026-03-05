@@ -7,11 +7,11 @@ from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
 from bot.states import AuthFlow, MigrationFlow
+from bot.api_client import api_client
 
 router = Router()
 
-# migration_id → asyncio.Task (для /status и отмены)
-_active_tasks: dict[int, asyncio.Task] = {}
+_POLL_INTERVAL = 15  # секунд между опросами статуса
 
 
 @router.callback_query(AuthFlow.confirming, F.data.startswith("start_migration"))
@@ -20,8 +20,6 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     await callback.message.edit_reply_markup(reply_markup=None)
 
     mode = callback.data.split(":")[-1]  # "tracks" или "full"
-    do_playlists = mode == "full"
-    do_artists = mode == "full"
 
     data = await state.get_data()
     ym_token = data["yandex_token"]
@@ -37,20 +35,28 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(MigrationFlow.in_progress)
     await state.update_data(progress_msg_id=progress_msg.message_id)
 
-    task = asyncio.create_task(
-        _run_migration_task(
+    try:
+        migration_id = await api_client.start_migration(user_id, ym_token, sc_token, mode)
+    except Exception as e:
+        logger.exception(f"Не удалось запустить миграцию: {e}")
+        await progress_msg.edit_text(
+            f"Не удалось запустить миграцию:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
+            parse_mode="HTML",
+        )
+        await state.clear()
+        return
+
+    await state.update_data(migration_id=migration_id)
+
+    asyncio.create_task(
+        _poll_migration(
             bot=callback.bot,
             chat_id=callback.message.chat.id,
             progress_msg_id=progress_msg.message_id,
-            ym_token=ym_token,
-            sc_token=sc_token,
-            user_id=user_id,
+            migration_id=migration_id,
             state=state,
-            do_playlists=do_playlists,
-            do_artists=do_artists,
         )
     )
-    _active_tasks[callback.from_user.id] = task
 
 
 @router.callback_query(AuthFlow.confirming, F.data == "cancel_migration")
@@ -70,108 +76,97 @@ async def migration_in_progress(message: Message, state: FSMContext) -> None:
     )
 
 
-async def _run_migration_task(
+async def _poll_migration(
     bot,
     chat_id: int,
     progress_msg_id: int,
-    ym_token: str,
-    sc_token: str,
-    user_id: str,
+    migration_id: int,
     state: FSMContext,
-    do_playlists: bool = False,
-    do_artists: bool = False,
 ) -> None:
-    from migration.tracks import run_migration
+    """Опрашивает API каждые N секунд, обновляет сообщение с прогрессом."""
+    last_text = ""
 
-    last_edit_text = ""
+    while True:
+        await asyncio.sleep(_POLL_INTERVAL)
 
-    async def progress_callback(current: int, total: int, track: str) -> None:
-        nonlocal last_edit_text
-        percent = int(current / total * 100)
-        bar = _progress_bar(percent)
-        text = (
-            f"Идёт миграция...\n\n"
-            f"{bar} {percent}%\n"
-            f"{current} / {total} треков\n\n"
-            f"Последний: {track[:60]}"
-        )
-        if text == last_edit_text:
-            return
-        last_edit_text = text
         try:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=progress_msg_id,
-                text=text,
+            data = await api_client.get_migration_status(migration_id)
+        except Exception as e:
+            logger.warning(f"Ошибка опроса миграции #{migration_id}: {e}")
+            continue
+
+        migration = data.get("migration", {})
+        tracks = data.get("tracks", {})
+        mig_status = migration.get("status", "running")
+
+        total = sum(tracks.values()) if tracks else 0
+        liked = tracks.get("liked", 0)
+        pending = tracks.get("pending", 0)
+        not_found = tracks.get("not_found", 0)
+        errors = tracks.get("error", 0)
+        done = liked + not_found + errors
+
+        if mig_status in ("done", "error"):
+            # Финальный отчёт
+            artists = data.get("artists", {})
+            text = _build_final_text(migration_id, tracks, artists)
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id, message_id=progress_msg_id, text=text, parse_mode="HTML"
+                )
+            except TelegramBadRequest:
+                await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            await state.clear()
+            return
+
+        # Промежуточный прогресс
+        if total:
+            percent = int(done / total * 100)
+            bar = _progress_bar(percent)
+            text = (
+                f"Идёт миграция...\n\n"
+                f"{bar} {percent}%\n"
+                f"{done} / {total} треков\n\n"
+                f"Перенесено: {liked} | Не найдено: {not_found} | Ошибок: {errors}"
             )
-        except TelegramBadRequest:
-            pass  # сообщение не изменилось — ок
+        else:
+            text = "Идёт миграция... Загружаю треки."
 
-    async def on_migration_created(migration_id: int) -> None:
-        await state.update_data(migration_id=migration_id)
-
-    try:
-        migration_id, stats = await run_migration(
-            yandex_token=ym_token,
-            soundcloud_token=sc_token,
-            user_id=user_id,
-            migrate_playlists=do_playlists,
-            migrate_artists=do_artists,
-            progress_callback=progress_callback,
-            on_migration_created=on_migration_created,
-        )
-        await _send_report(bot, chat_id, progress_msg_id, migration_id, stats)
-    except Exception as e:
-        logger.exception(f"Ошибка миграции для user {user_id}: {e}")
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=progress_msg_id,
-            text=f"Произошла ошибка во время миграции:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
-            parse_mode="HTML",
-        )
-    finally:
-        await state.clear()
-        _active_tasks.pop(int(user_id), None)
+        if text != last_text:
+            last_text = text
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id, message_id=progress_msg_id, text=text
+                )
+            except TelegramBadRequest:
+                pass
 
 
-async def _send_report(bot, chat_id: int, progress_msg_id: int, migration_id: int, stats) -> None:
-    t = stats.tracks
-    not_found_total = t.not_found + t.uncertain
+def _build_final_text(migration_id: int, tracks: dict, artists: dict) -> str:
+    liked = tracks.get("liked", 0)
+    not_found = tracks.get("not_found", 0)
+    errors = tracks.get("error", 0)
+    total = sum(tracks.values())
+
     text = (
         "Миграция завершена!\n\n"
         "<b>Треки:</b>\n"
-        f"  Перенесено:    <b>{t.liked}</b>\n"
-        f"  Не найдено:    <b>{t.not_found}</b>\n"
-        f"  Сомнительных: <b>{t.uncertain}</b>\n"
-        f"  Ошибок:        <b>{t.errors}</b>\n"
-        f"  Всего:         <b>{t.total}</b>\n"
+        f"  Перенесено:  <b>{liked}</b>\n"
+        f"  Не найдено:  <b>{not_found}</b>\n"
+        f"  Ошибок:      <b>{errors}</b>\n"
+        f"  Всего:       <b>{total}</b>\n"
     )
-    if stats.playlists:
-        p = stats.playlists
-        text += (
-            "\n<b>Плейлисты:</b>\n"
-            f"  Создано:  <b>{p.created}</b>\n"
-            f"  Ошибок:   <b>{p.errors}</b>\n"
-        )
-    if stats.artists:
-        a = stats.artists
+    if artists:
+        followed = artists.get("followed", 0)
+        art_not_found = artists.get("not_found", 0)
         text += (
             "\n<b>Артисты:</b>\n"
-            f"  Подписок: <b>{a.followed}</b>\n"
-            f"  Не найдено: <b>{a.not_found}</b>\n"
+            f"  Подписок:   <b>{followed}</b>\n"
+            f"  Не найдено: <b>{art_not_found}</b>\n"
         )
-    if not_found_total > 0:
+    if not_found > 0:
         text += f"\nСписок не найденных: <code>not_found_{migration_id}.txt</code> на сервере."
-
-    try:
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=progress_msg_id,
-            text=text,
-            parse_mode="HTML",
-        )
-    except TelegramBadRequest:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    return text
 
 
 def _progress_bar(percent: int, length: int = 20) -> str:

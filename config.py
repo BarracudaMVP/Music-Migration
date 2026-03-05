@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     db_path: str = Field(default="migration.db")
     log_level: str = Field(default="INFO")
 
+    # FastAPI (MVP4)
+    database_url: str = Field(default="sqlite+aiosqlite:///migration.db")
+    api_base_url: str = Field(default="http://localhost:8000")
+    api_internal_token: str = Field(default="")
+
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():
             return set()

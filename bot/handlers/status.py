@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.states import MigrationFlow
-from core.db import get_track_stats
+from bot.api_client import api_client
 
 router = Router()
 
@@ -24,12 +24,18 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
         await message.answer("Миграция запущена, статистика пока недоступна.")
         return
 
-    stats = await get_track_stats(migration_id)
-    total = sum(stats.values())
-    liked = stats.get("liked", 0)
-    pending = stats.get("pending", 0)
-    not_found = stats.get("not_found", 0)
-    errors = stats.get("error", 0)
+    try:
+        status_data = await api_client.get_migration_status(migration_id)
+    except Exception as e:
+        await message.answer(f"Не удалось получить статус: {e}")
+        return
+
+    tracks = status_data.get("tracks", {})
+    total = sum(tracks.values())
+    liked = tracks.get("liked", 0)
+    pending = tracks.get("pending", 0)
+    not_found = tracks.get("not_found", 0)
+    errors = tracks.get("error", 0)
 
     done = liked + not_found + errors
     percent = int(done / total * 100) if total else 0

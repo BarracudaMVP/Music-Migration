@@ -1,12 +1,13 @@
 import re
 
+import httpx
 from loguru import logger
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from bot.states import AuthFlow
-from core.db import init_db, save_user_session, load_user_session, delete_user_session
+from bot.api_client import api_client
 
 router = Router()
 
@@ -33,9 +34,8 @@ async def start_auth(message: Message, state: FSMContext) -> None:
     Вызывается из start.py при /migrate.
     Если есть сохранённая сессия — тихо проверяем токены и переходим к миграции.
     """
-    await init_db()
     user_id = str(message.from_user.id)
-    session = await load_user_session(user_id)
+    session = await api_client.get_session(user_id)
 
     if not session:
         await _ask_yandex_token(message, state)
@@ -47,7 +47,7 @@ async def start_auth(message: Message, state: FSMContext) -> None:
         await YandexMusicClient(session["yandex_token"]).init()
         logger.info(f"Сохранённый YM токен актуален для user_id={user_id}")
     except Exception:
-        await delete_user_session(user_id)
+        await api_client.delete_session(user_id)
         logger.warning(f"YM токен истёк для user_id={user_id}, запрашиваю заново")
         await message.answer("Токен Яндекс Музыки истёк. Нужно авторизоваться заново.")
         await _ask_yandex_token(message, state)
@@ -60,7 +60,7 @@ async def start_auth(message: Message, state: FSMContext) -> None:
         await sc.close()
         logger.info(f"Сохранённый SC токен актуален для user_id={user_id}")
     except Exception:
-        await delete_user_session(user_id)
+        await api_client.delete_session(user_id)
         logger.warning(f"SC токен истёк для user_id={user_id}, запрашиваю заново")
         await message.answer("Токен SoundCloud истёк. Нужно ввести новый.")
         await _ask_soundcloud_token(message, state, ym_token=session["yandex_token"])
@@ -117,12 +117,16 @@ async def receive_yandex_token(message: Message, state: FSMContext) -> None:
     status_msg = await message.answer("Проверяю...")
 
     try:
-        from bot.oauth.yandex import exchange_code
-        token = await exchange_code(code)
-        from core.yandex.client import YandexMusicClient
-        await YandexMusicClient(token).init()
+        result = await api_client.exchange_yandex_code(code)
+        token = result["token"]
         await state.update_data(yandex_token=token)
-    except ValueError as e:
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("detail", str(e))
+        await status_msg.edit_text(
+            f"Ошибка: {detail}\n\nПопробуй войти через кнопку снова и скопировать новый код:"
+        )
+        return
+    except Exception as e:
         await status_msg.edit_text(
             f"Ошибка: {e}\n\nПопробуй войти через кнопку снова и скопировать новый код:"
         )
@@ -171,10 +175,14 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
     status_msg = await message.answer("Проверяю токен SoundCloud...")
 
     try:
-        from core.soundcloud.client import SoundCloudClient
-        sc = await SoundCloudClient(token).init()
-        await sc.close()
+        await api_client.validate_soundcloud_token(token)
         await state.update_data(soundcloud_token=token)
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("detail", str(e))
+        await status_msg.edit_text(
+            f"Не удалось подключиться к SoundCloud: {detail}\n\nПопробуй ещё раз:"
+        )
+        return
     except Exception as e:
         await status_msg.edit_text(
             f"Не удалось подключиться к SoundCloud: {e}\n\nПопробуй ещё раз:"
@@ -184,7 +192,7 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
     # Сохраняем сессию
     data = await state.get_data()
     user_id = str(message.from_user.id)
-    await save_user_session(user_id, data["yandex_token"], token)
+    await api_client.save_session(user_id, data["yandex_token"], token)
 
     await status_msg.edit_text("SoundCloud подключён! Сессия сохранена.")
     await _show_confirmation(message, state)

@@ -40,6 +40,7 @@ class SoundCloudClient:
             else f"OAuth {self._raw_token}"
         )
         self._user_id: int | None = None
+        self._username: str = ""
         self._session: aiohttp.ClientSession | None = None
         # Read-only клиент для поиска
         self._sc: sc_lib.SoundCloud | None = None
@@ -65,8 +66,8 @@ class SoundCloudClient:
                 "Не удалось получить данные аккаунта SoundCloud. "
                 "Токен истёк или неверен — получи новый из куки браузера."
             )
-        username = me.get("username", "unknown")
-        logger.info(f"SoundCloud: авторизован как {username!r} (id={self._user_id})")
+        self._username = me.get("username", "unknown")
+        logger.info(f"SoundCloud: авторизован как {self._username!r} (id={self._user_id})")
         return self
 
     async def close(self) -> None:
