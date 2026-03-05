@@ -1,0 +1,44 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Telegram
+    telegram_bot_token: str = ""
+
+    # Яндекс OAuth (oauth.yandex.ru)
+    yandex_client_id: str = ""
+    yandex_client_secret: str = ""
+
+    # Whitelist Telegram user ID через запятую: "123456789,987654321"
+    # Если пусто — бот открыт для всех (не рекомендуется для личного бота)
+    allowed_users: str = ""
+
+    # Ключ шифрования токенов в БД (Fernet, base64).
+    # Сгенерировать: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Если пусто — токены хранятся plain text (небезопасно!)
+    db_encryption_key: str = ""
+
+    # CLI токены
+    yandex_token: str = ""
+    soundcloud_token: str = ""
+
+    # Миграция
+    sc_rate_limit_sleep: float = Field(default=2.0)
+    match_threshold: float = Field(default=75.0)
+    db_path: str = Field(default="migration.db")
+    log_level: str = Field(default="INFO")
+
+    def get_allowed_users(self) -> set[int]:
+        if not self.allowed_users.strip():
+            return set()
+        return {int(uid.strip()) for uid in self.allowed_users.split(",") if uid.strip()}
+
+
+settings = Settings()

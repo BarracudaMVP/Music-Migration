@@ -1,0 +1,26 @@
+# Yandex Music
+yandex-music>=2.2.0
+
+# SoundCloud
+soundcloud-v2>=1.3.0
+
+# Fuzzy matching
+rapidfuzz>=3.9.0
+iuliia>=0.13.0
+
+# Async HTTP
+aiohttp>=3.10.0
+
+# Database
+aiosqlite>=0.20.0
+
+# Config
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+
+# Logging
+loguru>=0.7.2
+
+# Telegram Bot (MVP3)
+aiogram>=3.13.0
