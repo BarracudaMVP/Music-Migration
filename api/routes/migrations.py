@@ -1,12 +1,11 @@
 """Migration routes: start + status."""
-import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.deps import verify_internal_token
-from core.db import get_migration, get_track_stats, get_artist_stats
+from api.deps import arq_pool_dep, verify_internal_token
+from core.db import create_migration, get_migration, get_track_stats, get_artist_stats
 
 router = APIRouter(dependencies=[Depends(verify_internal_token)])
 
@@ -23,53 +22,20 @@ class StartMigrationResponse(BaseModel):
 
 
 @router.post("", response_model=StartMigrationResponse, status_code=status.HTTP_201_CREATED)
-async def start_migration(body: StartMigrationRequest):
-    """Создаёт запись миграции и запускает asyncio-задачу."""
-    from migration.tracks import run_migration
-
-    migrate_playlists = body.mode == "full"
-    migrate_artists = body.mode == "full"
-
-    migration_id_holder: list[int] = []
-
-    async def _on_created(mid: int) -> None:
-        migration_id_holder.append(mid)
-
-    async def _task():
-        try:
-            await run_migration(
-                yandex_token=body.yandex_token,
-                soundcloud_token=body.soundcloud_token,
-                user_id=body.user_id,
-                migrate_playlists=migrate_playlists,
-                migrate_artists=migrate_artists,
-                on_migration_created=_on_created,
-            )
-        except Exception:
-            pass  # errors logged inside run_migration
-
-    task = asyncio.create_task(_task())
-
-    # Ждём немного чтобы migration_id появился
-    for _ in range(50):
-        if migration_id_holder:
-            break
-        await asyncio.sleep(0.1)
-
-    if not migration_id_holder:
-        # Если миграция не стартовала — даём задаче отработать и смотрим
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-        except (asyncio.TimeoutError, Exception):
-            pass
-
-    if not migration_id_holder:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Migration did not start in time",
-        )
-
-    return StartMigrationResponse(migration_id=migration_id_holder[0])
+async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)):
+    """Создаёт запись миграции и ставит задачу в ARQ-очередь."""
+    migration_id = await create_migration(body.user_id)
+    job = await arq.enqueue_job(
+        "run_migration_job",
+        migration_id,
+        body.yandex_token,
+        body.soundcloud_token,
+        body.mode,
+        body.user_id,
+    )
+    if job:
+        await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
+    return StartMigrationResponse(migration_id=migration_id)
 
 
 @router.get("/{migration_id}")

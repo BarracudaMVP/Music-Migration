@@ -1,0 +1,112 @@
+{% extends "admin/base.html" %}
+{% block title %}Миграция #{{ migration.id }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Миграция #{{ migration.id }}</h1>
+  <a href="/admin/migrations" class="text-sm text-gray-500 hover:text-indigo-600">← Список</a>
+</div>
+
+<!-- Meta + actions -->
+<div class="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex items-start justify-between gap-4">
+  <div class="space-y-1 text-sm">
+    <div><span class="text-gray-400">Пользователь:</span> <span class="font-mono">{{ migration.user_id }}</span></div>
+    <div><span class="text-gray-400">Статус:</span>
+      <span class="font-medium {% if migration.status == 'done' %}text-green-600{% elif migration.status == 'failed' %}text-red-600{% elif migration.status == 'running' %}text-indigo-600{% else %}text-gray-500{% endif %}">
+        {{ status_label }}
+      </span>
+    </div>
+    <div><span class="text-gray-400">Создана:</span> {{ migration.created_at.strftime('%d.%m.%Y %H:%M:%S') if migration.created_at else '—' }}</div>
+  </div>
+  <div class="flex gap-2">
+    {% if migration.status in ('pending', 'running') %}
+    <form method="post" action="/admin/migrations/{{ migration.id }}/cancel">
+      <button type="submit" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-600">
+        Отменить
+      </button>
+    </form>
+    {% endif %}
+    {% if migration.status in ('failed', 'cancelled', 'done') %}
+    <form method="post" action="/admin/migrations/{{ migration.id }}/restart">
+      <button type="submit" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700">
+        Перезапустить
+      </button>
+    </form>
+    {% endif %}
+    <a href="/migrate/{{ migration.id }}/export?fmt=csv"
+      class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">
+      CSV
+    </a>
+  </div>
+</div>
+
+<!-- Stats -->
+{% if stats %}
+<div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-sm">Статистика треков</h2>
+  <div class="flex gap-6 text-sm">
+    {% for s, cnt in stats.items() %}
+    <div>
+      <div class="text-2xl font-bold {% if s == 'liked' %}text-green-600{% elif s == 'not_found' %}text-orange-500{% elif s == 'error' %}text-red-500{% else %}text-gray-600{% endif %}">{{ cnt }}</div>
+      <div class="text-gray-400 capitalize">{{ s }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Track filter -->
+<form method="get" class="flex gap-2 mb-3">
+  {% for s in track_status_options %}
+  <a href="?track_status={{ s }}"
+    class="px-3 py-1 rounded-full text-xs border {% if filter_status == s %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
+    {{ s }}
+  </a>
+  {% endfor %}
+  {% if filter_status %}
+  <a href="?" class="px-3 py-1 rounded-full text-xs border border-gray-300 text-gray-400 hover:border-gray-500">
+    все
+  </a>
+  {% endif %}
+</form>
+
+<!-- Tracks table -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+  {% if tracks %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-gray-400 border-b bg-gray-50">
+        <th class="px-4 py-2">Исполнитель</th>
+        <th class="px-4 py-2">Трек</th>
+        <th class="px-4 py-2">Статус</th>
+        <th class="px-4 py-2">Score</th>
+        <th class="px-4 py-2">SC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tracks %}
+      <tr class="border-b border-gray-50 hover:bg-gray-50">
+        <td class="px-4 py-1.5 text-gray-700">{{ t.ym_artist }}</td>
+        <td class="px-4 py-1.5">{{ t.ym_title }}</td>
+        <td class="px-4 py-1.5">
+          <span class="{% if t.status == 'liked' %}text-green-600{% elif t.status == 'not_found' %}text-orange-500{% elif t.status == 'error' %}text-red-500{% else %}text-gray-400{% endif %} capitalize">
+            {{ t.status }}
+          </span>
+        </td>
+        <td class="px-4 py-1.5 font-mono text-xs text-gray-400">
+          {{ "%.0f"|format(t.match_score) if t.match_score else '—' }}
+        </td>
+        <td class="px-4 py-1.5">
+          {% if t.sc_url %}
+          <a href="{{ t.sc_url }}" target="_blank" class="text-indigo-600 hover:underline text-xs">↗</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm p-6">Треки не найдены.</p>
+  {% endif %}
+</div>
+{% endblock %}

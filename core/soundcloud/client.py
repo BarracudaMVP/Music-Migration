@@ -86,7 +86,7 @@ class SoundCloudClient:
         """
         self._ensure_init()
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             results = await loop.run_in_executor(
                 None,
                 lambda: list(self._sc.search_tracks(query, limit=_SEARCH_LIMIT)),
@@ -100,7 +100,7 @@ class SoundCloudClient:
         """Ищет пользователей/артистов по имени."""
         self._ensure_init()
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             results = await loop.run_in_executor(
                 None,
                 lambda: list(self._sc.search_users(query, limit=3)),

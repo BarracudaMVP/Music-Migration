@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Music Migration{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <a href="/" class="text-lg font-semibold text-indigo-600 hover:text-indigo-800">🎵 Music Migration</a>
+    <div class="flex gap-4 text-sm">
+      <a href="/" class="hover:text-indigo-600">Главная</a>
+      <a href="/history" class="hover:text-indigo-600">История</a>
+      <a href="/auth" class="hover:text-indigo-600">Аккаунт</a>
+      <form method="post" action="/auth/logout" class="inline">
+        <button type="submit" class="text-red-500 hover:text-red-700">Выйти</button>
+      </form>
+    </div>
+  </nav>
+
+  <main class="max-w-2xl mx-auto px-4 py-10">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Music Migration — Авторизация{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Авторизация</h1>
+
+{% if error %}
+<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 mb-4 text-sm">
+  {{ error }}
+</div>
+{% endif %}
+
+<!-- Step 1: Yandex -->
+<div class="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-semibold">1. Яндекс Музыка</h2>
+    {% if ym_done %}
+    <span class="text-green-600 text-sm font-medium">✓ Подключено</span>
+    {% endif %}
+  </div>
+
+  {% if not ym_done %}
+  <p class="text-sm text-gray-500 mb-3">
+    Откройте ссылку, войдите в Яндекс, скопируйте код и вставьте ниже.
+  </p>
+  <a href="{{ ym_auth_url }}" target="_blank"
+    class="inline-block bg-yellow-400 text-gray-900 px-4 py-2 rounded-lg hover:bg-yellow-500 text-sm font-medium mb-4">
+    Открыть страницу Яндекса
+  </a>
+  <form method="post" action="/auth/yandex" class="flex gap-2">
+    <input name="code" type="text" placeholder="Код авторизации"
+      class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+    <button type="submit"
+      class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
+      Подтвердить
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Step 2: SoundCloud -->
+<div class="bg-white rounded-xl border border-gray-200 p-6 {% if not ym_done %}opacity-50 pointer-events-none{% endif %}">
+  <h2 class="font-semibold mb-3">2. SoundCloud</h2>
+  <p class="text-sm text-gray-500 mb-3">
+    Откройте <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 underline">soundcloud.com</a>,
+    войдите в аккаунт, откройте DevTools → Application → Cookies → найдите
+    <code class="bg-gray-100 px-1 rounded">oauth_token</code> и вставьте значение.
+  </p>
+  <form method="post" action="/auth/soundcloud" class="flex gap-2">
+    <input name="sc_token" type="text" placeholder="oauth_token (2-... или 3-...)"
+      class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+    <button type="submit"
+      class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm">
+      Сохранить
+    </button>
+  </form>
+</div>
+{% endblock %}

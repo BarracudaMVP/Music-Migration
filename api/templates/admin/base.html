@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Admin{% endblock %} — Music Migration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+
+  <nav class="bg-gray-900 text-gray-200 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+      <a href="/admin/dashboard" class="text-white font-semibold">🛠 Admin</a>
+      <a href="/admin/dashboard" class="text-sm hover:text-white">Дашборд</a>
+      <a href="/admin/migrations" class="text-sm hover:text-white">Миграции</a>
+      <a href="/admin/users" class="text-sm hover:text-white">Пользователи</a>
+      <a href="/admin/services" class="text-sm hover:text-white">Сервисы</a>
+    </div>
+    <div class="flex items-center gap-4 text-sm">
+      <a href="/" class="hover:text-white">← Сайт</a>
+      <form method="post" action="/admin/logout" class="inline">
+        <button type="submit" class="text-red-400 hover:text-red-300">Выйти</button>
+      </form>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

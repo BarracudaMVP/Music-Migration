@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Миграция #{{ migration_id }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Миграция #{{ migration_id }}</h1>
+  <a href="/history" class="text-sm text-gray-500 hover:text-indigo-600">← История</a>
+</div>
+
+<div
+  id="status-block"
+  hx-get="/migrate/{{ migration_id }}/status-fragment"
+  hx-trigger="load, every 3s"
+  hx-swap="outerHTML"
+>
+  <div class="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400">
+    Загрузка...
+  </div>
+</div>
+{% endblock %}

@@ -195,113 +195,106 @@ music-migration/
 
 ---
 
-### 🔲 MVP4 — Отделение бота от сервера
+### ✅ MVP4 — Отделение бота от сервера
 
 **Цель**: бот становится тонким клиентом. Вся логика — в API/worker.
 
-- [ ] FastAPI сервер — базовая структура (`api/main.py`, роутеры)
-- [ ] `POST /api/migrations` — создать задачу миграции
-- [ ] `GET /api/migrations/{id}` — статус и прогресс
-- [ ] `GET /api/migrations/{id}/report` — скачать файл результатов
-- [ ] `POST /api/auth/yandex/token` — обменять код на токен
-- [ ] `POST /api/auth/soundcloud/validate` — проверить SC токен
-- [ ] `GET/PUT /api/sessions/{user_id}` — сохранить/загрузить сессию
-- [ ] bot/api_client.py — обёртка над httpx для вызовов к API
-- [ ] Рефакторинг bot/handlers — убрать прямые вызовы core/*, делать через api_client
-- [ ] PostgreSQL модели (SQLAlchemy 2.x): users, sessions, migrations, tracks, playlists, artists
-- [ ] Alembic — первая миграция (initial schema)
+- [x] FastAPI сервер — базовая структура (`api/main.py`, роутеры)
+- [x] `POST /api/migrations` — создать задачу миграции
+- [x] `GET /api/migrations/{id}` — статус и прогресс
+- [x] `GET /api/migrations/{id}/report` — скачать файл результатов
+- [x] `POST /api/auth/yandex/token` — обменять код на токен
+- [x] `POST /api/auth/soundcloud/validate` — проверить SC токен
+- [x] `GET/PUT /api/sessions/{user_id}` — сохранить/загрузить сессию
+- [x] bot/api_client.py — обёртка над httpx для вызовов к API
+- [x] Рефакторинг bot/handlers — убрать прямые вызовы core/*, делать через api_client
+- [x] PostgreSQL модели (SQLAlchemy 2.x): users, sessions, migrations, tracks, playlists, artists
+- [x] Alembic — первая миграция (initial schema)
 
 ---
 
-### 🔲 MVP5 — Worker + очередь задач
+### ✅ MVP5 — Worker + очередь задач
 
 **Цель**: миграции выполняются в отдельных worker-процессах через Redis.
 
-- [ ] arq worker setup (`worker/main.py`, WorkerSettings)
-- [ ] Task: `run_migration(migration_id)` — читает из БД, выполняет пайплайн
-- [ ] Redis pub/sub: worker публикует прогресс → API отдаёт через SSE или polling
-- [ ] `GET /api/migrations/{id}/progress` — endpoint для polling прогресса
-- [ ] Отмена задачи (`DELETE /api/migrations/{id}`) — arq job abort
-- [ ] Ограничение параллельных задач (max_jobs в arq, очередь per-user)
+- [x] arq worker setup (`worker/main.py`, WorkerSettings)
+- [x] Task: `run_migration(migration_id)` — читает из БД, выполняет пайплайн
+- [x] Redis pub/sub: worker публикует прогресс → API отдаёт через SSE или polling
+- [x] `GET /api/migrations/{id}/progress` — endpoint для polling прогресса
+- [x] Отмена задачи (`DELETE /api/migrations/{id}`) — arq job abort
+- [x] Ограничение параллельных задач (max_jobs в arq, очередь per-user)
 
 ---
 
-### 🔲 MVP6 — Service Registry
+### ✅ MVP6 — Service Registry
 
 **Цель**: расширяемый реестр источников и назначений.
 
-- [ ] `core/services/base.py` — абстрактный `MusicServiceAdapter`
-  ```python
-  class MusicServiceAdapter:
-      id: str
-      name: str
-      capabilities: set[Capability]
-      async def get_liked_tracks(self, session) -> list[Track]: ...
-      async def like_track(self, session, track_id) -> bool: ...
-      # и т.д.
-  ```
-- [ ] `core/services/registry.py` — `ServiceRegistry.get_matrix()` → FROM→TO матрица
-- [ ] Перенести YandexMusicClient → `YandexMusicAdapter(MusicServiceAdapter)`
-- [ ] Перенести SoundCloudClient → `SoundCloudAdapter(MusicServiceAdapter)`
-- [ ] `FileAdapter` — экспорт в CSV/JSON, импорт из CSV/JSON
-- [ ] `GET /api/services` — список доступных сервисов с capabilities
-- [ ] `GET /api/services/matrix` — матрица FROM→TO для UI
-- [ ] Настройка через код (Фаза 1); схема БД для Фазы 2 (таблица `services`)
+- [x] `core/services/base.py` — `Capability` Flag enum + `MusicServiceAdapter` ABC
+- [x] `core/services/registry.py` — `ServiceRegistry` с `register/all/get/get_matrix`
+- [x] `core/services/yandex/adapter.py` — `YandexMusicAdapter` (тонкая обёртка, READ_*)
+- [x] `core/services/soundcloud/adapter.py` — `SoundCloudAdapter` (WRITE_*)
+- [x] `core/services/file/adapter.py` — `FileAdapter` — export/import CSV/JSON
+- [x] `core/db/crud.py` — добавлена `get_all_tracks(migration_id)`
+- [x] `GET /api/services` — список доступных сервисов с capabilities
+- [x] `GET /api/services/matrix` — матрица FROM→TO для UI
+- [x] Регистрация адаптеров в `api/main.py` startup
 
 ---
 
-### 🔲 MVP7 — Веб-интерфейс (пользователи)
+### ✅ MVP7 — Веб-интерфейс (пользователи)
 
 **Цель**: полноценный веб-UI для обычных пользователей.
 
-- [ ] Базовый шаблон (base.html) — навигация, стили (Tailwind CDN или simple CSS)
-- [ ] Главная страница: выбор FROM / TO (из матрицы сервисов)
-- [ ] Auth flow: кнопка «войти через Яндекс», ввод SC токена
-- [ ] Страница прогресса — HTMX polling каждые 3 сек → обновление без перезагрузки
-- [ ] Страница результатов — статистика + скачать отчёт
-- [ ] История миграций пользователя
-- [ ] Импорт из файла (загрузка CSV/JSON)
-- [ ] Экспорт в файл (скачать CSV/JSON)
+- [x] Базовый шаблон `base.html` — навигация, Tailwind CDN + HTMX CDN
+- [x] `index.html` — выбор FROM/TO из матрицы сервисов
+- [x] `auth.html` — Яндекс OAuth (link+paste code) + SC токен
+- [x] `progress.html` — HTMX polling каждые 3 сек → `fragments/status.html`
+- [x] `result.html` — статистика + кнопки скачать CSV/JSON
+- [x] `history.html` — история миграций пользователя (последние 50)
+- [x] `GET /migrate/{id}/export` — скачать CSV или JSON через FileAdapter
+- [x] `SessionMiddleware` — подписанные cookie-сессии (secret_key в .env)
+- [x] Добавлены зависимости: jinja2, python-multipart, itsdangerous
+- [ ] Импорт из файла (загрузка CSV/JSON) — отложено на MVP8
 
 ---
 
-### 🔲 MVP8 — Веб-интерфейс (админка)
+### ✅ MVP8 — Веб-интерфейс (админка)
 
 **Цель**: мониторинг и управление сервисом.
 
-- [ ] Дашборд: активные миграции, очередь, нагрузка на воркеры
-- [ ] Список пользователей, их сессий, миграций
-- [ ] Лог миграций с фильтрацией
-- [ ] Управление реестром сервисов (включить/выключить, capabilities)
-- [ ] Просмотр not_found треков для любой миграции
-- [ ] Принудительная отмена/перезапуск задачи
-- [ ] Защита: HTTP Basic или внутренний токен
+- [x] Логин-форма `/admin/login` — защита паролем через сессию (`admin_password` в .env)
+- [x] Дашборд `/admin/dashboard` — кол-во миграций/пользователей/треков, статусы, последние 10
+- [x] Список миграций `/admin/migrations` — фильтр по статусу и user_id
+- [x] Детальная страница `/admin/migrations/{id}` — мета + статистика треков + таблица треков с фильтром
+- [x] Отмена миграции `POST /admin/migrations/{id}/cancel`
+- [x] Перезапуск миграции `POST /admin/migrations/{id}/restart` (через ARQ)
+- [x] Список пользователей `/admin/users` — сессии + кол-во миграций
+- [x] Реестр сервисов `/admin/services` — адаптеры с capabilities + матрица
+- [x] `config.py` — добавлен `admin_password`
 
 ---
 
-### 🔲 MVP9 — Инфраструктура и деплой
+### ✅ MVP9 — Инфраструктура и деплой
 
 **Цель**: продакшн-деплой на Timeweb Cloud.
 
 #### Docker
 
-- [ ] `Dockerfile.api` — FastAPI + gunicorn/uvicorn
-- [ ] `Dockerfile.bot` — Telegram бот
-- [ ] `Dockerfile.worker` — arq worker
-- [ ] `docker-compose.yml` — все сервисы + PostgreSQL + Redis
-- [ ] `.env.example` — полный список переменных окружения
-- [ ] Health check endpoints (`/health` для API, воркера)
+- [x] `Dockerfile.api` — FastAPI + uvicorn
+- [x] `Dockerfile.bot` — Telegram бот
+- [x] `Dockerfile.worker` — arq worker
+- [x] `docker-compose.yml` — все сервисы + PostgreSQL + Redis + Nginx
+- [x] `.env.example` — полный список переменных окружения
+- [x] Health check endpoint `GET /health` → `{"status":"ok","version":"9.0.0"}`
 
 #### Сеть
 
-- [ ] DE сервер (Timeweb Cloud, Германия):
-  - `api`, `bot`, `worker`, `postgres`, `redis`
-  - SoundCloud доступен без ограничений
+- [x] Nginx reverse proxy: `nginx/nginx.conf` — proxy_pass → api:8000
+- [x] SSL-секция закомментирована с инструкцией certbot
 - [ ] RU сервер (Timeweb Cloud, Россия) — опционально:
   - `worker-ru` — если DE воркер не может достучаться до Яндекс Музыки
   - Или: SOCKS5/HTTP прокси с RU-сервера → пробрасывается в DE worker
-- [ ] Nginx reverse proxy: SSL termination, `/` → api, статика
-- [ ] Certbot (Let's Encrypt) для SSL
 
 #### CI/CD (опционально)
 

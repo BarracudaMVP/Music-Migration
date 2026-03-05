@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% block title %}Пользователи{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Пользователи</h1>
+
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+  {% if users %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-gray-400 border-b bg-gray-50">
+        <th class="px-4 py-2">User ID</th>
+        <th class="px-4 py-2">Обновлена</th>
+        <th class="px-4 py-2 text-right">Миграций</th>
+        <th class="px-4 py-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="border-b border-gray-50 hover:bg-gray-50">
+        <td class="px-4 py-2 font-mono text-xs">{{ u.user_id }}</td>
+        <td class="px-4 py-2 text-xs text-gray-400">{{ u.updated_at.strftime('%d.%m.%Y %H:%M') if u.updated_at else '—' }}</td>
+        <td class="px-4 py-2 text-right font-mono">{{ u.migration_count }}</td>
+        <td class="px-4 py-2 text-right">
+          <a href="/admin/migrations?user_id={{ u.user_id }}"
+            class="text-indigo-600 hover:underline text-xs">миграции →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm p-6">Нет пользователей.</p>
+  {% endif %}
+</div>
+{% endblock %}

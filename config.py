@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     api_base_url: str = Field(default="http://localhost:8000")
     api_internal_token: str = Field(default="")
 
+    # ARQ Worker (MVP5)
+    redis_url: str = Field(default="redis://localhost:6379")
+
+    # Web UI (MVP7) — used for signing session cookies
+    secret_key: str = Field(default="change-me-in-production")
+
+    # Admin UI (MVP8)
+    admin_password: str = Field(default="admin")
+
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():
             return set()

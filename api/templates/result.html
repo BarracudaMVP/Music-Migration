@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Результат миграции #{{ migration_id }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Результат #{{ migration_id }}</h1>
+  <a href="/history" class="text-sm text-gray-500 hover:text-indigo-600">← История</a>
+</div>
+
+<div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+  <div class="flex items-center justify-between">
+    <span class="text-sm text-gray-500">Статус</span>
+    <span class="font-semibold
+      {% if migration.status == 'done' %}text-green-600
+      {% elif migration.status == 'failed' %}text-red-600
+      {% else %}text-gray-500{% endif %}">
+      {{ status_label }}
+    </span>
+  </div>
+
+  {% if stats %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-gray-400 border-b">
+        <th class="pb-1">Статус треков</th>
+        <th class="pb-1 text-right">Кол-во</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set total = stats.values() | sum %}
+      {% set liked = stats.get('liked', 0) %}
+      {% for s, cnt in stats.items() %}
+      <tr class="border-b border-gray-50">
+        <td class="py-1 capitalize">{{ s }}</td>
+        <td class="py-1 text-right font-mono">{{ cnt }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="font-medium">
+        <td class="pt-2">Итого</td>
+        <td class="pt-2 text-right font-mono">{{ total }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="flex gap-3 pt-2">
+    <a href="/migrate/{{ migration_id }}/export?fmt=csv"
+      class="flex-1 text-center bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 text-sm">
+      Скачать CSV
+    </a>
+    <a href="/migrate/{{ migration_id }}/export?fmt=json"
+      class="flex-1 text-center bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 text-sm">
+      Скачать JSON
+    </a>
+    <a href="/"
+      class="flex-1 text-center bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium">
+      Новая миграция
+    </a>
+  </div>
+</div>
+{% endblock %}

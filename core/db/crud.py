@@ -6,11 +6,23 @@ from __future__ import annotations
 
 from loguru import logger
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
 from core.crypto import decrypt_token, encrypt_token
 from core.db.models import Artist, Migration, Playlist, PlaylistTrack, Track, UserSession
 from core.db.session import AsyncSessionLocal, engine
+
+
+def _dialect_insert(model):
+    """Return dialect-appropriate Insert that supports on_conflict_do_nothing/update.
+
+    Uses SQLite insert for SQLite/aiosqlite and PostgreSQL insert for asyncpg.
+    Both dialects expose identical on_conflict_* APIs.
+    """
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    return insert(model)
+
 
 # ---------------------------------------------------------------------------
 # Инициализация
@@ -71,7 +83,7 @@ async def bulk_insert_tracks(migration_id: int, tracks: list[dict]) -> None:
         return
     async with AsyncSessionLocal() as session:
         for t in tracks:
-            stmt = sqlite_insert(Track).values(
+            stmt = _dialect_insert(Track).values(
                 migration_id=migration_id,
                 ym_id=t["ym_id"],
                 ym_artist=t["ym_artist"],
@@ -113,6 +125,15 @@ async def get_track_stats(migration_id: int) -> dict:
         return {row.status: row.cnt for row in result}
 
 
+async def get_all_tracks(migration_id: int) -> list[dict]:
+    """Returns all tracks for a migration regardless of status."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Track).where(Track.migration_id == migration_id)
+        )
+        return [_track_to_dict(r) for r in result.scalars()]
+
+
 async def get_liked_sc_tracks(migration_id: int) -> dict[str, int]:
     """Возвращает {ym_id: sc_id} для уже перенесённых треков."""
     async with AsyncSessionLocal() as session:
@@ -130,14 +151,16 @@ async def get_liked_sc_tracks(migration_id: int) -> dict[str, int]:
 
 async def create_playlist_record(migration_id: int, ym_kind: int, ym_title: str) -> int:
     async with AsyncSessionLocal() as session:
-        stmt = sqlite_insert(Playlist).values(
+        stmt = _dialect_insert(Playlist).values(
             migration_id=migration_id, ym_kind=ym_kind, ym_title=ym_title
         ).on_conflict_do_nothing()
         result = await session.execute(stmt)
         await session.commit()
-        if result.inserted_primary_key:
+        # rowcount > 0 means a new row was inserted; on conflict nothing is inserted
+        # (inserted_primary_key may return (0,) which is truthy — do not use it)
+        if result.rowcount > 0:
             return result.inserted_primary_key[0]
-        # already exists — fetch id
+        # conflict: row already exists — fetch its id
         existing = await session.execute(
             select(Playlist.id).where(
                 Playlist.migration_id == migration_id, Playlist.ym_kind == ym_kind
@@ -176,7 +199,7 @@ async def bulk_insert_artists(migration_id: int, artists: list[dict]) -> None:
         return
     async with AsyncSessionLocal() as session:
         for a in artists:
-            stmt = sqlite_insert(Artist).values(
+            stmt = _dialect_insert(Artist).values(
                 migration_id=migration_id, ym_name=a["ym_name"]
             ).on_conflict_do_nothing()
             await session.execute(stmt)
@@ -219,7 +242,7 @@ async def get_artist_stats(migration_id: int) -> dict:
 
 async def save_user_session(user_id: str, yandex_token: str, soundcloud_token: str) -> None:
     async with AsyncSessionLocal() as session:
-        stmt = sqlite_insert(UserSession).values(
+        stmt = _dialect_insert(UserSession).values(
             user_id=user_id,
             yandex_token=encrypt_token(yandex_token),
             soundcloud_token=encrypt_token(soundcloud_token),

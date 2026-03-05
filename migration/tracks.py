@@ -91,7 +91,6 @@ async def migrate_tracks(
     logger.info(f"Шаг 3/3: обрабатываю {total} треков...")
 
     stats = MigrationStats(total=total)
-    not_found_lines: list[str] = []
 
     for i, row in enumerate(pending, start=1):
         track_str = f"{row['ym_artist']} — {row['ym_title']}"
@@ -112,16 +111,10 @@ async def migrate_tracks(
             logger.debug(f"[{i}/{total}] OK: {track_str}")
         elif result == "uncertain":
             stats.uncertain += 1
-            not_found_lines.append(f"[сомнительный] {track_str}")
             logger.debug(f"[{i}/{total}] uncertain: {track_str}")
         else:
             stats.not_found += 1
-            not_found_lines.append(track_str)
             logger.debug(f"[{i}/{total}] not found: {track_str}")
-
-    # Сохраняем не найденные треки в файл
-    if not_found_lines:
-        _save_not_found(migration_id, not_found_lines)
 
     await update_migration(migration_id, status="done")
     logger.info(f"Миграция завершена. {stats}")
@@ -192,12 +185,6 @@ async def _process_one_track(sc_client: SoundCloudClient, row: dict) -> str:
         return "error"
 
 
-def _save_not_found(migration_id: int, lines: list[str]) -> None:
-    path = f"not_found_{migration_id}.txt"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    logger.info(f"Не найденные треки сохранены в {path}")
-
 
 async def run_migration(
     yandex_token: str,
@@ -207,6 +194,7 @@ async def run_migration(
     migrate_artists: bool = False,
     progress_callback=None,
     on_migration_created=None,
+    migration_id: int | None = None,
 ) -> tuple[int, "FullMigrationStats"]:
     """
     Точка входа для CLI и бота.
@@ -216,6 +204,7 @@ async def run_migration(
     migrate_playlists / migrate_artists — включают MVP2.
     on_migration_created(migration_id) — вызывается сразу после создания
     записи в БД (используется ботом для /status).
+    migration_id — если передан (ARQ worker), пропускаем create_migration и on_migration_created.
     """
     from core.db import init_db
     from migration.playlists import migrate_playlists as _migrate_playlists
@@ -226,11 +215,14 @@ async def run_migration(
     ym_client = await YandexMusicClient(yandex_token).init()
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
-    migration_id = await create_migration(user_id)
-    logger.info(f"Создана миграция #{migration_id} для пользователя {user_id!r}")
+    if migration_id is None:
+        migration_id = await create_migration(user_id)
+        logger.info(f"Создана миграция #{migration_id} для пользователя {user_id!r}")
 
-    if on_migration_created:
-        await on_migration_created(migration_id)
+        if on_migration_created:
+            await on_migration_created(migration_id)
+    else:
+        logger.info(f"Используется существующая миграция #{migration_id} для пользователя {user_id!r}")
 
     try:
         track_stats = await migrate_tracks(
