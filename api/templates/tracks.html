@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Треки миграции #{{ migration_id }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-5">
+  <h1 class="text-xl font-bold">Треки #{{ migration_id }}</h1>
+  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-500 hover:text-indigo-600">← Результат</a>
+</div>
+
+<!-- Stats bar -->
+{% if stats %}
+<div class="flex gap-4 mb-5 flex-wrap">
+  {% for s, cnt in stats.items() %}
+  <div class="bg-white rounded-lg border border-gray-200 px-4 py-2 text-center min-w-[80px]">
+    <div class="text-xl font-bold
+      {% if s == 'liked' %}text-green-600
+      {% elif s == 'not_found' %}text-orange-500
+      {% elif s == 'error' %}text-red-500
+      {% else %}text-gray-500{% endif %}">{{ cnt }}</div>
+    <div class="text-xs text-gray-400">{{ status_label_map.get(s, s) }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Filter tabs -->
+<div class="flex flex-wrap gap-2 mb-4">
+  <a href="?status=&page=1"
+    class="px-3 py-1 rounded-full text-xs border transition
+      {% if not status_filter %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
+    Все
+  </a>
+  {% for s, label in [('liked','Перенесены'), ('not_found','Не найдены'), ('error','Ошибки'), ('pending','В очереди')] %}
+  <a href="?status={{ s }}&page=1"
+    class="px-3 py-1 rounded-full text-xs border transition
+      {% if status_filter == s %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
+    {{ label }}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-x-auto mb-4">
+  {% if tracks %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-gray-400 border-b bg-gray-50 text-xs">
+        <th class="px-4 py-2">Исполнитель</th>
+        <th class="px-4 py-2">Название</th>
+        <th class="px-4 py-2">Статус</th>
+        <th class="px-4 py-2">Score</th>
+        <th class="px-4 py-2">SC</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tracks %}
+      <tr class="border-b border-gray-50 hover:bg-gray-50">
+        <td class="px-4 py-1.5 text-gray-700 max-w-[180px] truncate" title="{{ t.ym_artist }}">{{ t.ym_artist }}</td>
+        <td class="px-4 py-1.5 max-w-[180px] truncate" title="{{ t.ym_title }}">{{ t.ym_title }}</td>
+        <td class="px-4 py-1.5 whitespace-nowrap">
+          <span class="
+            {% if t.status == 'liked' %}text-green-600
+            {% elif t.status == 'not_found' %}text-orange-500
+            {% elif t.status == 'error' %}text-red-500
+            {% else %}text-gray-400{% endif %}">
+            {{ status_label_map.get(t.status, t.status) }}
+          </span>
+        </td>
+        <td class="px-4 py-1.5 font-mono text-xs text-gray-400 whitespace-nowrap">
+          {{ "%.0f"|format(t.match_score) if t.match_score else '—' }}
+        </td>
+        <td class="px-4 py-1.5">
+          {% if t.sc_url %}
+          <a href="{{ t.sc_url }}" target="_blank" rel="noopener"
+            class="text-indigo-600 hover:underline text-xs">↗</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm p-6 text-center">Треков не найдено.</p>
+  {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="flex items-center justify-between text-sm">
+  <span class="text-gray-400">{{ total }} треков · страница {{ page }} из {{ total_pages }}</span>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+    <a href="?status={{ status_filter }}&page={{ page - 1 }}"
+      class="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-500">
+      ← Назад
+    </a>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="?status={{ status_filter }}&page={{ page + 1 }}"
+      class="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-500">
+      Вперёд →
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<p class="text-xs text-gray-400 text-right">{{ total }} треков</p>
+{% endif %}
+{% endblock %}

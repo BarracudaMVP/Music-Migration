@@ -15,6 +15,7 @@ from core.db import (
     create_migration,
     get_migration,
     get_track_stats,
+    get_tracks_page,
     load_user_session,
     save_user_session,
     delete_user_session,
@@ -240,6 +241,52 @@ async def migration_result(request: Request, migration_id: int):
             "migration": migration,
             "status_label": status_label,
             "stats": stats,
+        },
+    )
+
+
+_PER_PAGE = 50
+_TRACK_STATUS_LABEL = {
+    "liked": "Перенесён",
+    "not_found": "Не найден",
+    "error": "Ошибка",
+    "pending": "В очереди",
+}
+
+
+@router.get("/migrate/{migration_id}/tracks", response_class=HTMLResponse)
+async def migration_tracks(
+    request: Request,
+    migration_id: int,
+    status: str = "",
+    page: int = 1,
+):
+    migration = await get_migration(migration_id)
+    if migration is None:
+        return RedirectResponse("/", status_code=303)
+
+    page = max(1, page)
+    tracks, total = await get_tracks_page(
+        migration_id,
+        status=status or None,
+        page=page,
+        per_page=_PER_PAGE,
+    )
+    stats = await get_track_stats(migration_id)
+    total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+    return templates.TemplateResponse(
+        "tracks.html",
+        {
+            "request": request,
+            "migration_id": migration_id,
+            "migration": migration,
+            "tracks": tracks,
+            "stats": stats,
+            "status_filter": status,
+            "status_label_map": _TRACK_STATUS_LABEL,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
         },
     )
 

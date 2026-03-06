@@ -134,6 +134,26 @@ async def get_all_tracks(migration_id: int) -> list[dict]:
         return [_track_to_dict(r) for r in result.scalars()]
 
 
+async def get_tracks_page(
+    migration_id: int,
+    status: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+) -> tuple[list[dict], int]:
+    """Returns (tracks, total_count) with optional status filter and pagination."""
+    async with AsyncSessionLocal() as session:
+        base_filter = Track.migration_id == migration_id
+        count_q = select(func.count()).select_from(Track).where(base_filter)
+        q = select(Track).where(base_filter)
+        if status:
+            count_q = count_q.where(Track.status == status)
+            q = q.where(Track.status == status)
+        total: int = (await session.execute(count_q)).scalar_one()
+        q = q.order_by(Track.id).offset((page - 1) * per_page).limit(per_page)
+        result = await session.execute(q)
+        return [_track_to_dict(r) for r in result.scalars()], total
+
+
 async def get_liked_sc_tracks(migration_id: int) -> dict[str, int]:
     """Возвращает {ym_id: sc_id} для уже перенесённых треков."""
     async with AsyncSessionLocal() as session:
