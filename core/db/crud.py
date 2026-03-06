@@ -285,8 +285,18 @@ async def load_user_session(user_id: str) -> dict | None:
         return {
             "yandex_token": decrypt_token(row.yandex_token),
             "soundcloud_token": decrypt_token(row.soundcloud_token),
+            "role": row.role,
             "updated_at": row.updated_at,
         }
+
+
+async def set_user_role(user_id: str, role: str) -> None:
+    """Устанавливает роль пользователя ('user' | 'admin')."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserSession).where(UserSession.user_id == user_id).values(role=role)
+        )
+        await session.commit()
 
 
 async def delete_user_session(user_id: str) -> None:

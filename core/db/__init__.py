@@ -22,6 +22,7 @@ from core.db.crud import (
     get_artist_stats,
     save_user_session,
     load_user_session,
+    set_user_role,
     delete_user_session,
 )
 
@@ -45,5 +46,6 @@ __all__ = [
     "get_artist_stats",
     "save_user_session",
     "load_user_session",
+    "set_user_role",
     "delete_user_session",
 ]

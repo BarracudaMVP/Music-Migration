@@ -29,6 +29,7 @@ class UserSession(Base):
     user_id: Mapped[str] = mapped_column(String, primary_key=True)
     yandex_token: Mapped[str] = mapped_column(Text, nullable=False)
     soundcloud_token: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, server_default="user")
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 

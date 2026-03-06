@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func, select
 
 from config import settings
+from core.db import load_user_session, set_user_role
 from core.db.models import Migration, Track, UserSession
 from core.db.session import AsyncSessionLocal
 from core.services.base import Capability
@@ -29,12 +30,20 @@ _STATUS_LABEL = {
 # Auth guard
 # ---------------------------------------------------------------------------
 
-def _is_admin(request: Request) -> bool:
-    return request.session.get("is_admin") is True
+async def _is_admin(request: Request) -> bool:
+    """True если пользователь — суперадмин (пароль) или имеет роль admin в БД."""
+    if request.session.get("is_admin") is True:
+        return True
+    user_id = request.session.get("user_id")
+    if user_id:
+        session = await load_user_session(user_id)
+        if session and session.get("role") == "admin":
+            return True
+    return False
 
 
-def _require_admin(request: Request) -> RedirectResponse | None:
-    if not _is_admin(request):
+async def _require_admin(request: Request) -> RedirectResponse | None:
+    if not await _is_admin(request):
         return RedirectResponse("/admin/login", status_code=303)
     return None
 
@@ -45,7 +54,7 @@ def _require_admin(request: Request) -> RedirectResponse | None:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    if _is_admin(request):
+    if await _is_admin(request):
         return RedirectResponse("/admin/dashboard", status_code=303)
     return templates.TemplateResponse(
         "admin/login.html", {"request": request, "error": error}
@@ -77,7 +86,7 @@ async def admin_index(request: Request):
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    if redir := _require_admin(request):
+    if redir := await _require_admin(request):
         return redir
 
     async with AsyncSessionLocal() as s:
@@ -122,7 +131,7 @@ async def dashboard(request: Request):
 
 @router.get("/migrations", response_class=HTMLResponse)
 async def migrations_list(request: Request, status: str = "", user_id: str = ""):
-    if redir := _require_admin(request):
+    if redir := await _require_admin(request):
         return redir
 
     async with AsyncSessionLocal() as s:
@@ -161,7 +170,7 @@ async def migrations_list(request: Request, status: str = "", user_id: str = "")
 
 @router.get("/migrations/{migration_id}", response_class=HTMLResponse)
 async def migration_detail(request: Request, migration_id: int, track_status: str = ""):
-    if redir := _require_admin(request):
+    if redir := await _require_admin(request):
         return redir
 
     async with AsyncSessionLocal() as s:
@@ -202,7 +211,7 @@ async def migration_detail(request: Request, migration_id: int, track_status: st
 
 @router.post("/migrations/{migration_id}/cancel")
 async def cancel_migration(request: Request, migration_id: int):
-    if not _is_admin(request):
+    if not await _is_admin(request):
         return RedirectResponse("/admin/login", status_code=303)
 
     from sqlalchemy import update
@@ -231,7 +240,7 @@ async def cancel_migration(request: Request, migration_id: int):
 
 @router.post("/migrations/{migration_id}/restart")
 async def restart_migration(request: Request, migration_id: int):
-    if not _is_admin(request):
+    if not await _is_admin(request):
         return RedirectResponse("/admin/login", status_code=303)
 
     from api.main import get_arq_pool
@@ -282,7 +291,7 @@ async def restart_migration(request: Request, migration_id: int):
 
 @router.get("/users", response_class=HTMLResponse)
 async def users_list(request: Request):
-    if redir := _require_admin(request):
+    if redir := await _require_admin(request):
         return redir
 
     async with AsyncSessionLocal() as s:
@@ -300,6 +309,7 @@ async def users_list(request: Request):
     users = [
         {
             "user_id": u.user_id,
+            "role": u.role,
             "updated_at": u.updated_at,
             "migration_count": counts.get(u.user_id, 0),
         }
@@ -310,13 +320,22 @@ async def users_list(request: Request):
     )
 
 
+@router.post("/users/{user_id}/set-role")
+async def admin_set_user_role(request: Request, user_id: str, role: str = Form(...)):
+    if not await _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=303)
+    if role in ("user", "admin"):
+        await set_user_role(user_id, role)
+    return RedirectResponse("/admin/users", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # Service registry
 # ---------------------------------------------------------------------------
 
 @router.get("/services", response_class=HTMLResponse)
 async def services_view(request: Request):
-    if redir := _require_admin(request):
+    if redir := await _require_admin(request):
         return redir
 
     adapters = [
