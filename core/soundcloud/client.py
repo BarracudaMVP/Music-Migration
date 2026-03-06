@@ -20,7 +20,7 @@ from config import settings
 
 _BASE_URL = "https://api-v2.soundcloud.com"
 # Кол-во результатов поиска для выбора кандидатов
-_SEARCH_LIMIT = 5
+_SEARCH_LIMIT = 10
 
 
 class RateLimitError(Exception):

@@ -161,6 +161,33 @@ class SCCandidate:
     title: str
 
 
+# ---------------------------------------------------------------------------
+# Разбивка составных артистов
+# ---------------------------------------------------------------------------
+
+_SPLIT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring|при\s+уч\.?|при\s+участии|&|x)\s+", re.IGNORECASE)
+
+
+def split_artists(artist: str) -> list[str]:
+    """
+    Разбивает строку артиста по паттернам: feat., ft., &, x (регистронезависимо).
+    Возвращает список уникальных частей без лишних пробелов.
+
+    Примеры:
+      "Земфира feat. Океан Ельзи"  → ["Земфира", "Океан Ельзи"]
+      "Joji & Rex Orange County"   → ["Joji", "Rex Orange County"]
+      "A ft. B x C"                → ["A", "B", "C"]
+      "Solo Artist"                → ["Solo Artist"]
+    """
+    parts = _SPLIT_RE.split(artist)
+    seen: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if p and p not in seen:
+            seen.append(p)
+    return seen if seen else [artist]
+
+
 def find_best_match(
     ym_artist: str,
     ym_title: str,

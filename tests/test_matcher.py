@@ -6,8 +6,55 @@ from core.matcher import (
     find_best_match,
     normalize,
     score_track_match,
+    split_artists,
     transliterate_variants,
 )
+
+
+# ---------------------------------------------------------------------------
+# split_artists()
+# ---------------------------------------------------------------------------
+
+class TestSplitArtists:
+    def test_feat_dot(self):
+        assert split_artists("A feat. B") == ["A", "B"]
+
+    def test_ft_dot(self):
+        assert split_artists("A ft. B") == ["A", "B"]
+
+    def test_ampersand(self):
+        assert split_artists("A & B & C") == ["A", "B", "C"]
+
+    def test_x_separator(self):
+        assert split_artists("A x B") == ["A", "B"]
+
+    def test_mixed_separators(self):
+        assert split_artists("A ft. B x C") == ["A", "B", "C"]
+
+    def test_solo_artist(self):
+        assert split_artists("Solo Artist") == ["Solo Artist"]
+
+    def test_cyrillic(self):
+        result = split_artists("Земфира feat. Океан Ельзи")
+        assert result == ["Земфира", "Океан Ельзи"]
+
+    def test_no_duplicates(self):
+        result = split_artists("A & A")
+        assert result == ["A"]
+
+    def test_pri_uch_dot(self):
+        assert split_artists("Артист при уч. Другой") == ["Артист", "Другой"]
+
+    def test_pri_uch_no_dot(self):
+        assert split_artists("Артист при уч Другой") == ["Артист", "Другой"]
+
+    def test_pri_uchastii(self):
+        assert split_artists("Артист при участии Другой") == ["Артист", "Другой"]
+
+    def test_case_insensitive(self):
+        assert split_artists("A FEAT. B") == ["A", "B"]
+        assert split_artists("A Ft. B") == ["A", "B"]
+        assert split_artists("Артист При Участии Другой") == ["Артист", "Другой"]
 
 
 # ---------------------------------------------------------------------------

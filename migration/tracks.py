@@ -26,7 +26,7 @@ from core.db import (
 )
 from core.yandex.client import YandexMusicClient
 from core.soundcloud.client import SoundCloudClient
-from core.matcher import find_best_match, SCCandidate
+from core.matcher import find_best_match, split_artists, SCCandidate
 
 
 @dataclass
@@ -130,24 +130,39 @@ async def _process_one_track(sc_client: SoundCloudClient, row: dict) -> str:
     ym_title = row["ym_title"]
     track_id = row["id"]
 
-    # Поиск на SoundCloud
-    query = f"{ym_artist} {ym_title}"
-    sc_results = await sc_client.search_tracks(query)
+    # Поиск на SoundCloud: один запрос на каждого артиста (параллельно)
+    artists = split_artists(ym_artist)
+    queries = [f"{a} {ym_title}" for a in artists]
 
-    if not sc_results:
-        await update_track(track_id, status="not_found")
-        return "not_found"
-
-    # Матчинг
-    candidates = [
-        SCCandidate(
-            sc_id=t.id,
-            sc_url=t.url,
-            artist=t.artist,
-            title=t.title,
+    if len(queries) > 1:
+        results_list = await asyncio.gather(
+            *[sc_client.search_tracks(q) for q in queries]
         )
-        for t in sc_results
-    ]
+    else:
+        results_list = [await sc_client.search_tracks(queries[0])]
+
+    # Дедупликация кандидатов по sc_id
+    all_candidates: dict[int, SCCandidate] = {}
+    for sc_results in results_list:
+        for t in sc_results:
+            if t.id not in all_candidates:
+                all_candidates[t.id] = SCCandidate(
+                    sc_id=t.id,
+                    sc_url=t.url,
+                    artist=t.artist,
+                    title=t.title,
+                )
+
+    candidates = list(all_candidates.values())
+
+    # Fallback: поиск только по названию если пул пустой
+    if not candidates:
+        fallback_results = await sc_client.search_tracks(ym_title)
+        candidates = [
+            SCCandidate(sc_id=t.id, sc_url=t.url, artist=t.artist, title=t.title)
+            for t in fallback_results
+        ]
+
     match = find_best_match(ym_artist, ym_title, candidates)
 
     if match is None:
