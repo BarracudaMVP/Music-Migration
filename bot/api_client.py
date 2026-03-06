@@ -111,6 +111,18 @@ class MigrationApiClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def get_not_found_tracks(self, migration_id: int) -> list[str]:
+        """Возвращает список ненайденных треков (plain text → list[str])."""
+        async with httpx.AsyncClient(headers=self._headers) as client:
+            resp = await client.get(
+                f"{self._base_url}/api/reports/{migration_id}/not-found",
+                timeout=30,
+            )
+            if resp.status_code == 404:
+                return []
+            resp.raise_for_status()
+            return [line for line in resp.text.splitlines() if line.strip()]
+
 
 # Глобальный singleton — используется в handlers
 api_client = MigrationApiClient()

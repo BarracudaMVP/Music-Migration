@@ -2,17 +2,53 @@ import asyncio
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
 from bot.states import AuthFlow, MigrationFlow
 from bot.api_client import api_client
+from config import settings
 
 router = Router()
 
 _POLL_INTERVAL = 15  # секунд между опросами статуса
+_NOT_FOUND_PREVIEW = 30  # треков в превью-списке
 
+# Кнопка для отмены во время миграции
+_KB_CANCEL = InlineKeyboardMarkup(inline_keyboard=[[
+    InlineKeyboardButton(text="Отключиться от миграции", callback_data="migration:detach"),
+]])
+
+
+def _kb_result(migration_id: int, not_found: int) -> InlineKeyboardMarkup:
+    """Клавиатура финального сообщения."""
+    web_url = settings.api_base_url.rstrip("/")
+    rows = []
+    if not_found > 0:
+        rows.append([InlineKeyboardButton(
+            text=f"Ненайденные треки ({not_found})",
+            callback_data=f"migration:not_found:{migration_id}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text="Открыть в браузере",
+        url=f"{web_url}/migrate/{migration_id}/tracks",
+    )])
+    rows.append([InlineKeyboardButton(
+        text="Новая миграция",
+        callback_data="migration:new",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ---------------------------------------------------------------------------
+# Старт миграции
+# ---------------------------------------------------------------------------
 
 @router.callback_query(AuthFlow.confirming, F.data.startswith("start_migration"))
 async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None:
@@ -29,7 +65,8 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     mode_label = "треки + плейлисты + артисты" if mode == "full" else "только треки"
     progress_msg = await callback.message.answer(
         f"Миграция запущена ({mode_label})...\n"
-        "Загружаю треки из Яндекс Музыки, подожди немного."
+        "Загружаю треки из Яндекс Музыки, подожди немного.",
+        reply_markup=_KB_CANCEL,
     )
 
     await state.set_state(MigrationFlow.in_progress)
@@ -42,6 +79,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
         await progress_msg.edit_text(
             f"Не удалось запустить миграцию:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
             parse_mode="HTML",
+            reply_markup=None,
         )
         await state.clear()
         return
@@ -66,6 +104,29 @@ async def on_cancel_migration(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_text("Отменено. Напиши /migrate чтобы начать заново.")
 
 
+# ---------------------------------------------------------------------------
+# Управление во время миграции
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "migration:detach")
+async def on_detach(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь отключается от отслеживания — задача на сервере продолжится."""
+    await callback.answer()
+    current = await state.get_state()
+    if current != MigrationFlow.in_progress:
+        await callback.answer("Активной миграции нет.", show_alert=True)
+        return
+    await state.clear()
+    try:
+        await callback.message.edit_text(
+            "Отключились от миграции. Задача продолжит работу на сервере.\n"
+            "Используй /status или /history в браузере для проверки.",
+            reply_markup=None,
+        )
+    except TelegramBadRequest:
+        pass
+
+
 @router.message(MigrationFlow.in_progress)
 async def migration_in_progress(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
@@ -75,6 +136,51 @@ async def migration_in_progress(message: Message, state: FSMContext) -> None:
         f"Сообщение с прогрессом: #{msg_id}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Callbacks финального сообщения
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data.startswith("migration:not_found:"))
+async def on_show_not_found(callback: CallbackQuery) -> None:
+    await callback.answer()
+    migration_id = int(callback.data.split(":")[-1])
+
+    try:
+        tracks = await api_client.get_not_found_tracks(migration_id)
+    except Exception as e:
+        await callback.answer(f"Не удалось загрузить список: {e}", show_alert=True)
+        return
+
+    if not tracks:
+        await callback.answer("Ненайденных треков нет.", show_alert=True)
+        return
+
+    preview = tracks[:_NOT_FOUND_PREVIEW]
+    text = f"<b>Ненайденные треки ({len(tracks)}):</b>\n\n"
+    text += "\n".join(f"• {t}" for t in preview)
+    if len(tracks) > _NOT_FOUND_PREVIEW:
+        remaining = len(tracks) - _NOT_FOUND_PREVIEW
+        web_url = settings.api_base_url.rstrip("/")
+        text += (
+            f"\n\n<i>...и ещё {remaining} треков.</i>\n"
+            f'Полный список: <a href="{web_url}/migrate/{migration_id}/tracks?status=not_found">в браузере</a>'
+        )
+
+    await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+@router.callback_query(F.data == "migration:new")
+async def on_new_migration(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.clear()
+    from bot.handlers.auth import start_auth
+    await start_auth(callback.message, state)
+
+
+# ---------------------------------------------------------------------------
+# Цикл опроса прогресса
+# ---------------------------------------------------------------------------
 
 async def _poll_migration(
     bot,
@@ -89,6 +195,10 @@ async def _poll_migration(
     while True:
         await asyncio.sleep(_POLL_INTERVAL)
 
+        # Если пользователь отключился — останавливаем слежение
+        if await state.get_state() != MigrationFlow.in_progress:
+            return
+
         try:
             data = await api_client.get_migration_status(migration_id)
         except Exception as e:
@@ -101,21 +211,25 @@ async def _poll_migration(
 
         total = sum(tracks.values()) if tracks else 0
         liked = tracks.get("liked", 0)
-        pending = tracks.get("pending", 0)
         not_found = tracks.get("not_found", 0)
         errors = tracks.get("error", 0)
         done = liked + not_found + errors
 
-        if mig_status in ("done", "error"):
-            # Финальный отчёт
-            artists = data.get("artists", {})
-            text = _build_final_text(migration_id, tracks, artists)
+        if mig_status in ("done", "failed", "cancelled"):
+            text = _build_final_text(migration_id, tracks, data.get("artists", {}))
+            kb = _kb_result(migration_id, not_found)
             try:
                 await bot.edit_message_text(
-                    chat_id=chat_id, message_id=progress_msg_id, text=text, parse_mode="HTML"
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=kb,
                 )
             except TelegramBadRequest:
-                await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+                await bot.send_message(
+                    chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=kb
+                )
             await state.clear()
             return
 
@@ -136,7 +250,10 @@ async def _poll_migration(
             last_text = text
             try:
                 await bot.edit_message_text(
-                    chat_id=chat_id, message_id=progress_msg_id, text=text
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=text,
+                    reply_markup=_KB_CANCEL,
                 )
             except TelegramBadRequest:
                 pass
@@ -164,8 +281,6 @@ def _build_final_text(migration_id: int, tracks: dict, artists: dict) -> str:
             f"  Подписок:   <b>{followed}</b>\n"
             f"  Не найдено: <b>{art_not_found}</b>\n"
         )
-    if not_found > 0:
-        text += f"\nСписок не найденных: <code>not_found_{migration_id}.txt</code> на сервере."
     return text
 
 

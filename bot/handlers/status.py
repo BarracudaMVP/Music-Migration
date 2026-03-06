@@ -1,10 +1,11 @@
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.states import MigrationFlow
 from bot.api_client import api_client
+from config import settings
 
 router = Router()
 
@@ -40,6 +41,14 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
     done = liked + not_found + errors
     percent = int(done / total * 100) if total else 0
 
+    web_url = settings.api_base_url.rstrip("/")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="Открыть в браузере",
+            url=f"{web_url}/migrate/{migration_id}/tracks",
+        )
+    ]])
+
     await message.answer(
         f"Прогресс миграции #{migration_id}:\n\n"
         f"Обработано: {done}/{total} ({percent}%)\n"
@@ -47,4 +56,5 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
         f"Не найдено: {not_found}\n"
         f"В очереди:  {pending}\n"
         f"Ошибок:     {errors}",
+        reply_markup=kb,
     )
