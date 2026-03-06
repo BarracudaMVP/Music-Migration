@@ -1,25 +1,25 @@
-<div class="bg-white rounded-xl border border-gray-200 p-6">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="font-semibold text-sm">Предпросмотр: {{ filename }}</h2>
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-slide-in">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <h2 class="font-semibold text-sm">Предпросмотр: <span class="text-indigo-600">{{ filename }}</span></h2>
     <span class="text-xs text-gray-400">первые {{ preview|length }} строк</span>
   </div>
 
-  <!-- Column mapping -->
-  <form method="post" action="/import/start">
-    <div class="flex gap-4 mb-4 flex-wrap">
+  <form method="post" action="/import/start" class="p-6">
+    <!-- Column mapping -->
+    <div class="grid sm:grid-cols-3 gap-3 mb-5">
       <div>
-        <label class="block text-xs text-gray-500 mb-1">Колонка «Исполнитель»</label>
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Исполнитель</label>
         <select name="artist_col" required
-          class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
           {% for col in columns %}
           <option value="{{ col }}" {% if col == auto_map.artist_col %}selected{% endif %}>{{ col }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="block text-xs text-gray-500 mb-1">Колонка «Название»</label>
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Название</label>
         <select name="title_col" required
-          class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
           {% for col in columns %}
           <option value="{{ col }}" {% if col == auto_map.title_col %}selected{% endif %}>{{ col }}</option>
           {% endfor %}
@@ -27,7 +27,7 @@
       </div>
       <div class="flex items-end">
         <button type="submit"
-          class="bg-indigo-600 text-white px-5 py-1.5 rounded-lg hover:bg-indigo-700 text-sm font-medium">
+          class="w-full bg-indigo-600 text-white px-5 py-2 rounded-xl hover:bg-indigo-700 text-sm font-semibold transition">
           Начать перенос
         </button>
       </div>
@@ -35,20 +35,20 @@
 
     <!-- Preview table -->
     {% if preview %}
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto rounded-xl border border-gray-100">
       <table class="w-full text-xs">
         <thead>
           <tr class="text-left text-gray-400 border-b bg-gray-50">
             {% for col in columns %}
-            <th class="px-3 py-1.5">{{ col }}</th>
+            <th class="px-3 py-2 font-medium">{{ col }}</th>
             {% endfor %}
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-gray-50">
           {% for row in preview %}
-          <tr class="border-b border-gray-50 hover:bg-gray-50">
+          <tr class="hover:bg-gray-50 transition">
             {% for col in columns %}
-            <td class="px-3 py-1 max-w-[200px] truncate text-gray-700" title="{{ row.get(col, '') }}">
+            <td class="px-3 py-1.5 max-w-[200px] truncate text-gray-700" title="{{ row.get(col, '') }}">
               {{ row.get(col, '') }}
             </td>
             {% endfor %}
@@ -58,7 +58,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-gray-400 text-sm">Файл пуст.</p>
+    <p class="text-gray-400 text-sm text-center py-4">Файл пуст.</p>
     {% endif %}
   </form>
 </div>

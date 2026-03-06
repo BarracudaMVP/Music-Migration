@@ -3,35 +3,56 @@
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">История переносов</h1>
-  <a href="/" class="text-sm text-indigo-600 hover:text-indigo-800">+ Новая</a>
+  <h1 class="text-xl sm:text-2xl font-bold">История переносов</h1>
+  <a href="/"
+    class="inline-flex items-center gap-1 bg-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition font-medium">
+    + Новый
+  </a>
 </div>
 
 {% if migrations %}
-<div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden">
   {% for m in migrations %}
-  <div class="flex items-center justify-between px-5 py-3">
-    <div>
-      <span class="font-medium">#{{ m.id }}</span>
-      <span class="text-xs text-gray-400 ml-2">{{ m.created_at.strftime('%d.%m.%Y %H:%M') if m.created_at else '' }}</span>
+  <a href="/migrate/{{ m.id }}"
+    class="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition group">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center shrink-0">
+        <span class="text-xs font-bold text-indigo-500">#{{ m.id }}</span>
+      </div>
+      <div class="min-w-0">
+        <div class="text-sm font-medium text-gray-700 truncate">Перенос #{{ m.id }}</div>
+        <div class="text-xs text-gray-400">
+          {{ m.created_at.strftime('%d.%m.%Y %H:%M') if m.created_at else '' }}
+        </div>
+      </div>
     </div>
-    <div class="flex items-center gap-3">
-      <span class="text-sm
-        {% if m.status == 'done' %}text-green-600
-        {% elif m.status == 'failed' %}text-red-600
-        {% elif m.status == 'cancelled' %}text-gray-400
-        {% else %}text-indigo-600{% endif %}">
+    <div class="flex items-center gap-2 shrink-0 ml-2">
+      <span class="text-xs px-2.5 py-1 rounded-full font-medium
+        {% if m.status == 'done' %}bg-green-50 text-green-700
+        {% elif m.status == 'failed' %}bg-red-50 text-red-700
+        {% elif m.status == 'cancelled' %}bg-gray-100 text-gray-500
+        {% elif m.status == 'running' %}bg-indigo-50 text-indigo-700
+        {% else %}bg-gray-50 text-gray-500{% endif %}">
         {{ m.status_label }}
       </span>
-      <a href="/migrate/{{ m.id }}" class="text-xs text-gray-400 hover:text-indigo-600">→</a>
+      <svg class="w-4 h-4 text-gray-300 group-hover:text-indigo-400 transition" fill="none"
+        stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% else %}
-<div class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-  Переносов пока нет.
-  <a href="/" class="block mt-2 text-indigo-600 hover:underline text-sm">Начать первую</a>
+<div class="bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-sm">
+  <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+    <svg class="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+    </svg>
+  </div>
+  <p class="text-gray-400 mb-3">Переносов пока нет.</p>
+  <a href="/" class="text-indigo-600 hover:underline text-sm font-medium">Начать первый</a>
 </div>
 {% endif %}
 {% endblock %}

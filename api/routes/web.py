@@ -156,6 +156,7 @@ async def start_migrate(
     request: Request,
     from_service: str = Form(...),
     to_service: str = Form(...),
+    mode: str = Form("full"),
 ):
     from api.main import get_arq_pool
 
@@ -185,12 +186,13 @@ async def start_migrate(
 
     migration_id = await create_migration(user_id)
     arq = get_arq_pool()
+    job_mode = "full" if mode == "full" else "tracks"
     job = await arq.enqueue_job(
         "run_migration_job",
         migration_id,
         db_session["yandex_token"],
         db_session["soundcloud_token"],
-        "tracks",
+        job_mode,
         user_id,
     )
     if job:

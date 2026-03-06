@@ -6,48 +6,97 @@
   hx-trigger="every 3s"
   hx-swap="outerHTML"
   {% endif %}
-  class="bg-white rounded-xl border border-gray-200 p-6 space-y-4"
+  class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-slide-in"
 >
-  <div class="flex items-center justify-between">
-    <span class="text-sm text-gray-500">Статус</span>
-    <span class="font-semibold
-      {% if migration.status == 'done' %}text-green-600
-      {% elif migration.status == 'failed' %}text-red-600
-      {% elif migration.status == 'cancelled' %}text-gray-500
-      {% else %}text-indigo-600{% endif %}">
-      {{ status_label }}
-    </span>
+
+  <!-- Status header -->
+  <div class="px-6 py-4 flex items-center justify-between border-b border-gray-100">
+    <div class="flex items-center gap-2">
+      {% if migration.status == 'running' %}
+      <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse-bar inline-block"></span>
+      <span class="text-sm font-medium text-indigo-700">{{ status_label }}</span>
+      {% elif migration.status == 'done' %}
+      <span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
+      <span class="text-sm font-medium text-green-700">{{ status_label }}</span>
+      {% elif migration.status == 'failed' %}
+      <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
+      <span class="text-sm font-medium text-red-700">{{ status_label }}</span>
+      {% elif migration.status == 'cancelled' %}
+      <span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>
+      <span class="text-sm font-medium text-gray-500">{{ status_label }}</span>
+      {% else %}
+      <span class="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block"></span>
+      <span class="text-sm font-medium text-gray-500">{{ status_label }}</span>
+      {% endif %}
+    </div>
+    <span class="text-xs text-gray-400">#{{ migration_id }}</span>
   </div>
 
-  {% if stats %}
-  <table class="w-full text-sm">
-    <thead>
-      <tr class="text-left text-gray-400 border-b">
-        <th class="pb-1">Статус треков</th>
-        <th class="pb-1 text-right">Кол-во</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s, cnt in stats.items() %}
-      <tr class="border-b border-gray-50">
-        <td class="py-1 capitalize">{{ s }}</td>
-        <td class="py-1 text-right font-mono">{{ cnt }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <!-- Animated progress bar (shown while running) -->
+  {% if not done %}
+  <div class="h-1 bg-gray-100 relative overflow-hidden">
+    <div class="absolute inset-0 progress-indeterminate"></div>
+  </div>
   {% endif %}
 
+  <!-- Stats -->
+  {% if stats %}
+  <div class="px-6 py-5">
+    {% set total = stats.values() | sum %}
+    {% set liked = stats.get('liked', 0) %}
+    {% set not_found = stats.get('not_found', 0) %}
+    {% set error = stats.get('error', 0) %}
+    {% set pending = stats.get('pending', 0) %}
+
+    {% if total > 0 and liked > 0 and not polling %}
+    <!-- Progress bar (completed) -->
+    <div class="mb-4">
+      <div class="flex justify-between text-xs text-gray-400 mb-1">
+        <span>Перенесено</span>
+        <span>{{ liked }} / {{ total }}</span>
+      </div>
+      <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div class="h-full bg-green-500 rounded-full transition-all duration-500"
+          style="width: {{ ((liked / total) * 100) | round | int }}%"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-green-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-green-600">{{ liked }}</div>
+        <div class="text-xs text-green-700 mt-0.5">Перенесено</div>
+      </div>
+      <div class="bg-orange-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-orange-500">{{ not_found }}</div>
+        <div class="text-xs text-orange-700 mt-0.5">Не найдено</div>
+      </div>
+      <div class="bg-red-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-red-500">{{ error }}</div>
+        <div class="text-xs text-red-700 mt-0.5">Ошибок</div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-3 text-center">
+        <div class="text-2xl font-bold text-gray-500">{{ pending }}</div>
+        <div class="text-xs text-gray-500 mt-0.5">В очереди</div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="px-6 py-8 text-center text-sm text-gray-400">Ожидаем данные...</div>
+  {% endif %}
+
+  <!-- Actions (shown when done) -->
   {% if done %}
-  <div class="flex gap-3 pt-2">
+  <div class="px-6 pb-5 flex flex-wrap gap-2">
     <a href="/migrate/{{ migration_id }}/result"
-      class="flex-1 text-center bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium">
+      class="flex-1 min-w-[120px] text-center bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
       Подробный отчёт
     </a>
     <a href="/migrate/{{ migration_id }}/export?fmt=csv"
-      class="flex-1 text-center bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 text-sm">
+      class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2.5 rounded-xl hover:bg-gray-200 text-sm transition">
       Скачать CSV
     </a>
   </div>
   {% endif %}
+
 </div>

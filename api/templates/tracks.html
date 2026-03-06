@@ -3,101 +3,103 @@
 
 {% block content %}
 <div class="flex items-center justify-between mb-5">
-  <h1 class="text-xl font-bold">Треки #{{ migration_id }}</h1>
-  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-500 hover:text-indigo-600">← Результат</a>
+  <h1 class="text-xl font-bold">Треки <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-400 hover:text-indigo-600 transition">← Результат</a>
 </div>
 
 <!-- Stats bar -->
 {% if stats %}
-<div class="flex gap-4 mb-5 flex-wrap">
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
   {% for s, cnt in stats.items() %}
-  <div class="bg-white rounded-lg border border-gray-200 px-4 py-2 text-center min-w-[80px]">
+  <div class="bg-white rounded-xl border border-gray-200 px-4 py-3 text-center shadow-sm">
     <div class="text-xl font-bold
       {% if s == 'liked' %}text-green-600
       {% elif s == 'not_found' %}text-orange-500
       {% elif s == 'error' %}text-red-500
-      {% else %}text-gray-500{% endif %}">{{ cnt }}</div>
-    <div class="text-xs text-gray-400">{{ status_label_map.get(s, s) }}</div>
+      {% else %}text-gray-400{% endif %}">{{ cnt }}</div>
+    <div class="text-xs text-gray-400 mt-0.5">{{ status_label_map.get(s, s) }}</div>
   </div>
   {% endfor %}
 </div>
 {% endif %}
 
 <!-- Filter tabs -->
-<div class="flex flex-wrap gap-2 mb-4">
+<div class="flex flex-wrap gap-1.5 mb-4">
   <a href="?status=&page=1"
-    class="px-3 py-1 rounded-full text-xs border transition
-      {% if not status_filter %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
+    class="px-3 py-1.5 rounded-full text-xs font-medium border transition
+      {% if not status_filter %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
     Все
   </a>
   {% for s, label in [('liked','Перенесены'), ('not_found','Не найдены'), ('error','Ошибки'), ('pending','В очереди')] %}
   <a href="?status={{ s }}&page=1"
-    class="px-3 py-1 rounded-full text-xs border transition
-      {% if status_filter == s %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
+    class="px-3 py-1.5 rounded-full text-xs font-medium border transition
+      {% if status_filter == s %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
     {{ label }}
   </a>
   {% endfor %}
 </div>
 
 <!-- Table -->
-<div class="bg-white rounded-xl border border-gray-200 overflow-x-auto mb-4">
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-4">
   {% if tracks %}
-  <table class="w-full text-sm">
-    <thead>
-      <tr class="text-left text-gray-400 border-b bg-gray-50 text-xs">
-        <th class="px-4 py-2">Исполнитель</th>
-        <th class="px-4 py-2">Название</th>
-        <th class="px-4 py-2">Статус</th>
-        <th class="px-4 py-2">Score</th>
-        <th class="px-4 py-2">SC</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in tracks %}
-      <tr class="border-b border-gray-50 hover:bg-gray-50">
-        <td class="px-4 py-1.5 text-gray-700 max-w-[180px] truncate" title="{{ t.ym_artist }}">{{ t.ym_artist }}</td>
-        <td class="px-4 py-1.5 max-w-[180px] truncate" title="{{ t.ym_title }}">{{ t.ym_title }}</td>
-        <td class="px-4 py-1.5 whitespace-nowrap">
-          <span class="
-            {% if t.status == 'liked' %}text-green-600
-            {% elif t.status == 'not_found' %}text-orange-500
-            {% elif t.status == 'error' %}text-red-500
-            {% else %}text-gray-400{% endif %}">
-            {{ status_label_map.get(t.status, t.status) }}
-          </span>
-        </td>
-        <td class="px-4 py-1.5 font-mono text-xs text-gray-400 whitespace-nowrap">
-          {{ "%.0f"|format(t.match_score) if t.match_score else '—' }}
-        </td>
-        <td class="px-4 py-1.5">
-          {% if t.sc_url %}
-          <a href="{{ t.sc_url }}" target="_blank" rel="noopener"
-            class="text-indigo-600 hover:underline text-xs">↗</a>
-          {% else %}—{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-gray-400 border-b bg-gray-50 text-xs">
+          <th class="px-4 py-3 font-medium">Исполнитель</th>
+          <th class="px-4 py-3 font-medium">Название</th>
+          <th class="px-4 py-3 font-medium">Статус</th>
+          <th class="px-4 py-3 font-medium text-right">Score</th>
+          <th class="px-4 py-3 font-medium text-center">SC</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        {% for t in tracks %}
+        <tr class="hover:bg-gray-50 transition">
+          <td class="px-4 py-2 text-gray-700 max-w-[160px] truncate" title="{{ t.ym_artist }}">{{ t.ym_artist }}</td>
+          <td class="px-4 py-2 max-w-[160px] truncate font-medium" title="{{ t.ym_title }}">{{ t.ym_title }}</td>
+          <td class="px-4 py-2 whitespace-nowrap">
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium
+              {% if t.status == 'liked' %}bg-green-50 text-green-700
+              {% elif t.status == 'not_found' %}bg-orange-50 text-orange-700
+              {% elif t.status == 'error' %}bg-red-50 text-red-700
+              {% else %}bg-gray-100 text-gray-500{% endif %}">
+              {{ status_label_map.get(t.status, t.status) }}
+            </span>
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-gray-400 text-right whitespace-nowrap">
+            {{ "%.0f"|format(t.match_score) if t.match_score else '—' }}
+          </td>
+          <td class="px-4 py-2 text-center">
+            {% if t.sc_url %}
+            <a href="{{ t.sc_url }}" target="_blank" rel="noopener"
+              class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
+            {% else %}<span class="text-gray-300">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p class="text-gray-400 text-sm p-6 text-center">Треков не найдено.</p>
+  <p class="text-gray-400 text-sm p-8 text-center">Треков не найдено.</p>
   {% endif %}
 </div>
 
 <!-- Pagination -->
 {% if total_pages > 1 %}
 <div class="flex items-center justify-between text-sm">
-  <span class="text-gray-400">{{ total }} треков · страница {{ page }} из {{ total_pages }}</span>
+  <span class="text-xs text-gray-400">{{ total }} треков · стр. {{ page }} из {{ total_pages }}</span>
   <div class="flex gap-2">
     {% if page > 1 %}
     <a href="?status={{ status_filter }}&page={{ page - 1 }}"
-      class="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-500">
+      class="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:border-gray-400 text-xs transition">
       ← Назад
     </a>
     {% endif %}
     {% if page < total_pages %}
     <a href="?status={{ status_filter }}&page={{ page + 1 }}"
-      class="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-500">
+      class="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:border-gray-400 text-xs transition">
       Вперёд →
     </a>
     {% endif %}

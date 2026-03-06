@@ -2,57 +2,99 @@
 {% block title %}Music Migration — Авторизация{% endblock %}
 
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Авторизация</h1>
+<div class="mb-6">
+  <h1 class="text-xl sm:text-2xl font-bold">Авторизация</h1>
+  <p class="text-gray-400 text-sm mt-1">Подключи сервисы, чтобы начать перенос.</p>
+</div>
 
 {% if error %}
-<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 mb-4 text-sm">
+<div class="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 mb-5 text-sm">
+  <svg class="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
   {{ error }}
 </div>
 {% endif %}
 
+<!-- Step indicator -->
+<div class="flex items-center gap-2 mb-6">
+  <div class="flex items-center gap-2">
+    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+      {% if ym_done %}bg-green-500 text-white{% else %}bg-indigo-600 text-white{% endif %}">
+      {% if ym_done %}
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+      {% else %}1{% endif %}
+    </div>
+    <span class="text-sm {% if ym_done %}text-green-700 font-medium{% else %}text-gray-700{% endif %}">Яндекс</span>
+  </div>
+  <div class="flex-1 h-px bg-gray-200 mx-1"></div>
+  <div class="flex items-center gap-2">
+    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+      {% if not ym_done %}bg-gray-200 text-gray-400{% else %}bg-indigo-600 text-white{% endif %}">2</div>
+    <span class="text-sm {% if not ym_done %}text-gray-400{% else %}text-gray-700{% endif %}">SoundCloud</span>
+  </div>
+</div>
+
 <!-- Step 1: Yandex -->
-<div class="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="font-semibold">1. Яндекс Музыка</h2>
+<div class="bg-white rounded-2xl border shadow-sm mb-4 overflow-hidden
+  {% if ym_done %}border-green-200{% else %}border-gray-200{% endif %}">
+  <div class="px-6 py-4 border-b {% if ym_done %}border-green-100 bg-green-50{% else %}border-gray-100{% endif %} flex items-center justify-between">
+    <h2 class="font-semibold text-sm">1. Яндекс Музыка</h2>
     {% if ym_done %}
-    <span class="text-green-600 text-sm font-medium">✓ Подключено</span>
+    <span class="flex items-center gap-1 text-green-600 text-xs font-medium">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+      Подключено
+    </span>
     {% endif %}
   </div>
-
   {% if not ym_done %}
-  <p class="text-sm text-gray-500 mb-3">
-    Откройте ссылку, войдите в Яндекс, скопируйте код и вставьте ниже.
-  </p>
-  <a href="{{ ym_auth_url }}" target="_blank"
-    class="inline-block bg-yellow-400 text-gray-900 px-4 py-2 rounded-lg hover:bg-yellow-500 text-sm font-medium mb-4">
-    Открыть страницу Яндекса
-  </a>
-  <form method="post" action="/auth/yandex" class="flex gap-2">
-    <input name="code" type="text" placeholder="Код авторизации"
-      class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-    <button type="submit"
-      class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
-      Подтвердить
-    </button>
-  </form>
+  <div class="px-6 py-5">
+    <p class="text-sm text-gray-500 mb-4">
+      Откройте ссылку, войдите в Яндекс, скопируйте код и вставьте ниже.
+    </p>
+    <a href="{{ ym_auth_url }}" target="_blank"
+      class="inline-block bg-amber-400 text-gray-900 px-4 py-2 rounded-xl hover:bg-amber-500 text-sm font-semibold mb-4 transition">
+      Открыть страницу Яндекса
+    </a>
+    <form method="post" action="/auth/yandex" class="flex gap-2">
+      <input name="code" type="text" placeholder="Код авторизации" autocomplete="off"
+        class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      <button type="submit"
+        class="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
+        Подтвердить
+      </button>
+    </form>
+  </div>
   {% endif %}
 </div>
 
 <!-- Step 2: SoundCloud -->
-<div class="bg-white rounded-xl border border-gray-200 p-6 {% if not ym_done %}opacity-50 pointer-events-none{% endif %}">
-  <h2 class="font-semibold mb-3">2. SoundCloud</h2>
-  <p class="text-sm text-gray-500 mb-3">
-    Откройте <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 underline">soundcloud.com</a>,
-    войдите в аккаунт, откройте DevTools → Application → Cookies → найдите
-    <code class="bg-gray-100 px-1 rounded">oauth_token</code> и вставьте значение.
-  </p>
-  <form method="post" action="/auth/soundcloud" class="flex gap-2">
-    <input name="sc_token" type="text" placeholder="oauth_token (2-... или 3-...)"
-      class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-    <button type="submit"
-      class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm">
-      Сохранить
-    </button>
-  </form>
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden
+  {% if not ym_done %}opacity-50 pointer-events-none{% endif %}">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-sm">2. SoundCloud</h2>
+  </div>
+  <div class="px-6 py-5">
+    <p class="text-sm text-gray-500 mb-1">
+      Откройте <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 hover:underline">soundcloud.com</a>,
+      войдите в аккаунт.
+    </p>
+    <p class="text-sm text-gray-500 mb-4">
+      DevTools → Application → Cookies → значение <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">oauth_token</code>.
+    </p>
+    <form method="post" action="/auth/soundcloud" class="flex gap-2">
+      <input name="sc_token" type="text" placeholder="oauth_token (2-... или 3-...)" autocomplete="off"
+        class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      <button type="submit"
+        class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 text-sm font-medium transition">
+        Сохранить
+      </button>
+    </form>
+  </div>
 </div>
 {% endblock %}
