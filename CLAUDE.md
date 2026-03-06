@@ -92,7 +92,9 @@ api/
     └── deps.py                         — FastAPI dependencies (verify_internal_token)
 
 worker/                                 — ARQ job definitions
-    └── jobs.py                         — migration job, enqueue, abort via arq.jobs.Job
+    ├── main.py                         — WorkerSettings (functions, cron_jobs, redis_settings)
+    ├── tasks.py                        — run_migration_job, run_file_migration_job
+    └── notifications.py               — notify_telegram(), migration_done_text(), migration_failed_text()
 
 core/
     ├── db/                             — SQLAlchemy 2.x async package
@@ -127,7 +129,12 @@ bot/
 config.py                               — Pydantic settings (all env vars)
 alembic/                                — DB migrations (alembic upgrade head)
 nginx/nginx.conf                        — Reverse proxy to api:8000
-docker-compose.yml                      — postgres + redis + api + bot + worker + nginx
+docker-compose.yml                      — postgres + redis + api + bot + worker + nginx (all with log rotation)
+docker-compose.monitoring.yml           — opt-in: Loki + Promtail + Grafana
+monitoring/
+    ├── loki/config.yml                 — Loki local filesystem storage
+    ├── promtail/config.yml             — docker_sd_configs → Loki, parses loguru JSON
+    └── grafana/provisioning/           — auto-provision Loki datasource
 ```
 
 ## Auth Flow
@@ -161,3 +168,5 @@ Rule: **no task is considered done until docs are updated.**
 - `from_service`/`to_service` validated against ServiceRegistry matrix before job enqueue
 - Track search uses multi-query strategy: `split_artists()` splits compound artists (feat./&/x), runs parallel SC searches, deduplicates by sc_id, then falls back to title-only if pool is empty
 - `_SEARCH_LIMIT = 10` in SoundCloudClient for better candidate coverage
+- `setup_logger(service)` in `core/logger.py` — call once per entry point; stdout JSON sink for Promtail, stderr colored for dev
+- Monitoring stack is opt-in: `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d`

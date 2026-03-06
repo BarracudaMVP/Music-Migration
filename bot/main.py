@@ -23,7 +23,7 @@ async def _set_commands(bot) -> None:
 
 
 async def main() -> None:
-    setup_logger()
+    setup_logger("bot")
 
     if not settings.telegram_bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN не задан в .env")

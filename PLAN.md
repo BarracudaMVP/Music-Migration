@@ -249,11 +249,29 @@ SoundCloud    |     –      |    ✓  (в будущем)
 
 ---
 
-### 🔲 MM-19 — Централизованное логирование
-- [ ] Structured logging (JSON) в api/worker/bot через loguru
-- [ ] Ротация логов docker (max-size, max-file)
-- [ ] Loki + Promtail + Grafana в docker-compose
-- [ ] Фильтрация по сервису/уровню/migration_id в Grafana
+### ✅ MM-19 — Централизованное логирование
+- [x] `core/logger.py` — `setup_logger(service)`: stderr colored sink + stdout JSON sink (`serialize=True`); `service` вшит в каждую запись через `extra`
+- [x] `api/main.py` — `setup_logger("api")` при старте (раньше не вызывался)
+- [x] `run_worker.py` — `setup_logger("worker")` перед `run_worker()`
+- [x] `bot/main.py` — уже вызывал `setup_logger()`, обновлён на `setup_logger("bot")`
+- [x] Docker log rotation на всех сервисах в `docker-compose.yml` (`json-file`, `max-size: 20m`, `max-file: 5`)
+- [x] `docker-compose.monitoring.yml` — отдельный opt-in стек: Loki 2.9 + Promtail 2.9 + Grafana 10.2
+- [x] `monitoring/loki/config.yml` — Loki local filesystem storage
+- [x] `monitoring/promtail/config.yml` — docker_sd_configs (читает через `/var/run/docker.sock`), парсит loguru JSON, промотирует `service`/`log_level`/`migration_id` в Loki labels
+- [x] `monitoring/grafana/provisioning/datasources/loki.yml` — auto-provision Loki datasource
+
+**Запуск мониторинга:**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+```
+Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
+
+**Фильтрация в Grafana (LogQL):**
+```logql
+{service="worker"} |= "migration_id"          # все логи воркера
+{log_level="ERROR"}                             # только ошибки
+{service="api"} | json | migration_id="42"     # конкретная миграция
+```
 
 ---
 

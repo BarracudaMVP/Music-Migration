@@ -8,10 +8,13 @@ from api.middleware import AllowedUsersWebMiddleware
 from api.routes import admin, auth, migrations, reports, services, sessions, web
 from config import settings
 from core.db import init_db
+from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
 from core.services.registry import ServiceRegistry
 from core.services.soundcloud.adapter import SoundCloudAdapter
 from core.services.yandex.adapter import YandexMusicAdapter
+
+setup_logger("api")
 
 app = FastAPI(title="Music Migration API", version="9.0.0")
 

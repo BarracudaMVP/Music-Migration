@@ -1,0 +1,57 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project"]
+
+    relabel_configs:
+      # Container name → label
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+
+      # Compose service name → label (api / bot / worker / nginx / etc.)
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+
+      # Compose project name → label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: project
+
+    pipeline_stages:
+      # Try to parse loguru JSON output (stdout from api/bot/worker)
+      - json:
+          expressions:
+            log_level: record.level.name
+            log_service: record.extra.service
+            log_migration_id: record.extra.migration_id
+            log_message: text
+
+      # Promote parsed fields to Loki labels
+      - labels:
+          log_level:
+          log_service:
+
+      # If log_migration_id present, add it as a label too
+      - template:
+          source: log_migration_id
+          template: "{{ .Value }}"
+      - labels:
+          log_migration_id:
+
+      # Use the parsed message as the log line (falls back to raw if JSON parse fails)
+      - output:
+          source: log_message
