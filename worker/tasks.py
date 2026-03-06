@@ -2,6 +2,35 @@
 from loguru import logger
 
 
+async def run_file_migration_job(
+    ctx,
+    migration_id: int,
+    sc_token: str,
+    tracks: list[dict],
+    user_id: str,
+) -> None:
+    """ARQ job: переносит треки из файла на SoundCloud (без Яндекс Музыки)."""
+    from migration.tracks import migrate_from_file_tracks
+    from core.soundcloud.client import SoundCloudClient
+    from core.db import update_migration
+
+    logger.info(
+        f"[job] File migration #{migration_id} for user {user_id!r}, "
+        f"{len(tracks)} треков"
+    )
+    try:
+        sc_client = await SoundCloudClient(sc_token).init()
+        try:
+            await migrate_from_file_tracks(sc_client, migration_id, tracks)
+        finally:
+            await sc_client.close()
+        logger.info(f"[job] File migration #{migration_id} finished")
+    except Exception as e:
+        logger.error(f"[job] File migration #{migration_id} failed: {e}")
+        await update_migration(migration_id, status="failed")
+        raise
+
+
 async def run_migration_job(
     ctx,
     migration_id: int,

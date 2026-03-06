@@ -187,10 +187,14 @@ SoundCloud    |     –      |    ✓  (в будущем)
 
 ---
 
-### 🔲 MM-14 — Импорт из файла
-- [ ] Загрузка CSV/JSON через веб-UI
-- [ ] Предпросмотр перед импортом
-- [ ] Настройки маппинга полей в админке
+### ✅ MM-14 — Импорт из файла
+- [x] GET /import — страница загрузки файла
+- [x] POST /import/preview (HTMX) — парсинг, предпросмотр первых 20 строк, авто-маппинг колонок
+- [x] POST /import/start — запуск переноса с выбранными колонками
+- [x] FileAdapter: get_columns(), preview_tracks(), detect_column_mapping(), import_tracks(artist_col, title_col)
+- [x] migrate_from_file_tracks() — пайплайн без YM, через _run_pending_loop
+- [x] run_file_migration_job — ARQ-задача (tracks передаются как list[dict])
+- [x] Ссылка «Импорт» в навигации
 
 ---
 

@@ -86,10 +86,22 @@ async def migrate_tracks(
     )
 
     # --- Шаг 3: обрабатываем pending-треки ---
+    logger.info("Шаг 3/3: обрабатываю треки...")
+    stats = await _run_pending_loop(sc_client, migration_id, progress_callback)
+
+    await update_migration(migration_id, status="done")
+    logger.info(f"Миграция завершена. {stats}")
+    return stats
+
+
+async def _run_pending_loop(
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    progress_callback=None,
+) -> MigrationStats:
+    """Обрабатывает все pending-треки миграции: поиск → матчинг → лайк."""
     pending = await get_pending_tracks(migration_id)
     total = len(pending)
-    logger.info(f"Шаг 3/3: обрабатываю {total} треков...")
-
     stats = MigrationStats(total=total)
 
     for i, row in enumerate(pending, start=1):
@@ -116,8 +128,38 @@ async def migrate_tracks(
             stats.not_found += 1
             logger.debug(f"[{i}/{total}] not found: {track_str}")
 
+    return stats
+
+
+async def migrate_from_file_tracks(
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    tracks_data: list[dict],
+    progress_callback=None,
+) -> MigrationStats:
+    """
+    Пайплайн переноса треков из файла (без Яндекс Музыки).
+    tracks_data: list[{"artist": str, "title": str}]
+    """
+    await update_migration(migration_id, status="running")
+
+    logger.info(f"Вставляю {len(tracks_data)} треков из файла в БД...")
+    await bulk_insert_tracks(
+        migration_id,
+        [
+            {
+                "ym_id": f"file:{i}",
+                "ym_artist": t["artist"],
+                "ym_title": t["title"],
+                "ym_album": "",
+            }
+            for i, t in enumerate(tracks_data)
+        ],
+    )
+
+    stats = await _run_pending_loop(sc_client, migration_id, progress_callback)
     await update_migration(migration_id, status="done")
-    logger.info(f"Миграция завершена. {stats}")
+    logger.info(f"Перенос из файла завершён. {stats}")
     return stats
 
 

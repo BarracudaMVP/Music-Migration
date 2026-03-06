@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Импорт из файла{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-5">
+  <h1 class="text-xl font-bold">Импорт из файла</h1>
+  <a href="/" class="text-sm text-gray-500 hover:text-indigo-600">← Главная</a>
+</div>
+
+{% if error %}
+<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm mb-4">{{ error }}</div>
+{% endif %}
+
+<div class="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+  <p class="text-sm text-gray-600 mb-4">
+    Загрузи CSV или JSON со списком треков. После загрузки выбери колонки с исполнителем и названием,
+    затем нажми <strong>Начать перенос</strong>.
+  </p>
+  <p class="text-xs text-gray-400 mb-4">
+    CSV: разделитель запятая, первая строка — заголовки.<br>
+    JSON: массив объектов, например <code>[{"artist": "...", "title": "..."}]</code>.
+  </p>
+
+  <form
+    hx-post="/import/preview"
+    hx-target="#preview-area"
+    hx-encoding="multipart/form-data"
+    hx-indicator="#upload-spinner"
+    class="flex gap-2 items-center"
+  >
+    <input
+      type="file"
+      name="file"
+      accept=".csv,.json"
+      required
+      class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm
+             file:mr-3 file:border-0 file:bg-indigo-50 file:text-indigo-700
+             file:rounded file:px-3 file:py-1 file:text-xs file:font-medium
+             hover:file:bg-indigo-100"
+    >
+    <button type="submit"
+      class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium whitespace-nowrap">
+      Загрузить
+    </button>
+    <span id="upload-spinner" class="htmx-indicator text-xs text-gray-400">Обрабатываю...</span>
+  </form>
+</div>
+
+<div id="preview-area"></div>
+{% endblock %}

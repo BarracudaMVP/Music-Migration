@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
@@ -303,6 +303,144 @@ async def export_migration(migration_id: int, fmt: str = "csv"):
     media = "text/csv" if fmt == "csv" else "application/json"
     return FileResponse(path, media_type=media, filename=filename,
                         background=BackgroundTask(os.unlink, path))
+
+
+# ---------------------------------------------------------------------------
+# File Import
+# ---------------------------------------------------------------------------
+
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@router.get("/import", response_class=HTMLResponse)
+async def import_page(request: Request, error: str = ""):
+    user_id = _session_user_id(request)
+    if not user_id:
+        return RedirectResponse("/auth", status_code=303)
+    db_session = await load_user_session(user_id)
+    if not db_session:
+        return RedirectResponse("/auth", status_code=303)
+    return templates.TemplateResponse("import.html", {"request": request, "error": error})
+
+
+@router.post("/import/preview", response_class=HTMLResponse)
+async def import_preview(request: Request, file: UploadFile = File(...)):
+    """HTMX: загружает файл, сохраняет во временное место, возвращает preview-фрагмент."""
+    import tempfile
+
+    from core.services.file.adapter import FileAdapter
+
+    suffix = ".json" if (file.filename or "").lower().endswith(".json") else ".csv"
+
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Файл слишком большой (максимум 10 МБ).</p>'
+        )
+
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        import os
+        os.write(fd, content)
+        os.close(fd)
+
+        adapter = FileAdapter()
+        columns = await adapter.get_columns(tmp_path)
+        if not columns:
+            os.unlink(tmp_path)
+            return HTMLResponse(
+                '<p class="text-red-600 text-sm">Не удалось определить колонки. '
+                "Проверь формат файла.</p>"
+            )
+
+        preview = await adapter.preview_tracks(tmp_path, limit=20)
+        auto_map = adapter.detect_column_mapping(columns)
+
+        # Удаляем старый временный файл
+        old_tmp = request.session.get("import_tmp")
+        if old_tmp:
+            try:
+                os.unlink(old_tmp)
+            except OSError:
+                pass
+
+        request.session["import_tmp"] = tmp_path
+    except Exception as e:
+        try:
+            import os
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return HTMLResponse(f'<p class="text-red-600 text-sm">Ошибка: {e}</p>')
+
+    return templates.TemplateResponse(
+        "fragments/import_preview.html",
+        {
+            "request": request,
+            "columns": columns,
+            "preview": preview,
+            "filename": file.filename,
+            "auto_map": auto_map,
+        },
+    )
+
+
+@router.post("/import/start")
+async def import_start(
+    request: Request,
+    artist_col: str = Form(...),
+    title_col: str = Form(...),
+):
+    import os
+
+    from api.main import get_arq_pool
+    from core.services.file.adapter import FileAdapter
+
+    user_id = _session_user_id(request)
+    if not user_id:
+        return RedirectResponse("/auth", status_code=303)
+    db_session = await load_user_session(user_id)
+    if not db_session:
+        return RedirectResponse("/auth", status_code=303)
+
+    tmp_path = request.session.get("import_tmp")
+    if not tmp_path or not os.path.exists(tmp_path):
+        return RedirectResponse(
+            f"/import?error={quote('Файл не найден — загрузи его снова')}",
+            status_code=303,
+        )
+
+    try:
+        adapter = FileAdapter()
+        tracks = await adapter.import_tracks(tmp_path, artist_col=artist_col, title_col=title_col)
+    except Exception as e:
+        return RedirectResponse(f"/import?error={quote(str(e)[:120])}", status_code=303)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        request.session.pop("import_tmp", None)
+
+    if not tracks:
+        return RedirectResponse(
+            f"/import?error={quote('Файл не содержит треков')}",
+            status_code=303,
+        )
+
+    migration_id = await create_migration(user_id)
+    arq = get_arq_pool()
+    job = await arq.enqueue_job(
+        "run_file_migration_job",
+        migration_id,
+        db_session["soundcloud_token"],
+        tracks,
+        user_id,
+    )
+    if job:
+        await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
+
+    return RedirectResponse(f"/migrate/{migration_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
