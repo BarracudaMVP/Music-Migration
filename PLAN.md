@@ -208,10 +208,13 @@ SoundCloud    |     –      |    ✓  (в будущем)
 
 ---
 
-### 🔲 MM-16 — Безопасность и rate limiting
-- [ ] Лимит запросов per-user
-- [ ] Защита от брутфорса на /admin/login
-- [ ] ALLOWED_USERS enforcement через middleware
+### ✅ MM-16 — Безопасность и rate limiting
+- [x] Rate limit: 10 переносов/час per user_id через Redis (check_migration_rate_limit в deps.py)
+  - Применяется к POST /migrate и POST /import/start
+- [x] Брутфорс защита /admin/login: 5 попыток → блокировка 15 мин по IP (in-memory)
+  - _is_locked_out / _record_fail / _reset_attempts в admin.py
+- [x] AllowedUsersWebMiddleware: проверяет ALLOWED_USERS для числовых (Telegram) user_id из сессии
+  - Добавлен в api/middleware.py, зарегистрирован до SessionMiddleware (innermost)
 
 ---
 

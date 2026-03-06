@@ -176,6 +176,13 @@ async def start_migrate(
             status_code=303,
         )
 
+    from api.deps import check_migration_rate_limit
+    if not await check_migration_rate_limit(user_id):
+        return RedirectResponse(
+            f"/?error={quote('Слишком много переносов. Попробуй через час.')}",
+            status_code=303,
+        )
+
     migration_id = await create_migration(user_id)
     arq = get_arq_pool()
     job = await arq.enqueue_job(
@@ -425,6 +432,13 @@ async def import_start(
     if not tracks:
         return RedirectResponse(
             f"/import?error={quote('Файл не содержит треков')}",
+            status_code=303,
+        )
+
+    from api.deps import check_migration_rate_limit
+    if not await check_migration_rate_limit(user_id):
+        return RedirectResponse(
+            f"/import?error={quote('Слишком много переносов. Попробуй через час.')}",
             status_code=303,
         )
 

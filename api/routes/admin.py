@@ -1,6 +1,7 @@
 """Admin UI routes — protected by session password."""
 from __future__ import annotations
 import contextlib
+import time
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +17,43 @@ from core.services.registry import ServiceRegistry
 
 templates = Jinja2Templates(directory="api/templates")
 router = APIRouter(prefix="/admin")
+
+# ---------------------------------------------------------------------------
+# Брутфорс защита /admin/login
+# ---------------------------------------------------------------------------
+
+_MAX_LOGIN_ATTEMPTS = 5
+_LOCKOUT_SECONDS = 15 * 60  # 15 минут
+_login_attempts: dict[str, tuple[int, float]] = {}  # ip → (count, first_fail_ts)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return forwarded.split(",")[0].strip() if forwarded else (request.client.host or "unknown")
+
+
+def _is_locked_out(ip: str) -> bool:
+    if ip not in _login_attempts:
+        return False
+    count, first = _login_attempts[ip]
+    if time.time() - first > _LOCKOUT_SECONDS:
+        del _login_attempts[ip]
+        return False
+    return count >= _MAX_LOGIN_ATTEMPTS
+
+
+def _record_fail(ip: str) -> int:
+    """Записывает неудачную попытку, возвращает текущий счётчик."""
+    if ip in _login_attempts:
+        count, first = _login_attempts[ip]
+        _login_attempts[ip] = (count + 1, first)
+        return count + 1
+    _login_attempts[ip] = (1, time.time())
+    return 1
+
+
+def _reset_attempts(ip: str) -> None:
+    _login_attempts.pop(ip, None)
 
 _STATUS_LABEL = {
     "pending": "В очереди",
@@ -63,10 +101,23 @@ async def login_page(request: Request, error: str = ""):
 
 @router.post("/login")
 async def login(request: Request, password: str = Form(...)):
+    ip = _client_ip(request)
+
+    if _is_locked_out(ip):
+        return RedirectResponse(
+            "/admin/login?error=Слишком+много+попыток.+Попробуй+через+15+минут.",
+            status_code=303,
+        )
+
     if password == settings.admin_password:
+        _reset_attempts(ip)
         request.session["is_admin"] = True
         return RedirectResponse("/admin/dashboard", status_code=303)
-    return RedirectResponse("/admin/login?error=Неверный+пароль", status_code=303)
+
+    count = _record_fail(ip)
+    remaining = max(0, _MAX_LOGIN_ATTEMPTS - count)
+    msg = f"Неверный+пароль.+Осталось+попыток:+{remaining}" if remaining else "Аккаунт+заблокирован+на+15+минут."
+    return RedirectResponse(f"/admin/login?error={msg}", status_code=303)
 
 
 @router.post("/logout")
