@@ -74,35 +74,3 @@ async def run_file_migration_job(
         raise
 
 
-async def check_sc_tokens_job(ctx) -> None:
-    """
-    ARQ cron job: проверяет SC токены всех пользователей.
-    При истечении — отправляет Telegram-уведомление.
-    Запускается раз в сутки.
-    """
-    from sqlalchemy import select
-    from core.db.models import UserSession
-    from core.db.session import AsyncSessionLocal
-    from core.crypto import decrypt_token
-    from core.soundcloud.client import SoundCloudClient
-    from worker.notifications import notify_telegram, sc_token_expired_text
-
-    logger.info("[cron] Проверяю SC токены пользователей...")
-
-    async with AsyncSessionLocal() as session:
-        rows = (await session.execute(select(UserSession))).scalars().all()
-
-    expired_count = 0
-    for row in rows:
-        sc_token = decrypt_token(row.soundcloud_token)
-        if not sc_token:
-            continue
-        try:
-            client = await SoundCloudClient(sc_token).init()
-            await client.close()
-        except Exception:
-            logger.info(f"[cron] SC токен истёк для {row.user_id!r}, отправляю уведомление")
-            await notify_telegram(row.user_id, sc_token_expired_text())
-            expired_count += 1
-
-    logger.info(f"[cron] Проверка завершена. Истёкших токенов: {expired_count}/{len(rows)}")

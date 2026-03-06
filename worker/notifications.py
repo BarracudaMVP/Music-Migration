@@ -70,8 +70,3 @@ def migration_failed_text(migration_id: int) -> str:
     )
 
 
-def sc_token_expired_text() -> str:
-    return (
-        "Токен SoundCloud истёк или недействителен.\n\n"
-        "Обнови его через /migrate — бот попросит ввести новый токен."
-    )

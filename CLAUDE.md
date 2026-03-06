@@ -137,6 +137,17 @@ docker-compose.yml                      — postgres + redis + api + bot + worke
 3. If no session → Yandex OAuth (button link → user logs in → pastes code back) → SoundCloud token (cookie from DevTools)
 4. Tokens saved encrypted in SQLite/PostgreSQL
 
+## Documentation Rules
+
+After completing **every task** (MM-XX or any meaningful change), always update:
+
+1. **`PLAN.md`** — mark the task ✅, update subtasks checkboxes, add/correct implementation details
+2. **`memory/progress.md`** — write a dedicated section for the task: what was done, which files were changed, key decisions, what was removed/changed vs original plan
+3. **`CLAUDE.md`** (this file) — update Architecture diagram and Key Patterns if new patterns were introduced
+4. **`memory/MEMORY.md`** — update key paths or patterns if something structurally changed
+
+Rule: **no task is considered done until docs are updated.**
+
 ## Key Patterns
 
 - All I/O is async (SQLAlchemy 2.x async, aiohttp, aiogram)
