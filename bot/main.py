@@ -14,7 +14,7 @@ async def _set_commands(bot) -> None:
     from aiogram.types import BotCommand, BotCommandScopeDefault
     commands = [
         BotCommand(command="migrate", description="Начать перенос музыки"),
-        BotCommand(command="status",  description="Статус текущей миграции"),
+        BotCommand(command="status",  description="Статус текущего переноса"),
         BotCommand(command="cancel",  description="Отменить текущее действие"),
         BotCommand(command="help",    description="Помощь"),
     ]

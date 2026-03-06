@@ -15,14 +15,14 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
 
     if current != MigrationFlow.in_progress:
-        await message.answer("Миграция сейчас не запущена. Напиши /migrate чтобы начать.")
+        await message.answer("Перенос сейчас не запущен. Напиши /migrate чтобы начать.")
         return
 
     data = await state.get_data()
     migration_id = data.get("migration_id")
 
     if not migration_id:
-        await message.answer("Миграция запущена, статистика пока недоступна.")
+        await message.answer("Перенос запущен, статистика пока недоступна.")
         return
 
     try:
@@ -50,7 +50,7 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
     ]])
 
     await message.answer(
-        f"Прогресс миграции #{migration_id}:\n\n"
+        f"Прогресс переноса #{migration_id}:\n\n"
         f"Обработано: {done}/{total} ({percent}%)\n"
         f"Перенесено: {liked}\n"
         f"Не найдено: {not_found}\n"

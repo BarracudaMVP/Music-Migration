@@ -22,7 +22,7 @@ _NOT_FOUND_PREVIEW = 30  # треков в превью-списке
 
 # Кнопка для отмены во время миграции
 _KB_CANCEL = InlineKeyboardMarkup(inline_keyboard=[[
-    InlineKeyboardButton(text="Отключиться от миграции", callback_data="migration:detach"),
+    InlineKeyboardButton(text="Отключиться от переноса", callback_data="migration:detach"),
 ]])
 
 
@@ -40,7 +40,7 @@ def _kb_result(migration_id: int, not_found: int) -> InlineKeyboardMarkup:
         url=f"{web_url}/migrate/{migration_id}/tracks",
     )])
     rows.append([InlineKeyboardButton(
-        text="Новая миграция",
+        text="Новый перенос",
         callback_data="migration:new",
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -64,7 +64,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
 
     mode_label = "треки + плейлисты + артисты" if mode == "full" else "только треки"
     progress_msg = await callback.message.answer(
-        f"Миграция запущена ({mode_label})...\n"
+        f"Перенос запущен ({mode_label})...\n"
         "Загружаю треки из Яндекс Музыки, подожди немного.",
         reply_markup=_KB_CANCEL,
     )
@@ -77,7 +77,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     except Exception as e:
         logger.exception(f"Не удалось запустить миграцию: {e}")
         await progress_msg.edit_text(
-            f"Не удалось запустить миграцию:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
+            f"Не удалось запустить перенос:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
             parse_mode="HTML",
             reply_markup=None,
         )
@@ -114,12 +114,12 @@ async def on_detach(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     current = await state.get_state()
     if current != MigrationFlow.in_progress:
-        await callback.answer("Активной миграции нет.", show_alert=True)
+        await callback.answer("Активного переноса нет.", show_alert=True)
         return
     await state.clear()
     try:
         await callback.message.edit_text(
-            "Отключились от миграции. Задача продолжит работу на сервере.\n"
+            "Отключились от переноса. Задача продолжит работу на сервере.\n"
             "Используй /status или /history в браузере для проверки.",
             reply_markup=None,
         )
@@ -132,7 +132,7 @@ async def migration_in_progress(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     msg_id = data.get("progress_msg_id")
     await message.answer(
-        "Миграция уже идёт. Используй /status для проверки прогресса.\n"
+        "Перенос уже идёт. Используй /status для проверки прогресса.\n"
         f"Сообщение с прогрессом: #{msg_id}"
     )
 
@@ -238,13 +238,13 @@ async def _poll_migration(
             percent = int(done / total * 100)
             bar = _progress_bar(percent)
             text = (
-                f"Идёт миграция...\n\n"
+                f"Идёт перенос...\n\n"
                 f"{bar} {percent}%\n"
                 f"{done} / {total} треков\n\n"
                 f"Перенесено: {liked} | Не найдено: {not_found} | Ошибок: {errors}"
             )
         else:
-            text = "Идёт миграция... Загружаю треки."
+            text = "Идёт перенос... Загружаю треки."
 
         if text != last_text:
             last_text = text
@@ -266,7 +266,7 @@ def _build_final_text(migration_id: int, tracks: dict, artists: dict) -> str:
     total = sum(tracks.values())
 
     text = (
-        "Миграция завершена!\n\n"
+        "Перенос завершён!\n\n"
         "<b>Треки:</b>\n"
         f"  Перенесено:  <b>{liked}</b>\n"
         f"  Не найдено:  <b>{not_found}</b>\n"

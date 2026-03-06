@@ -26,7 +26,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 async def cmd_migrate(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
     if current == MigrationFlow.in_progress:
-        await message.answer("Миграция уже запущена. Используй /status для проверки.")
+        await message.answer("Перенос уже запущен. Используй /status для проверки.")
         return
 
     from bot.handlers.auth import start_auth
@@ -48,7 +48,7 @@ async def cmd_help(message: Message) -> None:
     await message.answer(
         "<b>Команды:</b>\n"
         "/migrate — начать перенос музыки\n"
-        "/status — статус текущей миграции\n"
+        "/status — статус текущего переноса\n"
         "/cancel — отменить текущее действие\n"
         "/help — эта справка",
         parse_mode="HTML",

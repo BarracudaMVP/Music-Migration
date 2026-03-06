@@ -29,9 +29,9 @@ router = APIRouter()
 _STATUS_LABEL = {
     "pending": "В очереди",
     "running": "Выполняется",
-    "done": "Завершена",
+    "done": "Завершён",
     "failed": "Ошибка",
-    "cancelled": "Отменена",
+    "cancelled": "Отменён",
 }
 
 
