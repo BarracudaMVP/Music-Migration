@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ t('export_title', lang) }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-xl sm:text-2xl font-bold">{{ t('export_title', lang) }}</h1>
+  <a href="/" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('export_back', lang) }}</a>
+</div>
+
+<p class="text-sm text-gray-500 mb-6">{{ t('export_subtitle', lang) }}</p>
+
+{% if error %}
+<div class="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/export/start" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
+
+  <!-- Content type -->
+  <div>
+    <label class="block text-sm font-semibold text-gray-700 mb-2">{{ t('export_content', lang) }}</label>
+    <div class="space-y-2">
+      <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:border-indigo-300 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+        <input type="radio" name="content" value="liked_tracks" checked class="accent-indigo-600">
+        <div>
+          <div class="text-sm font-medium text-gray-800">{{ t('export_liked_tracks', lang) }}</div>
+          <div class="text-xs text-gray-400">artist, title, album</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:border-indigo-300 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+        <input type="radio" name="content" value="playlists" class="accent-indigo-600">
+        <div>
+          <div class="text-sm font-medium text-gray-800">{{ t('export_playlists', lang) }}</div>
+          <div class="text-xs text-gray-400">playlist, artist, title, album</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Format -->
+  <div>
+    <label class="block text-sm font-semibold text-gray-700 mb-2">{{ t('export_format', lang) }}</label>
+    <div class="flex gap-3">
+      <label class="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 cursor-pointer hover:border-indigo-300 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 text-sm font-medium text-gray-700">
+        <input type="radio" name="fmt" value="csv" checked class="accent-indigo-600">
+        CSV
+      </label>
+      <label class="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 cursor-pointer hover:border-indigo-300 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 text-sm font-medium text-gray-700">
+        <input type="radio" name="fmt" value="json" class="accent-indigo-600">
+        JSON
+      </label>
+    </div>
+  </div>
+
+  <!-- Note -->
+  <p class="text-xs text-gray-400">{{ t('export_note', lang) }}</p>
+
+  <!-- Submit -->
+  <button type="submit"
+    class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+    </svg>
+    {{ t('export_btn', lang) }}
+  </button>
+
+</form>
+{% endblock %}
