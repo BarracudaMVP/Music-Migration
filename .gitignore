@@ -47,5 +47,8 @@ htmlcov/
 # Claude Code (локальные настройки IDE)
 .claude/
 
+# Claude memory (заметки ИИ-ассистента, не для версионирования)
+memory/
+
 # Docker
 *.override.yml

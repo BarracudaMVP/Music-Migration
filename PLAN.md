@@ -70,7 +70,7 @@ Capability:
 FROM \ TO     | SoundCloud | File CSV
 --------------|------------|----------
 Yandex Music  |     ✓      |    ✓
-Spotify       |     ✓      |    – (TODO)
+Spotify       |     ✓      |    ✓  (MM-22 +)
 File CSV      |     ✓      |    –
 SoundCloud    |     –      |    ✓  (MM-28)
 ```
@@ -316,6 +316,11 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - Refresh token не сохраняется — при истечении access_token нужна повторная авторизация
 - Spotify UI скрыт если `SPOTIFY_CLIENT_ID` не задан
 
+**Экспорт Spotify → File (дополнение к MM-22):**
+- [ ] `SpotifyAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "spotify_token"`
+- [ ] `core/export.py`: `export_library()` уже работает через adapter — достаточно добавить capability
+- [ ] Проверить что `fetch_liked_tracks()` реализован в SpotifyAdapter (возвращает `[{artist, title}]`)
+
 ---
 
 ### 🔲 MM-23 — Telegram плейлисты (отложено)
@@ -336,6 +341,18 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - [x] `YandexMusicAdapter`: `EXPORT_TRACKS` capability + `fetch_liked_tracks(token)` → `[{artist, title}]`
 - [x] Формат совместим с /import (колонки artist, title)
 - [x] Ссылка «Экспорт» в nav (desktop + mobile)
+
+---
+
+### 🔲 MM-28 — Экспорт SoundCloud → File
+
+> Экспортировать лайкнутые треки из SoundCloud в CSV/JSON файл.
+> Логика аналогична MM-24 (YM → File) — достаточно добавить capability в адаптер.
+
+- [ ] `SoundCloudAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "sc_token"`
+- [ ] `SoundCloudAdapter`: реализовать `fetch_liked_tracks(token)` → `[{artist, title}]` (через `SoundCloudClient.get_liked_tracks()`)
+- [ ] Убедиться что `/export` показывает SoundCloud как источник (шаблон уже динамический)
+- [ ] Добавить `soundcloud` в матрицу сервисов (`EXPORT_FILE`)
 
 ---
 
