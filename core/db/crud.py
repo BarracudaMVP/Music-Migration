@@ -277,6 +277,23 @@ async def save_user_session(user_id: str, yandex_token: str, soundcloud_token: s
         await session.commit()
 
 
+async def save_spotify_token(user_id: str, token: str) -> None:
+    """Сохраняет или обновляет spotify_token для пользователя.
+    Если сессии нет — создаёт с пустыми yandex/soundcloud токенами."""
+    async with AsyncSessionLocal() as session:
+        stmt = _dialect_insert(UserSession).values(
+            user_id=user_id,
+            yandex_token="",
+            soundcloud_token="",
+            spotify_token=encrypt_token(token),
+        ).on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={"spotify_token": encrypt_token(token)},
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
 async def load_user_session(user_id: str) -> dict | None:
     async with AsyncSessionLocal() as session:
         row = await session.get(UserSession, user_id)
@@ -285,6 +302,7 @@ async def load_user_session(user_id: str) -> dict | None:
         return {
             "yandex_token": decrypt_token(row.yandex_token),
             "soundcloud_token": decrypt_token(row.soundcloud_token),
+            "spotify_token": decrypt_token(row.spotify_token) if row.spotify_token else None,
             "role": row.role,
             "updated_at": row.updated_at,
         }

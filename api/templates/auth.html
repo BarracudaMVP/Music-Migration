@@ -18,54 +18,59 @@
 {% endif %}
 
 <!-- Step indicator -->
-<div class="flex items-center gap-2 mb-6">
-  <div class="flex items-center gap-2">
-    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+<div class="flex items-center gap-2 mb-6 text-xs">
+  <!-- Яндекс -->
+  <div class="flex items-center gap-1.5">
+    <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold
       {% if ym_done %}bg-green-500 text-white{% else %}bg-indigo-600 text-white{% endif %}">
-      {% if ym_done %}
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-      </svg>
-      {% else %}1{% endif %}
+      {% if ym_done %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}1{% endif %}
     </div>
-    <span class="text-sm {% if ym_done %}text-green-700 font-medium{% else %}text-gray-700{% endif %}">Яндекс</span>
+    <span class="{% if ym_done %}text-green-700 font-medium{% else %}text-gray-600{% endif %}">Яндекс</span>
   </div>
-  <div class="flex-1 h-px bg-gray-200 mx-1"></div>
-  <div class="flex items-center gap-2">
-    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-      {% if not ym_done %}bg-gray-200 text-gray-400{% else %}bg-indigo-600 text-white{% endif %}">2</div>
-    <span class="text-sm {% if not ym_done %}text-gray-400{% else %}text-gray-700{% endif %}">SoundCloud</span>
+  <div class="flex-1 h-px bg-gray-200"></div>
+  <!-- Spotify -->
+  <div class="flex items-center gap-1.5">
+    <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold
+      {% if spotify_done %}bg-green-500 text-white{% else %}bg-gray-200 text-gray-400{% endif %}">
+      {% if spotify_done %}<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% else %}2{% endif %}
+    </div>
+    <span class="{% if spotify_done %}text-green-700 font-medium{% else %}text-gray-400{% endif %}">Spotify</span>
+  </div>
+  <div class="flex-1 h-px bg-gray-200"></div>
+  <!-- SoundCloud -->
+  <div class="flex items-center gap-1.5">
+    <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold
+      {% if not ym_done and not spotify_done %}bg-gray-200 text-gray-400{% else %}bg-indigo-600 text-white{% endif %}">3</div>
+    <span class="{% if not ym_done and not spotify_done %}text-gray-400{% else %}text-gray-600{% endif %}">SoundCloud</span>
   </div>
 </div>
 
-<!-- Step 1: Yandex -->
-<div class="bg-white rounded-2xl border shadow-sm mb-4 overflow-hidden
+<!-- Источники -->
+<p class="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">Источник (выбери один или оба)</p>
+
+<!-- Яндекс Музыка -->
+<div class="bg-white rounded-2xl border shadow-sm mb-3 overflow-hidden
   {% if ym_done %}border-green-200{% else %}border-gray-200{% endif %}">
-  <div class="px-6 py-4 border-b {% if ym_done %}border-green-100 bg-green-50{% else %}border-gray-100{% endif %} flex items-center justify-between">
-    <h2 class="font-semibold text-sm">1. Яндекс Музыка</h2>
+  <div class="px-5 py-3.5 border-b {% if ym_done %}border-green-100 bg-green-50{% else %}border-gray-100{% endif %} flex items-center justify-between">
+    <h2 class="font-semibold text-sm">Яндекс Музыка</h2>
     {% if ym_done %}
     <span class="flex items-center gap-1 text-green-600 text-xs font-medium">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-      </svg>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
       Подключено
     </span>
     {% endif %}
   </div>
   {% if not ym_done %}
-  <div class="px-6 py-5">
-    <p class="text-sm text-gray-500 mb-4">
-      Откройте ссылку, войдите в Яндекс, скопируйте код и вставьте ниже.
-    </p>
+  <div class="px-5 py-4">
+    <p class="text-sm text-gray-500 mb-3">Откройте ссылку, войдите в Яндекс, скопируйте код и вставьте ниже.</p>
     <a href="{{ ym_auth_url }}" target="_blank"
-      class="inline-block bg-amber-400 text-gray-900 px-4 py-2 rounded-xl hover:bg-amber-500 text-sm font-semibold mb-4 transition">
+      class="inline-block bg-amber-400 text-gray-900 px-4 py-2 rounded-xl hover:bg-amber-500 text-sm font-semibold mb-3 transition">
       Открыть страницу Яндекса
     </a>
     <form method="post" action="/auth/yandex" class="flex gap-2">
       <input name="code" type="text" placeholder="Код авторизации" autocomplete="off"
         class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-      <button type="submit"
-        class="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
+      <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
         Подтвердить
       </button>
     </form>
@@ -73,25 +78,52 @@
   {% endif %}
 </div>
 
-<!-- Step 2: SoundCloud -->
-<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden
-  {% if not ym_done %}opacity-50 pointer-events-none{% endif %}">
-  <div class="px-6 py-4 border-b border-gray-100">
-    <h2 class="font-semibold text-sm">2. SoundCloud</h2>
+<!-- Spotify -->
+{% if spotify_enabled %}
+<div class="bg-white rounded-2xl border shadow-sm mb-4 overflow-hidden
+  {% if spotify_done %}border-green-200{% else %}border-gray-200{% endif %}">
+  <div class="px-5 py-3.5 border-b {% if spotify_done %}border-green-100 bg-green-50{% else %}border-gray-100{% endif %} flex items-center justify-between">
+    <h2 class="font-semibold text-sm">Spotify</h2>
+    {% if spotify_done %}
+    <span class="flex items-center gap-1 text-green-600 text-xs font-medium">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      Подключено
+    </span>
+    {% endif %}
   </div>
-  <div class="px-6 py-5">
+  {% if not spotify_done %}
+  <div class="px-5 py-4">
+    <p class="text-sm text-gray-500 mb-3">Нажми кнопку — тебя перенаправит на страницу Spotify для авторизации.</p>
+    <a href="/auth/spotify"
+      class="inline-flex items-center gap-2 bg-[#1DB954] text-white px-4 py-2 rounded-xl hover:bg-[#1aa34a] text-sm font-semibold transition">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.622.622 0 01-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.215c3.809-.87 7.076-.496 9.712 1.115a.623.623 0 01.207.857zm1.223-2.72a.78.78 0 01-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 01-.974-.519.781.781 0 01.52-.974c3.632-1.102 8.147-.568 11.234 1.329a.78.78 0 01.257 1.073zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-.955 1.615z"/>
+      </svg>
+      Подключить Spotify
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- SoundCloud -->
+<p class="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">Назначение</p>
+<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden
+  {% if not ym_done and not spotify_done %}opacity-50 pointer-events-none{% endif %}">
+  <div class="px-5 py-3.5 border-b border-gray-100">
+    <h2 class="font-semibold text-sm">SoundCloud</h2>
+  </div>
+  <div class="px-5 py-4">
     <p class="text-sm text-gray-500 mb-1">
-      Откройте <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 hover:underline">soundcloud.com</a>,
-      войдите в аккаунт.
+      Откройте <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 hover:underline">soundcloud.com</a>, войдите в аккаунт.
     </p>
-    <p class="text-sm text-gray-500 mb-4">
+    <p class="text-sm text-gray-500 mb-3">
       DevTools → Application → Cookies → значение <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">oauth_token</code>.
     </p>
     <form method="post" action="/auth/soundcloud" class="flex gap-2">
       <input name="sc_token" type="text" placeholder="oauth_token (2-... или 3-...)" autocomplete="off"
         class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-      <button type="submit"
-        class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 text-sm font-medium transition">
+      <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 text-sm font-medium transition">
         Сохранить
       </button>
     </form>

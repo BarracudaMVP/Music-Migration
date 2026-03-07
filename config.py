@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # Proxy для Яндекс Музыки (RU IP)
     ym_proxy_url: str = Field(default="")
 
+    # Spotify OAuth (developer.spotify.com)
+    spotify_client_id: str = Field(default="")
+    spotify_client_secret: str = Field(default="")
+    spotify_redirect_uri: str = Field(default="http://localhost:8000/auth/spotify/callback")
+
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():
             return set()

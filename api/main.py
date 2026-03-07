@@ -12,6 +12,7 @@ from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
 from core.services.registry import ServiceRegistry
 from core.services.soundcloud.adapter import SoundCloudAdapter
+from core.services.spotify.adapter import SpotifyAdapter
 from core.services.yandex.adapter import YandexMusicAdapter
 
 setup_logger("api")
@@ -39,7 +40,7 @@ async def startup() -> None:
     global _arq_pool
     await init_db()
     _arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter()]:
+    for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter(), SpotifyAdapter()]:
         ServiceRegistry.register(adapter)
 
 

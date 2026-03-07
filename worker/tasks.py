@@ -2,6 +2,40 @@
 from loguru import logger
 
 
+async def run_spotify_migration_job(
+    ctx,
+    migration_id: int,
+    spotify_token: str,
+    sc_token: str,
+    mode: str,
+    user_id: str,
+) -> None:
+    """ARQ job: переносит треки из Spotify на SoundCloud."""
+    from migration.spotify_tracks import run_spotify_migration
+    from core.db import update_migration, get_track_stats
+    from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
+
+    logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}")
+    try:
+        await run_spotify_migration(
+            spotify_token=spotify_token,
+            soundcloud_token=sc_token,
+            migration_id=migration_id,
+            user_id=user_id,
+            mode=mode,
+        )
+        logger.info(f"[job] Spotify migration #{migration_id} finished")
+
+        tracks = await get_track_stats(migration_id)
+        await notify_telegram(user_id, migration_done_text(migration_id, tracks))
+
+    except Exception as e:
+        logger.error(f"[job] Spotify migration #{migration_id} failed: {e}")
+        await update_migration(migration_id, status="failed")
+        await notify_telegram(user_id, migration_failed_text(migration_id))
+        raise
+
+
 async def run_migration_job(
     ctx,
     migration_id: int,

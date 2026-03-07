@@ -44,6 +44,11 @@ YANDEX_CLIENT_SECRET=      # From oauth.yandex.ru app
 YANDEX_TOKEN=              # Direct token for CLI mode only
 YM_PROXY_URL=              # SOCKS5 proxy for Yandex API (e.g. socks5://user:pass@host:port)
 
+# Spotify OAuth (MM-22)
+SPOTIFY_CLIENT_ID=         # From developer.spotify.com app
+SPOTIFY_CLIENT_SECRET=     # From developer.spotify.com app
+SPOTIFY_REDIRECT_URI=      # e.g. https://yourdomain.com/auth/spotify/callback
+
 # SoundCloud
 SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...)
 SC_RATE_LIMIT_SLEEP=2.0    # Delay between SoundCloud write ops (seconds)
@@ -93,24 +98,29 @@ api/
 
 worker/                                 — ARQ job definitions
     ├── main.py                         — WorkerSettings (functions, cron_jobs, redis_settings)
-    ├── tasks.py                        — run_migration_job, run_file_migration_job
+    ├── tasks.py                        — run_migration_job, run_file_migration_job, run_spotify_migration_job
     └── notifications.py               — notify_telegram(), migration_done_text(), migration_failed_text()
 
 core/
     ├── db/                             — SQLAlchemy 2.x async package
-    │   ├── models.py                   — ORM models
+    │   ├── models.py                   — ORM models (UserSession.spotify_token nullable)
     │   ├── session.py                  — async engine + sessionmaker
-    │   ├── crud.py                     — DB operations (includes get_all_tracks)
+    │   ├── crud.py                     — DB operations (save_spotify_token, get_all_tracks)
     │   └── __init__.py                 — public re-exports
     ├── yandex/client.py                — YandexMusicClient: liked tracks, playlists, artists
     ├── yandex/proxy_request.py         — SocksProxyRequest (aiohttp-socks)
     ├── soundcloud/client.py            — SoundCloudClient: search + write ops
     ├── soundcloud/models.py            — SCTrack, SCUser, SCPlaylist
+    ├── spotify/                        — Spotify integration (MM-22)
+    │   ├── models.py                   — SpotifyTrack, SpotifyPlaylist, SpotifyArtist
+    │   ├── oauth.py                    — Authorization Code Flow: get_auth_url, exchange_code, refresh_access_token
+    │   └── client.py                   — SpotifyClient: get_liked_tracks, get_playlists, get_followed_artists
     ├── services/                       — Service registry + adapters
     │   ├── base.py                     — Capability flags + MusicServiceAdapter ABC
     │   ├── registry.py                 — ServiceRegistry singleton
     │   ├── yandex/adapter.py           — YandexMusicAdapter
     │   ├── soundcloud/adapter.py       — SoundCloudAdapter
+    │   ├── spotify/adapter.py          — SpotifyAdapter (READ_LIKED_TRACKS | READ_PLAYLISTS | READ_LIKED_ARTISTS)
     │   └── file/adapter.py             — FileAdapter (CSV/JSON)
     ├── matcher.py                      — Fuzzy matching + Cyrillic transliteration + split_artists
     └── crypto.py                       — Token encryption/decryption (Fernet)
@@ -118,7 +128,8 @@ core/
 migration/
     ├── tracks.py                       — MVP1 pipeline: YM likes → SC likes (multi-query search)
     ├── playlists.py                    — MVP2: YM playlists → SC playlists
-    └── artists.py                      — MVP2: YM liked artists → SC follows
+    ├── artists.py                      — MVP2: YM liked artists → SC follows
+    └── spotify_tracks.py               — MM-22: Spotify likes → SC likes (reuses _run_pending_loop)
 
 bot/
     ├── main.py                         — aiogram 3.x entry

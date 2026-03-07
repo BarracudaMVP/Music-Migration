@@ -70,8 +70,9 @@ Capability:
 FROM \ TO     | SoundCloud | File CSV
 --------------|------------|----------
 Yandex Music  |     ✓      |    ✓
+Spotify       |     ✓      |    – (TODO)
 File CSV      |     ✓      |    –
-SoundCloud    |     –      |    ✓  (в будущем)
+SoundCloud    |     –      |    ✓  (MM-28)
 ```
 
 ---
@@ -289,10 +290,31 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-22 — Spotify
-- [ ] SpotifyAdapter в ServiceRegistry
-- [ ] OAuth для Spotify
-- [ ] Миграция Spotify → SoundCloud
+### ✅ MM-22 — Spotify
+- [x] `SpotifyAdapter` в ServiceRegistry (`READ_LIKED_TRACKS | READ_PLAYLISTS | READ_LIKED_ARTISTS`)
+- [x] `core/spotify/models.py` — SpotifyTrack, SpotifyPlaylist, SpotifyArtist
+- [x] `core/spotify/oauth.py` — Authorization Code Flow: `get_auth_url()`, `exchange_code()`, `refresh_access_token()`, CSRF state
+- [x] `core/spotify/client.py` — `SpotifyClient`: `get_liked_tracks()`, `get_playlists()`, `get_followed_artists()`, pagination
+- [x] `core/services/spotify/adapter.py` — SpotifyAdapter зарегистрирован в startup
+- [x] `config.py` — `spotify_client_id`, `spotify_client_secret`, `spotify_redirect_uri`
+- [x] Alembic миграция `c3d4e5f6a7b8` — добавлено поле `spotify_token TEXT NULL` в `user_sessions`
+- [x] `core/db/models.py` — `spotify_token: Mapped[str | None]`
+- [x] `core/db/crud.py` — `save_spotify_token()` (upsert только spotify_token), `load_user_session()` возвращает `spotify_token`
+- [x] `migration/spotify_tracks.py` — `migrate_spotify_tracks()` + `run_spotify_migration()`: Spotify → SC (reuse `_run_pending_loop`)
+- [x] `worker/tasks.py` — `run_spotify_migration_job()` ARQ задача
+- [x] `worker/main.py` — `run_spotify_migration_job` в `functions`
+- [x] `api/routes/web.py` — `GET /auth/spotify` (redirect), `GET /auth/spotify/callback` (CSRF state check, exchange, save), обновлён `start_migrate` для `from_service=spotify`
+- [x] `api/templates/auth.html` — секция Spotify (кнопка OAuth, статус подключения), показывается только если `spotify_enabled`
+
+**Настройка Spotify app (developer.spotify.com):**
+1. Create app → Redirect URI: `{API_BASE_URL}/auth/spotify/callback`
+2. Scopes: `user-library-read`, `playlist-read-private`, `user-follow-read`
+3. Client ID + Client Secret → в `.env` как `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` / `SPOTIFY_REDIRECT_URI`
+
+**Ограничения MVP:**
+- Spotify → SoundCloud: только треки (mode=tracks; плейлисты TODO в следующей итерации)
+- Refresh token не сохраняется — при истечении access_token нужна повторная авторизация
+- Spotify UI скрыт если `SPOTIFY_CLIENT_ID` не задан
 
 ---
 
