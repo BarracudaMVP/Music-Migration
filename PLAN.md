@@ -317,9 +317,9 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - Spotify UI скрыт если `SPOTIFY_CLIENT_ID` не задан
 
 **Экспорт Spotify → File (дополнение к MM-22):**
-- [ ] `SpotifyAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "spotify_token"`
-- [ ] `core/export.py`: `export_library()` уже работает через adapter — достаточно добавить capability
-- [ ] Проверить что `fetch_liked_tracks()` реализован в SpotifyAdapter (возвращает `[{artist, title}]`)
+- [x] `SpotifyAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "spotify_token"`
+- [x] `core/export.py`: `export_library()` уже работает через adapter — достаточно добавить capability
+- [x] `fetch_liked_tracks()` реализован в SpotifyAdapter (возвращает `[{artist, title}]`)
 
 ---
 
