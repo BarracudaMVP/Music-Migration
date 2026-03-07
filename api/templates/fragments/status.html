@@ -52,7 +52,7 @@
     <!-- Progress bar (completed) -->
     <div class="mb-4">
       <div class="flex justify-between text-xs text-gray-400 mb-1">
-        <span>Перенесено</span>
+        <span>{{ t('status_progress') }}</span>
         <span>{{ liked }} / {{ total }}</span>
       </div>
       <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -65,24 +65,24 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div class="bg-green-50 rounded-xl p-3 text-center">
         <div class="text-2xl font-bold text-green-600">{{ liked }}</div>
-        <div class="text-xs text-green-700 mt-0.5">Перенесено</div>
+        <div class="text-xs text-green-700 mt-0.5">{{ t('status_transferred') }}</div>
       </div>
       <div class="bg-orange-50 rounded-xl p-3 text-center">
         <div class="text-2xl font-bold text-orange-500">{{ not_found }}</div>
-        <div class="text-xs text-orange-700 mt-0.5">Не найдено</div>
+        <div class="text-xs text-orange-700 mt-0.5">{{ t('status_not_found') }}</div>
       </div>
       <div class="bg-red-50 rounded-xl p-3 text-center">
         <div class="text-2xl font-bold text-red-500">{{ error }}</div>
-        <div class="text-xs text-red-700 mt-0.5">Ошибок</div>
+        <div class="text-xs text-red-700 mt-0.5">{{ t('status_errors') }}</div>
       </div>
       <div class="bg-gray-50 rounded-xl p-3 text-center">
         <div class="text-2xl font-bold text-gray-500">{{ pending }}</div>
-        <div class="text-xs text-gray-500 mt-0.5">В очереди</div>
+        <div class="text-xs text-gray-500 mt-0.5">{{ t('status_in_queue') }}</div>
       </div>
     </div>
   </div>
   {% else %}
-  <div class="px-6 py-8 text-center text-sm text-gray-400">Ожидаем данные...</div>
+  <div class="px-6 py-8 text-center text-sm text-gray-400">{{ t('status_waiting') }}</div>
   {% endif %}
 
   <!-- Actions (shown when done) -->
@@ -90,11 +90,11 @@
   <div class="px-6 pb-5 flex flex-wrap gap-2">
     <a href="/migrate/{{ migration_id }}/result"
       class="flex-1 min-w-[120px] text-center bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
-      Подробный отчёт
+      {{ t('status_report_btn') }}
     </a>
     <a href="/migrate/{{ migration_id }}/export?fmt=csv"
       class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2.5 rounded-xl hover:bg-gray-200 text-sm transition">
-      Скачать CSV
+      {{ t('status_csv_btn') }}
     </a>
   </div>
   {% endif %}

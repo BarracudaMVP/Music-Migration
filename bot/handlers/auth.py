@@ -8,62 +8,64 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 
 from bot.states import AuthFlow
 from bot.api_client import api_client
+from core.i18n import t, detect_lang_tg
 
 router = Router()
 
 _SC_TOKEN_RE = re.compile(r"^\d-[A-Za-z0-9\-]+$")
 
-_SC_INSTRUCTIONS = (
-    "<b>Как получить токен SoundCloud:</b>\n\n"
-    "1. Открой <a href='https://soundcloud.com'>soundcloud.com</a> в браузере\n"
-    "2. Войди в аккаунт\n"
-    "3. Нажми <b>F12</b> → вкладка <b>Application</b>\n"
-    "4. Слева: <b>Cookies → https://soundcloud.com</b>\n"
-    "5. Найди <code>oauth_token</code>, скопируй значение\n"
-    "   (начинается с <code>2-</code> или <code>3-</code>)\n\n"
-    "Сообщение с токеном сразу удалится из чата."
-)
+
+async def _get_lang(state: FSMContext) -> str:
+    data = await state.get_data()
+    return data.get("lang", "ru")
 
 
 # ---------------------------------------------------------------------------
-# Точка входа — проверяем сохранённую сессию
+# Entry point — check saved session
 # ---------------------------------------------------------------------------
 
 async def start_auth(message: Message, state: FSMContext) -> None:
-    """
-    Вызывается из start.py при /migrate.
-    Если есть сохранённая сессия — тихо проверяем токены и переходим к миграции.
-    """
+    """Called from start.py on /migrate. Validates saved session or starts auth."""
     user_id = str(message.from_user.id)
     session = await api_client.get_session(user_id)
+
+    # Ensure lang is set in state (restore from session or detect from Telegram)
+    data = await state.get_data()
+    if "lang" not in data:
+        lang = detect_lang_tg(message.from_user.language_code)
+        if session and session.get("lang"):
+            lang = session["lang"]
+        await state.update_data(lang=lang)
 
     if not session:
         await _ask_yandex_token(message, state)
         return
 
-    # Проверяем YM токен
+    lang = await _get_lang(state)
+
+    # Validate YM token
     try:
         from core.yandex.client import YandexMusicClient
         from config import settings
         await YandexMusicClient(session["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
-        logger.info(f"Сохранённый YM токен актуален для user_id={user_id}")
+        logger.info(f"Saved YM token valid for user_id={user_id}")
     except Exception:
         await api_client.delete_session(user_id)
-        logger.warning(f"YM токен истёк для user_id={user_id}, запрашиваю заново")
-        await message.answer("Токен Яндекс Музыки истёк. Нужно авторизоваться заново.")
+        logger.warning(f"YM token expired for user_id={user_id}")
+        await message.answer(t("bot_ym_expired", lang))
         await _ask_yandex_token(message, state)
         return
 
-    # Проверяем SC токен
+    # Validate SC token
     try:
         from core.soundcloud.client import SoundCloudClient
         sc = await SoundCloudClient(session["soundcloud_token"]).init()
         await sc.close()
-        logger.info(f"Сохранённый SC токен актуален для user_id={user_id}")
+        logger.info(f"Saved SC token valid for user_id={user_id}")
     except Exception:
         await api_client.delete_session(user_id)
-        logger.warning(f"SC токен истёк для user_id={user_id}, запрашиваю заново")
-        await message.answer("Токен SoundCloud истёк. Нужно ввести новый.")
+        logger.warning(f"SC token expired for user_id={user_id}")
+        await message.answer(t("bot_sc_expired", lang))
         await _ask_soundcloud_token(message, state, ym_token=session["yandex_token"])
         return
 
@@ -82,29 +84,24 @@ async def on_new_tokens(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Шаг 1 — Яндекс Музыка (OAuth)
+# Step 1 — Yandex Music (OAuth)
 # ---------------------------------------------------------------------------
 
 async def _ask_yandex_token(message: Message, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     from bot.oauth.yandex import get_auth_url
     auth_url = get_auth_url()
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Войти через Яндекс", url=auth_url)
+        InlineKeyboardButton(text=t("bot_ym_login_btn", lang), url=auth_url)
     ]])
-    await message.answer(
-        "<b>Шаг 1 из 2 — Яндекс Музыка</b>\n\n"
-        "1. Нажми кнопку ниже и войди в свой аккаунт Яндекса\n"
-        "2. После входа Яндекс покажет короткий код — скопируй его\n"
-        "3. Отправь код сюда",
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
+    await message.answer(t("bot_ym_step1", lang), parse_mode="HTML", reply_markup=kb)
     await state.set_state(AuthFlow.waiting_yandex_token)
 
 
 @router.message(AuthFlow.waiting_yandex_token)
 async def receive_yandex_token(message: Message, state: FSMContext) -> None:
     code = message.text.strip() if message.text else ""
+    lang = await _get_lang(state)
 
     try:
         await message.delete()
@@ -112,10 +109,10 @@ async def receive_yandex_token(message: Message, state: FSMContext) -> None:
         pass
 
     if not code:
-        await message.answer("Код не должен быть пустым. Попробуй ещё раз:")
+        await message.answer(t("bot_code_empty", lang))
         return
 
-    status_msg = await message.answer("Проверяю...")
+    status_msg = await message.answer(t("bot_checking", lang))
 
     try:
         result = await api_client.exchange_yandex_code(code)
@@ -123,29 +120,27 @@ async def receive_yandex_token(message: Message, state: FSMContext) -> None:
         await state.update_data(yandex_token=token)
     except httpx.HTTPStatusError as e:
         detail = e.response.json().get("detail", str(e))
-        await status_msg.edit_text(
-            f"Ошибка: {detail}\n\nПопробуй войти через кнопку снова и скопировать новый код:"
-        )
+        await status_msg.edit_text(t("bot_ym_error", lang).format(detail=detail))
         return
     except Exception as e:
-        await status_msg.edit_text(
-            f"Ошибка: {e}\n\nПопробуй войти через кнопку снова и скопировать новый код:"
-        )
+        await status_msg.edit_text(t("bot_ym_error", lang).format(detail=str(e)))
         return
 
-    await status_msg.edit_text("Яндекс Музыка подключена!")
+    await status_msg.edit_text(t("bot_ym_ok", lang))
     await _ask_soundcloud_token(message, state)
 
 
 # ---------------------------------------------------------------------------
-# Шаг 2 — SoundCloud
+# Step 2 — SoundCloud
 # ---------------------------------------------------------------------------
 
 async def _ask_soundcloud_token(message: Message, state: FSMContext, ym_token: str = None) -> None:
+    lang = await _get_lang(state)
     if ym_token:
         await state.update_data(yandex_token=ym_token)
+    instructions = t("bot_sc_instructions", lang)
     await message.answer(
-        f"<b>Шаг 2 из 2 — SoundCloud</b>\n\n{_SC_INSTRUCTIONS}",
+        t("bot_sc_step2", lang).format(instructions=instructions),
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
@@ -155,6 +150,7 @@ async def _ask_soundcloud_token(message: Message, state: FSMContext, ym_token: s
 @router.message(AuthFlow.waiting_soundcloud_token)
 async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
     token = message.text.strip() if message.text else ""
+    lang = await _get_lang(state)
 
     try:
         await message.delete()
@@ -162,49 +158,48 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
         pass
 
     if not token:
-        await message.answer("Токен не должен быть пустым. Попробуй ещё раз:")
+        await message.answer(t("bot_sc_token_empty", lang))
         return
 
     if not _SC_TOKEN_RE.match(token):
-        await message.answer(
-            "Токен выглядит неверно — должен начинаться с <code>2-</code> или <code>3-</code>.\n"
-            "Попробуй скопировать снова:",
-            parse_mode="HTML",
-        )
+        await message.answer(t("bot_sc_token_invalid", lang), parse_mode="HTML")
         return
 
-    status_msg = await message.answer("Проверяю токен SoundCloud...")
+    status_msg = await message.answer(t("bot_sc_checking", lang))
 
     try:
         await api_client.validate_soundcloud_token(token)
         await state.update_data(soundcloud_token=token)
     except httpx.HTTPStatusError as e:
         detail = e.response.json().get("detail", str(e))
-        await status_msg.edit_text(
-            f"Не удалось подключиться к SoundCloud: {detail}\n\nПопробуй ещё раз:"
-        )
+        await status_msg.edit_text(t("bot_sc_error", lang).format(detail=detail))
         return
     except Exception as e:
-        await status_msg.edit_text(
-            f"Не удалось подключиться к SoundCloud: {e}\n\nПопробуй ещё раз:"
-        )
+        await status_msg.edit_text(t("bot_sc_error", lang).format(detail=str(e)))
         return
 
-    # Сохраняем сессию
     data = await state.get_data()
     user_id = str(message.from_user.id)
     await api_client.save_session(user_id, data["yandex_token"], token)
 
-    await status_msg.edit_text("SoundCloud подключён! Сессия сохранена.")
+    # Persist lang preference to DB
+    try:
+        from core.db import save_user_lang
+        await save_user_lang(user_id, lang)
+    except Exception:
+        pass
+
+    await status_msg.edit_text(t("bot_sc_ok", lang))
     await _show_confirmation(message, state)
 
 
 # ---------------------------------------------------------------------------
-# Экран подтверждения
+# Confirmation screen
 # ---------------------------------------------------------------------------
 
 async def _show_confirmation(message: Message, state: FSMContext) -> None:
-    loading = await message.answer("Получаю информацию об аккаунте...")
+    lang = await _get_lang(state)
+    loading = await message.answer(t("bot_loading_account", lang))
 
     data = await state.get_data()
     ym_token = data["yandex_token"]
@@ -226,17 +221,17 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
         pass
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Только треки", callback_data="start_migration:tracks")],
-        [InlineKeyboardButton(text="Треки + плейлисты + артисты", callback_data="start_migration:full")],
-        [InlineKeyboardButton(text="Отмена", callback_data="cancel_migration")],
+        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks")],
+        [InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="start_migration:full")],
+        [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
 
     await loading.edit_text(
-        "<b>Всё готово! Что перенести?</b>\n\n"
-        f"Лайкнутых треков:   <b>{track_count}</b>\n"
-        f"Плейлистов:         <b>{playlist_count}</b>\n"
-        f"Лайкнутых артистов: <b>{artist_count}</b>\n\n"
-        "5000 треков ≈ 3–4 часа. Бот пришлёт уведомление когда закончит.",
+        t("bot_confirm", lang).format(
+            tracks=track_count,
+            playlists=playlist_count,
+            artists=artist_count,
+        ),
         parse_mode="HTML",
         reply_markup=kb,
     )

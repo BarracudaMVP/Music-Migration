@@ -159,6 +159,18 @@ _S: dict[str, dict[str, str]] = {
     "export_note":         {"ru": "Файл совместим с разделом «Импорт».",      "en": "File is compatible with the Import section."},
     "export_no_ym_token":  {"ru": "Нет токена Яндекс Музыки. Войди в аккаунт.", "en": "No Yandex Music token. Please sign in."},
 
+    # Export (missing hints/loading)
+    "export_csv_hint":   {"ru": "Совместим с Excel и Google Sheets.", "en": "Compatible with Excel and Google Sheets."},
+    "export_json_hint":  {"ru": "Удобен для разработчиков.",          "en": "Developer-friendly format."},
+    "export_loading":    {"ru": "Готовлю файл...",                     "en": "Preparing file..."},
+
+    # ------------------------------------------------------------------ #
+    # Bot — language selection
+    # ------------------------------------------------------------------ #
+    "bot_lang_choose":   {"ru": "Выбери язык / Choose your language:", "en": "Выбери язык / Choose your language:"},
+    "bot_lang_set_ru":   {"ru": "Язык изменён: Русский 🇷🇺",           "en": "Язык изменён: Русский 🇷🇺"},
+    "bot_lang_set_en":   {"ru": "Language changed: English 🇬🇧",       "en": "Language changed: English 🇬🇧"},
+
     # ------------------------------------------------------------------ #
     # Error messages (web)
     # ------------------------------------------------------------------ #

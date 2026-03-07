@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Результат переноса #{{ migration_id }}{% endblock %}
+{% block title %}{{ t('history_transfer') }} #{{ migration_id }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl sm:text-2xl font-bold">Результат <span class="text-indigo-600">#{{ migration_id }}</span></h1>
-  <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">← История</a>
+  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('result_back') }}</a>
 </div>
 
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -39,7 +39,7 @@
     {% if total > 0 %}
     <div class="mb-5">
       <div class="flex justify-between text-xs text-gray-400 mb-1.5">
-        <span>Успешно перенесено</span>
+        <span>{{ t('result_progress') }}</span>
         <span>{{ liked }} / {{ total }}</span>
       </div>
       <div class="h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -54,19 +54,19 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
       <div class="rounded-xl border border-green-100 bg-green-50 p-4 text-center">
         <div class="text-3xl font-bold text-green-600">{{ liked }}</div>
-        <div class="text-xs text-green-700 mt-1">Перенесено</div>
+        <div class="text-xs text-green-700 mt-1">{{ t('result_liked') }}</div>
       </div>
       <div class="rounded-xl border border-orange-100 bg-orange-50 p-4 text-center">
         <div class="text-3xl font-bold text-orange-500">{{ not_found }}</div>
-        <div class="text-xs text-orange-700 mt-1">Не найдено</div>
+        <div class="text-xs text-orange-700 mt-1">{{ t('result_not_found') }}</div>
       </div>
       <div class="rounded-xl border border-red-100 bg-red-50 p-4 text-center">
         <div class="text-3xl font-bold text-red-500">{{ error_cnt }}</div>
-        <div class="text-xs text-red-700 mt-1">Ошибок</div>
+        <div class="text-xs text-red-700 mt-1">{{ t('result_errors') }}</div>
       </div>
       <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 text-center">
         <div class="text-3xl font-bold text-gray-700">{{ total }}</div>
-        <div class="text-xs text-gray-500 mt-1">Всего</div>
+        <div class="text-xs text-gray-500 mt-1">{{ t('result_total') }}</div>
       </div>
     </div>
   </div>
@@ -76,7 +76,7 @@
   <div class="px-6 pb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
     <a href="/migrate/{{ migration_id }}/tracks"
       class="text-center bg-indigo-50 text-indigo-700 py-2.5 rounded-xl hover:bg-indigo-100 text-sm font-medium transition">
-      Треки
+      {{ t('result_tracks_btn') }}
     </a>
     <a href="/migrate/{{ migration_id }}/export?fmt=csv"
       class="text-center bg-gray-100 text-gray-700 py-2.5 rounded-xl hover:bg-gray-200 text-sm transition">
@@ -88,7 +88,7 @@
     </a>
     <a href="/"
       class="text-center bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-semibold transition">
-      Новый перенос
+      {{ t('result_new_btn') }}
     </a>
   </div>
 

@@ -13,10 +13,11 @@ from bot.middlewares import AllowedUsersMiddleware
 async def _set_commands(bot) -> None:
     from aiogram.types import BotCommand, BotCommandScopeDefault
     commands = [
-        BotCommand(command="migrate", description="Начать перенос музыки"),
-        BotCommand(command="status",  description="Статус текущего переноса"),
-        BotCommand(command="cancel",  description="Отменить текущее действие"),
-        BotCommand(command="help",    description="Помощь"),
+        BotCommand(command="migrate",   description="Начать перенос музыки / Start transfer"),
+        BotCommand(command="status",    description="Статус переноса / Transfer status"),
+        BotCommand(command="language",  description="Сменить язык / Change language"),
+        BotCommand(command="cancel",    description="Отменить / Cancel"),
+        BotCommand(command="help",      description="Помощь / Help"),
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
     logger.info("Команды бота установлены")

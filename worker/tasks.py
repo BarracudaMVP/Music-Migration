@@ -2,6 +2,18 @@
 from loguru import logger
 
 
+async def _get_user_lang(user_id: str) -> str:
+    """Look up user's preferred language from DB session."""
+    try:
+        from core.db import load_user_session
+        session = await load_user_session(user_id)
+        if session:
+            return session.get("lang", "ru")
+    except Exception:
+        pass
+    return "ru"
+
+
 async def run_spotify_migration_job(
     ctx,
     migration_id: int,
@@ -10,12 +22,13 @@ async def run_spotify_migration_job(
     mode: str,
     user_id: str,
 ) -> None:
-    """ARQ job: переносит треки из Spotify на SoundCloud."""
+    """ARQ job: migrate tracks from Spotify to SoundCloud."""
     from migration.spotify_tracks import run_spotify_migration
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
     logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}")
+    lang = await _get_user_lang(user_id)
     try:
         await run_spotify_migration(
             spotify_token=spotify_token,
@@ -27,12 +40,12 @@ async def run_spotify_migration_job(
         logger.info(f"[job] Spotify migration #{migration_id} finished")
 
         tracks = await get_track_stats(migration_id)
-        await notify_telegram(user_id, migration_done_text(migration_id, tracks))
+        await notify_telegram(user_id, migration_done_text(migration_id, tracks, lang=lang))
 
     except Exception as e:
         logger.error(f"[job] Spotify migration #{migration_id} failed: {e}")
         await update_migration(migration_id, status="failed")
-        await notify_telegram(user_id, migration_failed_text(migration_id))
+        await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
         raise
 
 
@@ -50,6 +63,7 @@ async def run_migration_job(
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
     logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}")
+    lang = await _get_user_lang(user_id)
     try:
         migrate_full = mode == "full"
         await run_migration(
@@ -64,12 +78,12 @@ async def run_migration_job(
 
         tracks = await get_track_stats(migration_id)
         artists = await get_artist_stats(migration_id) if migrate_full else None
-        await notify_telegram(user_id, migration_done_text(migration_id, tracks, artists))
+        await notify_telegram(user_id, migration_done_text(migration_id, tracks, artists, lang=lang))
 
     except Exception as e:
         logger.error(f"[job] Migration #{migration_id} failed with unhandled error: {e}")
         await update_migration(migration_id, status="failed")
-        await notify_telegram(user_id, migration_failed_text(migration_id))
+        await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
         raise
 
 
@@ -80,7 +94,7 @@ async def run_file_migration_job(
     tracks: list[dict],
     user_id: str,
 ) -> None:
-    """ARQ job: переносит треки из файла на SoundCloud (без Яндекс Музыки)."""
+    """ARQ job: migrate tracks from a file to SoundCloud (no Yandex Music)."""
     from migration.tracks import migrate_from_file_tracks
     from core.soundcloud.client import SoundCloudClient
     from core.db import update_migration, get_track_stats
@@ -88,8 +102,9 @@ async def run_file_migration_job(
 
     logger.info(
         f"[job] File migration #{migration_id} for user {user_id!r}, "
-        f"{len(tracks)} треков"
+        f"{len(tracks)} tracks"
     )
+    lang = await _get_user_lang(user_id)
     try:
         sc_client = await SoundCloudClient(sc_token).init()
         try:
@@ -99,12 +114,10 @@ async def run_file_migration_job(
         logger.info(f"[job] File migration #{migration_id} finished")
 
         track_stats = await get_track_stats(migration_id)
-        await notify_telegram(user_id, migration_done_text(migration_id, track_stats))
+        await notify_telegram(user_id, migration_done_text(migration_id, track_stats, lang=lang))
 
     except Exception as e:
         logger.error(f"[job] File migration #{migration_id} failed: {e}")
         await update_migration(migration_id, status="failed")
-        await notify_telegram(user_id, migration_failed_text(migration_id))
+        await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
         raise
-
-

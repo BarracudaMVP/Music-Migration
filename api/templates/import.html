@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Импорт из файла{% endblock %}
+{% block title %}{{ t('import_title') }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
   <div>
-    <h1 class="text-xl sm:text-2xl font-bold">Импорт из файла</h1>
-    <p class="text-gray-400 text-sm mt-0.5">CSV или JSON со списком треков</p>
+    <h1 class="text-xl sm:text-2xl font-bold">{{ t('import_title') }}</h1>
+    <p class="text-gray-400 text-sm mt-0.5">{{ t('import_subtitle') }}</p>
   </div>
-  <a href="/" class="text-sm text-gray-400 hover:text-indigo-600 transition">← Главная</a>
+  <a href="/" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('import_back') }}</a>
 </div>
 
 {% if error %}
@@ -23,13 +23,13 @@
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-4">
   <div class="grid sm:grid-cols-2 gap-4 mb-5 text-sm">
     <div class="bg-gray-50 rounded-xl p-4">
-      <p class="font-semibold text-gray-700 mb-1">CSV</p>
-      <p class="text-gray-500 text-xs">Разделитель — запятая. Первая строка — заголовки.</p>
+      <p class="font-semibold text-gray-700 mb-1">{{ t('import_csv_title') }}</p>
+      <p class="text-gray-500 text-xs">{{ t('import_csv_desc') }}</p>
       <code class="text-xs text-indigo-600">artist,title</code>
     </div>
     <div class="bg-gray-50 rounded-xl p-4">
-      <p class="font-semibold text-gray-700 mb-1">JSON</p>
-      <p class="text-gray-500 text-xs">Массив объектов.</p>
+      <p class="font-semibold text-gray-700 mb-1">{{ t('import_json_title') }}</p>
+      <p class="text-gray-500 text-xs">{{ t('import_json_desc') }}</p>
       <code class="text-xs text-indigo-600">[{"artist": "...", "title": "..."}]</code>
     </div>
   </div>
@@ -55,9 +55,9 @@
     </label>
     <button type="submit"
       class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-semibold whitespace-nowrap transition">
-      Загрузить
+      {{ t('import_upload_btn') }}
     </button>
-    <span id="upload-spinner" class="htmx-indicator text-xs text-gray-400 self-center">Обрабатываю...</span>
+    <span id="upload-spinner" class="htmx-indicator text-xs text-gray-400 self-center">{{ t('import_processing') }}</span>
   </form>
 </div>
 
