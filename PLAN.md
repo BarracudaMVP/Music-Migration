@@ -302,16 +302,18 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-24 — Экспорт треков в файл (standalone)
+### ✅ MM-24 — Экспорт треков в файл (standalone)
 
 > Отдельный поток: экспортировать треки из источника (YM / SoundCloud) в CSV/JSON файл без запуска переноса.
 > Полезно для бэкапа библиотеки или ручного редактирования перед импортом.
 
-- [ ] GET /export — страница выбора источника и формата
-- [ ] POST /export/start — авторизация источника + скачивание файла (streaming response)
-- [ ] YandexMusicAdapter: экспорт лайков / плейлистов в CSV
-- [ ] Кнопка «Сохранить в файл» на странице результата переноса (уже частично есть — улучшить)
-- [ ] Формат файла совместим с /import (artist, title колонки)
+- [x] GET /export — страница выбора источника и формата
+- [x] POST /export/start — авторизация источника + скачивание файла (Response с Content-Disposition)
+- [x] `Capability.EXPORT_TRACKS` — новый флаг в `core/services/base.py`; `session_token_key` на адаптере
+- [x] `core/export.py` — `export_library(service_id, token, fmt)` + `exportable_services()`
+- [x] `YandexMusicAdapter`: `EXPORT_TRACKS` capability + `fetch_liked_tracks(token)` → `[{artist, title}]`
+- [x] Формат совместим с /import (колонки artist, title)
+- [x] Ссылка «Экспорт» в nav (desktop + mobile)
 
 ---
 
