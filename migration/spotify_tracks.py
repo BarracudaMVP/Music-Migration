@@ -70,9 +70,6 @@ async def run_spotify_migration(
     Точка входа для ARQ worker.
     mode: 'tracks' — только треки, 'full' — треки + плейлисты (TODO).
     """
-    from core.db import init_db
-    await init_db()
-
     spotify_client = await SpotifyClient(spotify_token).init()
     sc_client = await SoundCloudClient(soundcloud_token).init()
 

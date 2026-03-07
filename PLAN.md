@@ -390,15 +390,18 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-29 — PostgreSQL only (убрать SQLite)
+### ✅ MM-29 — PostgreSQL only (убрать SQLite)
 
 > Alembic остаётся — он нужен для управления схемой PostgreSQL. Убираем только SQLite-специфику.
 
-- [ ] Убрать `aiosqlite` из `requirements.txt`
-- [ ] Убрать `render_as_batch=True` из `alembic/env.py` (SQLite-хак для ALTER TABLE)
-- [ ] Убрать `sqlite+aiosqlite:///migration.db` как дефолт из `config.py`
-- [ ] Обновить тестовые фикстуры (убрать `StaticPool`/SQLite, перейти на PostgreSQL или mock)
-- [ ] Обновить документацию: `DATABASE_URL` требует PostgreSQL
+- [x] `aiosqlite` убран из `requirements.txt` → перенесён в `requirements-dev.txt`
+- [x] Создан `requirements-dev.txt` (aiosqlite + pytest для локальной разработки)
+- [x] `render_as_batch=True` убран из `alembic/env.py`
+- [x] `db_path` и SQLite дефолт убраны из `config.py` (DATABASE_URL теперь требует явного задания)
+- [x] `init_db()` удалён — схема управляется через `alembic upgrade head`
+- [x] Вызовы `init_db()` удалены из api/main.py, migration/tracks.py, migration/spotify_tracks.py
+- [x] `_dialect_insert()` сохраняет SQLite fallback только для in-memory тестовых фикстур
+- [x] 133 теста проходят
 
 ---
 

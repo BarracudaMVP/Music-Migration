@@ -32,11 +32,10 @@ class Settings(BaseSettings):
     # Миграция
     sc_rate_limit_sleep: float = Field(default=2.0)
     match_threshold: float = Field(default=75.0)
-    db_path: str = Field(default="migration.db")
     log_level: str = Field(default="INFO")
 
     # FastAPI (MVP4)
-    database_url: str = Field(default="sqlite+aiosqlite:///migration.db")
+    database_url: str = Field(default="")
     api_base_url: str = Field(default="http://localhost:8000")
     api_internal_token: str = Field(default="")
 

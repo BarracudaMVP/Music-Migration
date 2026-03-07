@@ -1,7 +1,4 @@
-"""
-CRUD-функции через SQLAlchemy 2.x async.
-API идентично core/db.py (aiosqlite) для обратной совместимости.
-"""
+"""CRUD-функции через SQLAlchemy 2.x async."""
 from __future__ import annotations
 
 from loguru import logger
@@ -12,28 +9,15 @@ from core.db.session import AsyncSessionLocal, engine
 
 
 def _dialect_insert(model):
-    """Return dialect-appropriate Insert that supports on_conflict_do_nothing/update.
+    """Return dialect-appropriate Insert with on_conflict support.
 
-    Uses SQLite insert for SQLite/aiosqlite and PostgreSQL insert for asyncpg.
-    Both dialects expose identical on_conflict_* APIs.
+    PostgreSQL in production; SQLite fallback is used only by in-memory test fixtures.
     """
     if engine.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert
     else:
         from sqlalchemy.dialects.sqlite import insert
     return insert(model)
-
-
-# ---------------------------------------------------------------------------
-# Инициализация
-# ---------------------------------------------------------------------------
-
-async def init_db() -> None:
-    """Создаёт все таблицы если не существуют (для SQLite / dev)."""
-    from core.db.models import Base
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database initialised")
 
 
 # ---------------------------------------------------------------------------

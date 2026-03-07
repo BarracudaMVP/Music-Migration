@@ -3,7 +3,6 @@ core.db — SQLAlchemy 2.x async DB layer.
 Реэкспортирует все публичные функции из crud.py для обратной совместимости.
 """
 from core.db.crud import (
-    init_db,
     create_migration,
     update_migration,
     get_migration,
@@ -29,7 +28,6 @@ from core.db.crud import (
 )
 
 __all__ = [
-    "init_db",
     "create_migration",
     "update_migration",
     "get_migration",
