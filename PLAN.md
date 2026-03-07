@@ -429,16 +429,16 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-25 — Сетевая безопасность RU-сервера
+### ✅ MM-25 — Сетевая безопасность RU-сервера
 
 > Dante SOCKS5 прокси на RU сервере сейчас доступен без ограничений по IP.
 > Нужно закрыть порт 1080 для всех кроме EU сервера (и опционально локальной машины разработчика).
 
-- [ ] Настроить ufw/iptables на RU сервере: порт 1080 разрешён только с IP EU сервера
-- [ ] Опционально: добавить IP локальной машины разработчика в whitelist
-- [ ] Проверить что остальные порты закрыты (кроме 22/SSH)
-- [ ] Dante: включить auth (уже есть proxyuser) + ограничить bind-address до localhost
-- [ ] Документировать в README: как добавить новый IP в whitelist
+- [x] `infra/ru-server/setup-firewall.sh` — ufw: только 22/SSH + 1080 с EU IP (и опционально dev IP)
+- [x] `infra/ru-server/danted.conf` — Dante с `socksmethod: username` (обязательная аутентификация)
+- [x] `infra/ru-server/add-proxy-user.sh` — создание системного пользователя для auth
+- [x] `infra/ru-server/README.md` — пошаговая инструкция применения + проверка + rollback
+- [ ] **Применить на сервере** — запустить скрипты на RU сервере (требует SSH доступа)
 
 ---
 
