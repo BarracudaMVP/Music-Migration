@@ -537,6 +537,72 @@ async def import_start(
 
 
 # ---------------------------------------------------------------------------
+# Standalone Export
+# ---------------------------------------------------------------------------
+
+@router.get("/export", response_class=HTMLResponse)
+async def export_page(request: Request, error: str = ""):
+    user_id = _session_user_id(request)
+    if not user_id:
+        return RedirectResponse("/auth", status_code=303)
+
+    from core.export import exportable_services
+    services = exportable_services()
+    return templates.TemplateResponse(
+        "export.html",
+        {"request": request, "services": services, "error": error},
+    )
+
+
+@router.post("/export/start")
+async def export_start(
+    request: Request,
+    service_id: str = Form(...),
+    fmt: str = Form("csv"),
+):
+    from fastapi.responses import Response as FastAPIResponse
+    from core.export import export_library
+
+    user_id = _session_user_id(request)
+    if not user_id:
+        return RedirectResponse("/auth", status_code=303)
+
+    db_session = await load_user_session(user_id)
+    if not db_session:
+        return RedirectResponse("/auth", status_code=303)
+
+    from core.services.registry import ServiceRegistry
+    try:
+        adapter = ServiceRegistry.get(service_id)
+    except KeyError:
+        return RedirectResponse(
+            f"/export?error={quote('Неизвестный сервис')}", status_code=303
+        )
+
+    token = db_session.get(adapter.session_token_key) if adapter.session_token_key else None
+    if not token:
+        return RedirectResponse(
+            f"/export?error={quote(f'Нет токена для {adapter.name}. Пройди авторизацию.')}",
+            status_code=303,
+        )
+
+    try:
+        data = await export_library(service_id, token, fmt=fmt)
+    except Exception as e:
+        return RedirectResponse(
+            f"/export?error={quote(str(e)[:200])}", status_code=303
+        )
+
+    filename = f"library_{service_id}.{fmt}"
+    media = "text/csv" if fmt == "csv" else "application/json"
+    return FastAPIResponse(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
 
