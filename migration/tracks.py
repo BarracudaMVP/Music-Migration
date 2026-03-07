@@ -263,11 +263,8 @@ async def run_migration(
     записи в БД (используется ботом для /status).
     migration_id — если передан (ARQ worker), пропускаем create_migration и on_migration_created.
     """
-    from core.db import init_db
     from migration.playlists import migrate_playlists as _migrate_playlists
     from migration.artists import migrate_artists as _migrate_artists
-
-    await init_db()
 
     from config import settings
     ym_client = await YandexMusicClient(yandex_token, proxy_url=settings.ym_proxy_url or None).init()

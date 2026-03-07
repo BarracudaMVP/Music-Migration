@@ -7,7 +7,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.middleware import AllowedUsersWebMiddleware
 from api.routes import admin, auth, migrations, reports, services, sessions, web
 from config import settings
-from core.db import init_db
 from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
 from core.services.registry import ServiceRegistry
@@ -38,7 +37,6 @@ _arq_pool = None
 @app.on_event("startup")
 async def startup() -> None:
     global _arq_pool
-    await init_db()
     _arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter(), SpotifyAdapter()]:
         ServiceRegistry.register(adapter)
