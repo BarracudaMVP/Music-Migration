@@ -366,10 +366,28 @@ def detect_lang_web(request) -> str:
     return "ru"
 
 
+_CIS_LANG_CODES = {
+    "ru",  # Russian
+    "uk",  # Ukrainian
+    "be",  # Belarusian
+    "kk",  # Kazakh
+    "uz",  # Uzbek
+    "az",  # Azerbaijani
+    "hy",  # Armenian
+    "ka",  # Georgian
+    "ky",  # Kyrgyz
+    "tg",  # Tajik
+    "tk",  # Turkmen
+    "mn",  # Mongolian
+}
+
+
 def detect_lang_tg(language_code: str | None) -> str:
-    """Detect language from Telegram user.language_code."""
-    if language_code and language_code.startswith("ru"):
+    """Detect language from Telegram user.language_code.
+    CIS country codes map to Russian; everything else maps to English.
+    Returns 'ru' if language_code is None (can't determine).
+    """
+    if not language_code:
         return "ru"
-    if language_code:
-        return "en"
-    return "ru"
+    code = language_code.split("-")[0].lower()
+    return "ru" if code in _CIS_LANG_CODES else "en"

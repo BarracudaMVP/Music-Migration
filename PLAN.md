@@ -390,6 +390,40 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
+### 🔲 MM-29 — PostgreSQL only (убрать SQLite)
+
+> Alembic остаётся — он нужен для управления схемой PostgreSQL. Убираем только SQLite-специфику.
+
+- [ ] Убрать `aiosqlite` из `requirements.txt`
+- [ ] Убрать `render_as_batch=True` из `alembic/env.py` (SQLite-хак для ALTER TABLE)
+- [ ] Убрать `sqlite+aiosqlite:///migration.db` как дефолт из `config.py`
+- [ ] Обновить тестовые фикстуры (убрать `StaticPool`/SQLite, перейти на PostgreSQL или mock)
+- [ ] Обновить документацию: `DATABASE_URL` требует PostgreSQL
+
+---
+
+### 🔲 MM-30 — README
+
+- [ ] Описание сервиса (что делает, кому нужен)
+- [ ] Инструкция по запуску через docker-compose (prod)
+- [ ] Переменные окружения (.env)
+- [ ] Telegram-бот — как найти, команды
+- [ ] Веб-интерфейс — разделы и функции
+- [ ] FAQ: как получить токены, что делать если трек не найден
+
+---
+
+### 🔲 MM-31 — Управление доступом к веб-интерфейсу
+
+> Возможность запустить только бэкенд + бот без веба, или закрыть веб для определённых IP.
+
+- [ ] Env `WEB_ENABLED=true/false` — при `false` веб-роутер не регистрируется
+- [ ] Env `WEB_ALLOWED_IPS` — whitelist IP для веба (nginx `allow/deny` или FastAPI middleware)
+- [ ] docker-compose `profiles`: профиль `bot-only` поднимает только api+bot+worker без веба
+- [ ] Документировать: как запустить в API-режиме (только для бота)
+
+---
+
 ### 🔲 MM-25 — Сетевая безопасность RU-сервера
 
 > Dante SOCKS5 прокси на RU сервере сейчас доступен без ограничений по IP.
