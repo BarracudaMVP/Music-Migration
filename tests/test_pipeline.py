@@ -155,7 +155,7 @@ async def test_process_track_like_fails():
 
 @pytest.mark.asyncio
 async def test_process_track_search_query_format():
-    """Search query is '{artist} {title}'."""
+    """Primary query is '{artist} {title}'. When empty, fallback to title-only."""
     from migration.tracks import _process_one_track
 
     sc_client = MagicMock()
@@ -166,7 +166,77 @@ async def test_process_track_search_query_format():
     with patch("migration.tracks.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
-    sc_client.search_tracks.assert_called_once_with("Radiohead Creep")
+    # Primary query uses "{artist} {title}" format
+    sc_client.search_tracks.assert_any_call("Radiohead Creep")
+    # Fallback to title-only when primary returns empty
+    sc_client.search_tracks.assert_any_call("Creep")
+
+
+@pytest.mark.asyncio
+async def test_process_compound_artist_parallel_queries():
+    """Compound artist (feat.) → multiple parallel search queries."""
+    from migration.tracks import _process_one_track
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=5)])
+    sc_client.like_track = AsyncMock(return_value=True)
+
+    row = {"id": 9, "ym_id": "ym9", "ym_artist": "Artist1 feat. Artist2", "ym_title": "Song"}
+
+    with patch("migration.tracks.find_best_match", return_value=_make_match(sc_id=5)), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock):
+        await _process_one_track(sc_client, row)
+
+    calls = [c.args[0] for c in sc_client.search_tracks.call_args_list]
+    assert "Artist1 Song" in calls
+    assert "Artist2 Song" in calls
+
+
+@pytest.mark.asyncio
+async def test_process_dedup_candidates_by_sc_id():
+    """Same sc_id from multiple queries → find_best_match receives deduplicated list."""
+    from migration.tracks import _process_one_track
+
+    shared_track = _make_sc_track(sc_id=77)
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[shared_track])
+    sc_client.like_track = AsyncMock(return_value=True)
+
+    row = {"id": 10, "ym_id": "ym10", "ym_artist": "A feat. B", "ym_title": "T"}
+
+    captured = {}
+
+    def fake_find_best_match(artist, title, candidates):
+        captured["candidates"] = candidates
+        return _make_match(sc_id=77)
+
+    with patch("migration.tracks.find_best_match", side_effect=fake_find_best_match), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock):
+        await _process_one_track(sc_client, row)
+
+    assert len([c for c in captured["candidates"] if c.sc_id == 77]) == 1
+
+
+@pytest.mark.asyncio
+async def test_process_title_only_fallback_when_compound_empty():
+    """When all compound queries return empty → fallback to title-only."""
+    from migration.tracks import _process_one_track
+
+    call_log = []
+
+    async def mock_search(query):
+        call_log.append(query)
+        return []
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(side_effect=mock_search)
+
+    row = {"id": 11, "ym_id": "ym11", "ym_artist": "A feat. B", "ym_title": "Song"}
+
+    with patch("migration.tracks.update_track", new_callable=AsyncMock):
+        await _process_one_track(sc_client, row)
+
+    assert "Song" in call_log
 
 
 # ---------------------------------------------------------------------------
