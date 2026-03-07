@@ -63,7 +63,7 @@ Capability:
   yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS
   soundcloud:     WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS
   file_csv:       EXPORT_FILE, IMPORT_FILE
-  spotify:        (в будущем)
+  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS
 ```
 
 ```
