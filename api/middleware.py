@@ -8,6 +8,42 @@ from starlette.responses import RedirectResponse, Response
 # Пути, которые не проверяются middleware
 _EXEMPT_PREFIXES = ("/admin", "/auth", "/health", "/api", "/static")
 
+# Пути внутреннего API — всегда доступны (бот, воркер)
+_API_PREFIXES = ("/api", "/health")
+
+
+def _get_client_ip(request: Request) -> str:
+    """Return real client IP, honoring X-Forwarded-For from nginx proxy."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else ""
+
+
+class WebIPWhitelistMiddleware(BaseHTTPMiddleware):
+    """
+    Restricts web UI and admin to specific IPs when WEB_ALLOWED_IPS is set.
+    API routes (/api/*, /health) are always accessible.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        from config import settings
+
+        allowed_ips_str = settings.web_allowed_ips.strip()
+        if not allowed_ips_str:
+            return await call_next(request)
+
+        path = request.url.path
+        if any(path.startswith(p) for p in _API_PREFIXES):
+            return await call_next(request)
+
+        allowed = {ip.strip() for ip in allowed_ips_str.split(",") if ip.strip()}
+        client_ip = _get_client_ip(request)
+        if client_ip not in allowed:
+            return Response(status_code=403, content="Forbidden")
+
+        return await call_next(request)
+
 
 class AllowedUsersWebMiddleware(BaseHTTPMiddleware):
     """
