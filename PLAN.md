@@ -416,14 +416,16 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-31 — Управление доступом к веб-интерфейсу
+### ✅ MM-31 — Управление доступом к веб-интерфейсу
 
 > Возможность запустить только бэкенд + бот без веба, или закрыть веб для определённых IP.
 
-- [ ] Env `WEB_ENABLED=true/false` — при `false` веб-роутер не регистрируется
-- [ ] Env `WEB_ALLOWED_IPS` — whitelist IP для веба (nginx `allow/deny` или FastAPI middleware)
-- [ ] docker-compose `profiles`: профиль `bot-only` поднимает только api+bot+worker без веба
-- [ ] Документировать: как запустить в API-режиме (только для бота)
+- [x] `config.py` — `web_enabled: bool = True` и `web_allowed_ips: str = ""`
+- [x] `api/middleware.py` — `WebIPWhitelistMiddleware`: проверяет IP по `X-Forwarded-For` / `request.client.host`; `/api/*` и `/health` всегда доступны
+- [x] `api/main.py` — web.router и admin.router регистрируются только если `web_enabled=True`; `WebIPWhitelistMiddleware` добавляется только если `web_allowed_ips` задан
+- [x] CLAUDE.md — `WEB_ENABLED` и `WEB_ALLOWED_IPS` задокументированы в env-переменных
+- [x] 133 теста проходят
+- [ ] docker-compose `profiles` — отложено (достаточно `WEB_ENABLED=false` в .env)
 
 ---
 

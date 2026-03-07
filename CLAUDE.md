@@ -66,6 +66,10 @@ API_INTERNAL_TOKEN=        # Shared secret for bot↔API calls
 SECRET_KEY=                # SessionMiddleware secret (generate with: python -c "import secrets; print(secrets.token_hex(32))")
 ADMIN_PASSWORD=            # Admin UI password
 
+# Web access control (MM-31)
+WEB_ENABLED=true           # false = disable web UI and admin (API/bot still work)
+WEB_ALLOWED_IPS=           # comma-separated IPs allowed to access web UI; empty = allow all
+
 # Misc
 MATCH_THRESHOLD=75.0       # Minimum fuzzy match score (0–100)
 LOG_LEVEL=INFO
