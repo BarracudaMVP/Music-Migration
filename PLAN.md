@@ -344,15 +344,15 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-28 — Экспорт SoundCloud → File
+### ✅ MM-28 — Экспорт SoundCloud → File
 
 > Экспортировать лайкнутые треки из SoundCloud в CSV/JSON файл.
 > Логика аналогична MM-24 (YM → File) — достаточно добавить capability в адаптер.
 
-- [ ] `SoundCloudAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "sc_token"`
-- [ ] `SoundCloudAdapter`: реализовать `fetch_liked_tracks(token)` → `[{artist, title}]` (через `SoundCloudClient.get_liked_tracks()`)
-- [ ] Убедиться что `/export` показывает SoundCloud как источник (шаблон уже динамический)
-- [ ] Добавить `soundcloud` в матрицу сервисов (`EXPORT_FILE`)
+- [x] `SoundCloudAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "soundcloud_token"`
+- [x] `SoundCloudAdapter`: реализовать `fetch_liked_tracks(token)` → `[{artist, title}]` (через `SoundCloudClient.get_liked_tracks()`)
+- [x] `/export` показывает SoundCloud как источник (шаблон динамический — подхватывает автоматически)
+- [x] `SoundCloudClient.get_liked_tracks()` — новый метод: GET `/me/track_likes` с пагинацией через `next_href`
 
 ---
 

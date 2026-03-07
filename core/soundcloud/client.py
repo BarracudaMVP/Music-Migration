@@ -76,6 +76,41 @@ class SoundCloudClient:
             self._session = None
 
     # ------------------------------------------------------------------
+    # Чтение библиотеки
+    # ------------------------------------------------------------------
+
+    async def get_liked_tracks(self) -> list[SCTrack]:
+        """Возвращает все лайкнутые треки текущего пользователя."""
+        self._ensure_init()
+        tracks: list[SCTrack] = []
+        params = {"limit": 200, "linked_partitioning": 1}
+        path = "/me/track_likes"
+        while path:
+            data = await self._get(path, params=params)
+            params = {}  # next_href уже содержит все параметры
+            for item in data.get("collection", []):
+                raw = item.get("track") or item  # SC может вернуть трек напрямую или в ключе track
+                if not raw or not isinstance(raw, dict):
+                    continue
+                user = raw.get("user") or {}
+                tracks.append(SCTrack(
+                    id=raw.get("id", 0),
+                    title=raw.get("title", "") or "",
+                    artist=user.get("username", "") or "",
+                    url=raw.get("permalink_url", "") or "",
+                    duration_ms=raw.get("duration", 0) or 0,
+                ))
+            next_href = data.get("next_href")
+            if next_href:
+                from urllib.parse import urlparse
+                parsed = urlparse(next_href)
+                path = parsed.path + ("?" + parsed.query if parsed.query else "")
+            else:
+                path = None
+        logger.info(f"SC get_liked_tracks: получено {len(tracks)} треков")
+        return tracks
+
+    # ------------------------------------------------------------------
     # Поиск (read-only, soundcloud-v2)
     # ------------------------------------------------------------------
 
