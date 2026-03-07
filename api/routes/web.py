@@ -18,6 +18,7 @@ from core.db import (
     get_tracks_page,
     load_user_session,
     save_user_session,
+    save_spotify_token,
     delete_user_session,
 )
 from core.db.crud import get_all_tracks
@@ -80,17 +81,24 @@ async def index(request: Request, error: str = ""):
 
 @router.get("/auth", response_class=HTMLResponse)
 async def auth_page(request: Request, error: str = ""):
+    from config import settings as cfg
+    from bot.oauth.yandex import get_auth_url
+
     user_id = _ensure_user_id(request)
     db_session = await load_user_session(user_id)
     ym_done = bool(request.session.get("ym_token") or (db_session and db_session.get("yandex_token")))
-
-    from bot.oauth.yandex import get_auth_url
+    spotify_done = bool(
+        request.session.get("spotify_connected")
+        or (db_session and db_session.get("spotify_token"))
+    )
     return templates.TemplateResponse(
         "auth.html",
         {
             "request": request,
             "ym_auth_url": get_auth_url(),
             "ym_done": ym_done,
+            "spotify_done": spotify_done,
+            "spotify_enabled": bool(cfg.spotify_client_id),
             "error": error,
         },
     )
@@ -136,6 +144,57 @@ async def auth_soundcloud(request: Request, sc_token: str = Form(...)):
     request.session.pop("ym_token", None)
     request.session.pop("ym_login", None)
     return RedirectResponse("/", status_code=303)
+
+
+@router.get("/auth/spotify")
+async def auth_spotify_redirect(request: Request):
+    """Redirect пользователя на страницу авторизации Spotify."""
+    from core.spotify.oauth import generate_state, get_auth_url
+    from config import settings
+
+    if not settings.spotify_client_id:
+        return RedirectResponse(
+            f"/auth?error={quote('Spotify не настроен (отсутствует SPOTIFY_CLIENT_ID)')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = generate_state()
+    request.session["spotify_oauth_state"] = state
+    return RedirectResponse(get_auth_url(state), status_code=303)
+
+
+@router.get("/auth/spotify/callback")
+async def auth_spotify_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Callback от Spotify после авторизации пользователя."""
+    from core.spotify.oauth import exchange_code
+    from core.spotify.client import SpotifyClient
+
+    if error:
+        return RedirectResponse(
+            f"/auth?error={quote(f'Spotify отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+
+    expected_state = request.session.get("spotify_oauth_state")
+    if not state or state != expected_state:
+        return RedirectResponse(
+            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+    request.session.pop("spotify_oauth_state", None)
+
+    user_id = _ensure_user_id(request)
+    try:
+        token_data = await exchange_code(code)
+        access_token = token_data["access_token"]
+        client = await SpotifyClient(access_token).init()
+        await client.close()
+        await save_spotify_token(user_id, access_token)
+        request.session["spotify_connected"] = True
+    except Exception as e:
+        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+
+    return RedirectResponse("/auth", status_code=303)
 
 
 @router.post("/auth/logout")
@@ -187,14 +246,32 @@ async def start_migrate(
     migration_id = await create_migration(user_id)
     arq = get_arq_pool()
     job_mode = "full" if mode == "full" else "tracks"
-    job = await arq.enqueue_job(
-        "run_migration_job",
-        migration_id,
-        db_session["yandex_token"],
-        db_session["soundcloud_token"],
-        job_mode,
-        user_id,
-    )
+
+    if from_service == "spotify":
+        spotify_token = db_session.get("spotify_token") or ""
+        if not spotify_token:
+            return RedirectResponse(
+                f"/auth?error={quote('Сначала подключи Spotify')}",
+                status_code=303,
+            )
+        job = await arq.enqueue_job(
+            "run_spotify_migration_job",
+            migration_id,
+            spotify_token,
+            db_session["soundcloud_token"],
+            job_mode,
+            user_id,
+        )
+    else:
+        job = await arq.enqueue_job(
+            "run_migration_job",
+            migration_id,
+            db_session["yandex_token"],
+            db_session["soundcloud_token"],
+            job_mode,
+            user_id,
+        )
+
     if job:
         await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
     return RedirectResponse(f"/migrate/{migration_id}", status_code=303)
