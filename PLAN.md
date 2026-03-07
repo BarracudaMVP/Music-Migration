@@ -284,9 +284,21 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-21 — Мультиязычность
-- [ ] EN/RU интерфейс (веб + бот)
-- [ ] Автоопределение языка по браузеру/Telegram
+### ✅ MM-21 — Мультиязычность
+- [x] `core/i18n.py` — каталог строк `_S[key][lang]`, `t(key, lang)`, `detect_lang_web()`, `detect_lang_tg()`
+- [x] Alembic миграция `d1e2f3a4b5c6` — поле `lang TEXT NOT NULL DEFAULT 'ru'` в `user_sessions`
+- [x] `core/db/models.py` — поле `lang: Mapped[str]`
+- [x] `core/db/crud.py` — `save_user_lang(user_id, lang)`, `load_user_session()` возвращает `lang`
+- [x] **Веб**: `api/routes/web.py` — `_render()` инжектит `lang` и `t()` во все шаблоны, `GET /set-lang` сохраняет выбор в сессии + БД
+- [x] **Веб**: все шаблоны переведены — base, index, auth, progress, result, history, tracks, import, export, fragments/status
+- [x] **Веб**: кнопка EN↔RU в навигации (desktop + mobile hamburger)
+- [x] **Веб**: автоопределение по `Accept-Language` → приоритет: сессия → заголовок → "ru"
+- [x] **Бот**: `bot/handlers/start.py` — определение языка из `language_code`, `/language` команда, выбор языка при первом старте если `language_code is None`
+- [x] **Бот**: все хендлеры переведены — start, auth, migration, status
+- [x] **Бот**: lang хранится в FSM state + персистируется в БД при сохранении сессии
+- [x] **Worker**: `worker/notifications.py` — `migration_done_text(lang=)`, `migration_failed_text(lang=)` принимают язык
+- [x] **Worker**: `worker/tasks.py` — `_get_user_lang(user_id)` достаёт lang из БД перед отправкой уведомления
+- [x] 133 теста проходят без изменений
 
 ---
 
