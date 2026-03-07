@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Экспорт библиотеки{% endblock %}
+{% block title %}{{ t('export_title') }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
   <div>
-    <h1 class="text-xl sm:text-2xl font-bold">Экспорт библиотеки</h1>
-    <p class="text-gray-400 text-sm mt-0.5">Скачай свои треки в CSV или JSON</p>
+    <h1 class="text-xl sm:text-2xl font-bold">{{ t('export_title') }}</h1>
+    <p class="text-gray-400 text-sm mt-0.5">{{ t('export_subtitle') }}</p>
   </div>
-  <a href="/" class="text-sm text-gray-400 hover:text-indigo-600 transition">← Главная</a>
+  <a href="/" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('export_back') }}</a>
 </div>
 
 {% if error %}
@@ -26,7 +26,7 @@
     <path stroke-linecap="round" stroke-linejoin="round"
       d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
   </svg>
-  <p class="text-sm">Нет доступных сервисов для экспорта</p>
+  <p class="text-sm">{{ t('export_no_ym_token') }}</p>
 </div>
 {% else %}
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -35,7 +35,7 @@
 
     <!-- Service selection -->
     <div class="mb-6">
-      <p class="text-sm font-semibold text-gray-700 mb-3">Источник</p>
+      <p class="text-sm font-semibold text-gray-700 mb-3">{{ t('export_content') }}</p>
       <div class="space-y-2">
         {% for svc in services %}
         <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer
@@ -52,7 +52,7 @@
 
     <!-- Format selection -->
     <div class="mb-6">
-      <p class="text-sm font-semibold text-gray-700 mb-3">Формат</p>
+      <p class="text-sm font-semibold text-gray-700 mb-3">{{ t('export_format') }}</p>
       <div class="grid grid-cols-2 gap-3">
         <label class="flex flex-col gap-1 p-3 rounded-xl border border-gray-200 cursor-pointer
                        hover:border-indigo-300 hover:bg-indigo-50 transition has-[:checked]:border-indigo-500
@@ -61,7 +61,7 @@
             <input type="radio" name="fmt" value="csv" checked class="accent-indigo-600">
             <span class="text-sm font-semibold text-gray-800">CSV</span>
           </div>
-          <span class="text-xs text-gray-400 pl-5">Удобен для Excel / Google Sheets</span>
+          <span class="text-xs text-gray-400 pl-5">{{ t('export_csv_hint') }}</span>
         </label>
         <label class="flex flex-col gap-1 p-3 rounded-xl border border-gray-200 cursor-pointer
                        hover:border-indigo-300 hover:bg-indigo-50 transition has-[:checked]:border-indigo-500
@@ -70,16 +70,15 @@
             <input type="radio" name="fmt" value="json" class="accent-indigo-600">
             <span class="text-sm font-semibold text-gray-800">JSON</span>
           </div>
-          <span class="text-xs text-gray-400 pl-5">Для разработчиков и скриптов</span>
+          <span class="text-xs text-gray-400 pl-5">{{ t('export_json_hint') }}</span>
         </label>
       </div>
     </div>
 
     <!-- Info -->
     <div class="bg-gray-50 rounded-xl p-4 text-xs text-gray-500 mb-6 space-y-1">
-      <p>Экспортируются <strong class="text-gray-700">лайкнутые треки</strong> из выбранного сервиса.</p>
-      <p>Файл совместим с разделом <a href="/import" class="text-indigo-600 hover:underline">Импорт</a> — можно использовать как источник для переноса.</p>
-      <p>Колонки: <code class="bg-white px-1 rounded border border-gray-200">artist</code>, <code class="bg-white px-1 rounded border border-gray-200">title</code></p>
+      <p>{{ t('export_liked_tracks') }}</p>
+      <p>{{ t('export_note') }}</p>
     </div>
 
     <button type="submit" id="export-btn"
@@ -88,26 +87,20 @@
         <path stroke-linecap="round" stroke-linejoin="round"
           d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
       </svg>
-      Скачать файл
+      {{ t('export_btn') }}
     </button>
   </form>
 
 </div>
 
 <script>
-  // Show loading state while file downloads
+  const _loadingText = {{ t('export_loading') | tojson }};
+  const _btnText = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg> {{ t('export_btn') }}`;
   document.getElementById('export-form').addEventListener('submit', function() {
     const btn = document.getElementById('export-btn');
     btn.disabled = true;
-    btn.textContent = 'Загружаю треки…';
-    // Re-enable after delay (download doesn't navigate away)
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-      </svg> Скачать файл`;
-    }, 15000);
+    btn.textContent = _loadingText;
+    setTimeout(() => { btn.disabled = false; btn.innerHTML = _btnText; }, 15000);
   });
 </script>
 {% endif %}

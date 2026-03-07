@@ -14,40 +14,46 @@ from loguru import logger
 from bot.states import AuthFlow, MigrationFlow
 from bot.api_client import api_client
 from config import settings
+from core.i18n import t
 
 router = Router()
 
-_POLL_INTERVAL = 15  # секунд между опросами статуса
-_NOT_FOUND_PREVIEW = 30  # треков в превью-списке
-
-# Кнопка для отмены во время миграции
-_KB_CANCEL = InlineKeyboardMarkup(inline_keyboard=[[
-    InlineKeyboardButton(text="Отключиться от переноса", callback_data="migration:detach"),
-]])
+_POLL_INTERVAL = 15  # seconds between status polls
+_NOT_FOUND_PREVIEW = 30  # tracks shown inline
 
 
-def _kb_result(migration_id: int, not_found: int) -> InlineKeyboardMarkup:
-    """Клавиатура финального сообщения."""
+async def _get_lang(state: FSMContext) -> str:
+    data = await state.get_data()
+    return data.get("lang", "ru")
+
+
+def _kb_cancel(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t("bot_btn_detach", lang), callback_data="migration:detach"),
+    ]])
+
+
+def _kb_result(migration_id: int, not_found: int, lang: str) -> InlineKeyboardMarkup:
     web_url = settings.api_base_url.rstrip("/")
     rows = []
     if not_found > 0:
         rows.append([InlineKeyboardButton(
-            text=f"Ненайденные треки ({not_found})",
+            text=t("bot_btn_not_found", lang).format(n=not_found),
             callback_data=f"migration:not_found:{migration_id}",
         )])
     rows.append([InlineKeyboardButton(
-        text="Открыть в браузере",
+        text=t("bot_btn_open_browser", lang),
         url=f"{web_url}/migrate/{migration_id}/tracks",
     )])
     rows.append([InlineKeyboardButton(
-        text="Новый перенос",
+        text=t("bot_btn_new_transfer", lang),
         callback_data="migration:new",
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ---------------------------------------------------------------------------
-# Старт миграции
+# Start migration
 # ---------------------------------------------------------------------------
 
 @router.callback_query(AuthFlow.confirming, F.data.startswith("start_migration"))
@@ -55,19 +61,16 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
 
-    mode = callback.data.split(":")[-1]  # "tracks" или "full"
+    mode = callback.data.split(":")[-1]  # "tracks" or "full"
+    lang = await _get_lang(state)
 
     data = await state.get_data()
     ym_token = data["yandex_token"]
     sc_token = data["soundcloud_token"]
     user_id = str(callback.from_user.id)
 
-    mode_label = "треки + плейлисты + артисты" if mode == "full" else "только треки"
-    progress_msg = await callback.message.answer(
-        f"Перенос запущен ({mode_label})...\n"
-        "Загружаю треки из Яндекс Музыки, подожди немного.",
-        reply_markup=_KB_CANCEL,
-    )
+    start_key = "bot_migration_started_full" if mode == "full" else "bot_migration_started_tracks"
+    progress_msg = await callback.message.answer(t(start_key, lang), reply_markup=_kb_cancel(lang))
 
     await state.set_state(MigrationFlow.in_progress)
     await state.update_data(progress_msg_id=progress_msg.message_id)
@@ -75,9 +78,9 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     try:
         migration_id = await api_client.start_migration(user_id, ym_token, sc_token, mode)
     except Exception as e:
-        logger.exception(f"Не удалось запустить миграцию: {e}")
+        logger.exception(f"Failed to start migration: {e}")
         await progress_msg.edit_text(
-            f"Не удалось запустить перенос:\n<code>{e}</code>\n\nПопробуй /migrate снова.",
+            t("bot_migration_fail_start", lang).format(e=e),
             parse_mode="HTML",
             reply_markup=None,
         )
@@ -100,71 +103,66 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
 @router.callback_query(AuthFlow.confirming, F.data == "cancel_migration")
 async def on_cancel_migration(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    lang = await _get_lang(state)
     await state.clear()
-    await callback.message.edit_text("Отменено. Напиши /migrate чтобы начать заново.")
+    await callback.message.edit_text(t("bot_cancel_confirm", lang))
 
 
 # ---------------------------------------------------------------------------
-# Управление во время миграции
+# Controls during migration
 # ---------------------------------------------------------------------------
 
 @router.callback_query(F.data == "migration:detach")
 async def on_detach(callback: CallbackQuery, state: FSMContext) -> None:
-    """Пользователь отключается от отслеживания — задача на сервере продолжится."""
+    """User detaches from tracking — job continues on server."""
     await callback.answer()
     current = await state.get_state()
+    lang = await _get_lang(state)
     if current != MigrationFlow.in_progress:
-        await callback.answer("Активного переноса нет.", show_alert=True)
+        await callback.answer(t("bot_detach_no_active", lang), show_alert=True)
         return
     await state.clear()
     try:
-        await callback.message.edit_text(
-            "Отключились от переноса. Задача продолжит работу на сервере.\n"
-            "Используй /status или /history в браузере для проверки.",
-            reply_markup=None,
-        )
+        await callback.message.edit_text(t("bot_detach_msg", lang), reply_markup=None)
     except TelegramBadRequest:
         pass
 
 
 @router.message(MigrationFlow.in_progress)
 async def migration_in_progress(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
-    msg_id = data.get("progress_msg_id")
-    await message.answer(
-        "Перенос уже идёт. Используй /status для проверки прогресса.\n"
-        f"Сообщение с прогрессом: #{msg_id}"
-    )
+    lang = await _get_lang(state)
+    await message.answer(t("bot_already_in_progress", lang))
 
 
 # ---------------------------------------------------------------------------
-# Callbacks финального сообщения
+# Final message callbacks
 # ---------------------------------------------------------------------------
 
 @router.callback_query(F.data.startswith("migration:not_found:"))
-async def on_show_not_found(callback: CallbackQuery) -> None:
+async def on_show_not_found(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    lang = await _get_lang(state)
     migration_id = int(callback.data.split(":")[-1])
 
     try:
         tracks = await api_client.get_not_found_tracks(migration_id)
     except Exception as e:
-        await callback.answer(f"Не удалось загрузить список: {e}", show_alert=True)
+        await callback.answer(t("bot_not_found_error", lang).format(e=e), show_alert=True)
         return
 
     if not tracks:
-        await callback.answer("Ненайденных треков нет.", show_alert=True)
+        await callback.answer(t("bot_not_found_none", lang), show_alert=True)
         return
 
     preview = tracks[:_NOT_FOUND_PREVIEW]
-    text = f"<b>Ненайденные треки ({len(tracks)}):</b>\n\n"
-    text += "\n".join(f"• {t}" for t in preview)
+    text = t("bot_not_found_list", lang).format(n=len(tracks))
+    text += "\n".join(f"• {tr}" for tr in preview)
     if len(tracks) > _NOT_FOUND_PREVIEW:
         remaining = len(tracks) - _NOT_FOUND_PREVIEW
         web_url = settings.api_base_url.rstrip("/")
-        text += (
-            f"\n\n<i>...и ещё {remaining} треков.</i>\n"
-            f'Полный список: <a href="{web_url}/migrate/{migration_id}/tracks?status=not_found">в браузере</a>'
+        text += t("bot_not_found_more", lang).format(
+            n=remaining,
+            url=f"{web_url}/migrate/{migration_id}/tracks?status=not_found",
         )
 
     await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
@@ -179,7 +177,7 @@ async def on_new_migration(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Цикл опроса прогресса
+# Progress poll loop
 # ---------------------------------------------------------------------------
 
 async def _poll_migration(
@@ -189,20 +187,22 @@ async def _poll_migration(
     migration_id: int,
     state: FSMContext,
 ) -> None:
-    """Опрашивает API каждые N секунд, обновляет сообщение с прогрессом."""
+    """Poll API every N seconds and update the progress message."""
     last_text = ""
 
     while True:
         await asyncio.sleep(_POLL_INTERVAL)
 
-        # Если пользователь отключился — останавливаем слежение
         if await state.get_state() != MigrationFlow.in_progress:
             return
+
+        state_data = await state.get_data()
+        lang = state_data.get("lang", "ru")
 
         try:
             data = await api_client.get_migration_status(migration_id)
         except Exception as e:
-            logger.warning(f"Ошибка опроса миграции #{migration_id}: {e}")
+            logger.warning(f"Poll error migration #{migration_id}: {e}")
             continue
 
         migration = data.get("migration", {})
@@ -216,8 +216,8 @@ async def _poll_migration(
         done = liked + not_found + errors
 
         if mig_status in ("done", "failed", "cancelled"):
-            text = _build_final_text(migration_id, tracks, data.get("artists", {}))
-            kb = _kb_result(migration_id, not_found)
+            text = _build_final_text(tracks, data.get("artists", {}), lang)
+            kb = _kb_result(migration_id, not_found, lang)
             try:
                 await bot.edit_message_text(
                     chat_id=chat_id,
@@ -227,24 +227,20 @@ async def _poll_migration(
                     reply_markup=kb,
                 )
             except TelegramBadRequest:
-                await bot.send_message(
-                    chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=kb
-                )
+                await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=kb)
             await state.clear()
             return
 
-        # Промежуточный прогресс
+        # Intermediate progress
         if total:
             percent = int(done / total * 100)
             bar = _progress_bar(percent)
-            text = (
-                f"Идёт перенос...\n\n"
-                f"{bar} {percent}%\n"
-                f"{done} / {total} треков\n\n"
-                f"Перенесено: {liked} | Не найдено: {not_found} | Ошибок: {errors}"
+            text = t("bot_progress_bar", lang).format(
+                bar=bar, pct=percent, done=done, total=total,
+                liked=liked, nf=not_found, err=errors,
             )
         else:
-            text = "Идёт перенос... Загружаю треки."
+            text = t("bot_progress_loading", lang)
 
         if text != last_text:
             last_text = text
@@ -253,37 +249,28 @@ async def _poll_migration(
                     chat_id=chat_id,
                     message_id=progress_msg_id,
                     text=text,
-                    reply_markup=_KB_CANCEL,
+                    reply_markup=_kb_cancel(lang),
                 )
             except TelegramBadRequest:
                 pass
 
 
-def _build_final_text(migration_id: int, tracks: dict, artists: dict) -> str:
+def _build_final_text(tracks: dict, artists: dict, lang: str) -> str:
     liked = tracks.get("liked", 0)
     not_found = tracks.get("not_found", 0)
     errors = tracks.get("error", 0)
     total = sum(tracks.values())
 
-    text = (
-        "Перенос завершён!\n\n"
-        "<b>Треки:</b>\n"
-        f"  Перенесено:  <b>{liked}</b>\n"
-        f"  Не найдено:  <b>{not_found}</b>\n"
-        f"  Ошибок:      <b>{errors}</b>\n"
-        f"  Всего:       <b>{total}</b>\n"
+    text = t("bot_done_tracks", lang).format(
+        liked=liked, nf=not_found, err=errors, total=total,
     )
     if artists:
         followed = artists.get("followed", 0)
         art_not_found = artists.get("not_found", 0)
-        text += (
-            "\n<b>Артисты:</b>\n"
-            f"  Подписок:   <b>{followed}</b>\n"
-            f"  Не найдено: <b>{art_not_found}</b>\n"
-        )
+        text += t("bot_done_artists", lang).format(followed=followed, nf=art_not_found)
     return text
 
 
 def _progress_bar(percent: int, length: int = 20) -> str:
     filled = int(length * percent / 100)
-    return "█" * filled + "░" * (length - filled)
+    return "\u2588" * filled + "\u2591" * (length - filled)

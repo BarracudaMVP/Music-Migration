@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}История переносов{% endblock %}
+{% block title %}{{ t('history_title') }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl sm:text-2xl font-bold">История переносов</h1>
+  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_title') }}</h1>
   <a href="/"
     class="inline-flex items-center gap-1 bg-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition font-medium">
-    + Новый
+    {{ t('history_new_btn') }}
   </a>
 </div>
 
@@ -20,7 +20,7 @@
         <span class="text-xs font-bold text-indigo-500">#{{ m.id }}</span>
       </div>
       <div class="min-w-0">
-        <div class="text-sm font-medium text-gray-700 truncate">Перенос #{{ m.id }}</div>
+        <div class="text-sm font-medium text-gray-700 truncate">{{ t('history_transfer') }} #{{ m.id }}</div>
         <div class="text-xs text-gray-400">
           {{ m.created_at.strftime('%d.%m.%Y %H:%M') if m.created_at else '' }}
         </div>
@@ -51,8 +51,8 @@
         d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
     </svg>
   </div>
-  <p class="text-gray-400 mb-3">Переносов пока нет.</p>
-  <a href="/" class="text-indigo-600 hover:underline text-sm font-medium">Начать первый</a>
+  <p class="text-gray-400 mb-3">{{ t('history_empty') }}</p>
+  <a href="/" class="text-indigo-600 hover:underline text-sm font-medium">{{ t('history_start') }}</a>
 </div>
 {% endif %}
 {% endblock %}

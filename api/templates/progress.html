@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Перенос #{{ migration_id }}{% endblock %}
+{% block title %}{{ t('history_transfer') }} #{{ migration_id }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl sm:text-2xl font-bold">Перенос <span class="text-indigo-600">#{{ migration_id }}</span></h1>
-  <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">← История</a>
+  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('progress_back') }}</a>
 </div>
 
 <div
@@ -18,7 +18,7 @@
       <svg class="w-5 h-5 animate-spin-slow" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.636 15.364A9 9 0 104.582 9H9"/>
       </svg>
-      <span class="text-sm">Загрузка...</span>
+      <span class="text-sm">{{ t('progress_loading') }}</span>
     </div>
   </div>
 </div>

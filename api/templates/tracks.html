@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Треки переноса #{{ migration_id }}{% endblock %}
+{% block title %}{{ t('history_transfer') }} #{{ migration_id }} — {{ t('result_tracks_btn') }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-5">
-  <h1 class="text-xl font-bold">Треки <span class="text-indigo-600">#{{ migration_id }}</span></h1>
-  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-400 hover:text-indigo-600 transition">← Результат</a>
+  <h1 class="text-xl font-bold">{{ t('result_tracks_btn') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('tracks_back') }}</a>
 </div>
 
 <!-- Stats bar -->
@@ -28,13 +28,13 @@
   <a href="?status=&page=1"
     class="px-3 py-1.5 rounded-full text-xs font-medium border transition
       {% if not status_filter %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
-    Все
+    {{ t('tracks_filter_all') }}
   </a>
-  {% for s, label in [('liked','Перенесены'), ('not_found','Не найдены'), ('error','Ошибки'), ('pending','В очереди')] %}
+  {% for s, key in [('liked','tracks_liked'), ('not_found','tracks_not_found'), ('error','tracks_errors'), ('pending','tracks_pending')] %}
   <a href="?status={{ s }}&page=1"
     class="px-3 py-1.5 rounded-full text-xs font-medium border transition
       {% if status_filter == s %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
-    {{ label }}
+    {{ t(key) }}
   </a>
   {% endfor %}
 </div>
@@ -46,33 +46,33 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="text-left text-gray-400 border-b bg-gray-50 text-xs">
-          <th class="px-4 py-3 font-medium">Исполнитель</th>
-          <th class="px-4 py-3 font-medium">Название</th>
-          <th class="px-4 py-3 font-medium">Статус</th>
-          <th class="px-4 py-3 font-medium text-right">Score</th>
-          <th class="px-4 py-3 font-medium text-center">SC</th>
+          <th class="px-4 py-3 font-medium">{{ t('tracks_col_artist') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('tracks_col_title') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('tracks_col_status') }}</th>
+          <th class="px-4 py-3 font-medium text-right">{{ t('tracks_col_score') }}</th>
+          <th class="px-4 py-3 font-medium text-center">{{ t('tracks_col_sc') }}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
-        {% for t in tracks %}
+        {% for t_row in tracks %}
         <tr class="hover:bg-gray-50 transition">
-          <td class="px-4 py-2 text-gray-700 max-w-[160px] truncate" title="{{ t.ym_artist }}">{{ t.ym_artist }}</td>
-          <td class="px-4 py-2 max-w-[160px] truncate font-medium" title="{{ t.ym_title }}">{{ t.ym_title }}</td>
+          <td class="px-4 py-2 text-gray-700 max-w-[160px] truncate" title="{{ t_row.ym_artist }}">{{ t_row.ym_artist }}</td>
+          <td class="px-4 py-2 max-w-[160px] truncate font-medium" title="{{ t_row.ym_title }}">{{ t_row.ym_title }}</td>
           <td class="px-4 py-2 whitespace-nowrap">
             <span class="text-xs px-2 py-0.5 rounded-full font-medium
-              {% if t.status == 'liked' %}bg-green-50 text-green-700
-              {% elif t.status == 'not_found' %}bg-orange-50 text-orange-700
-              {% elif t.status == 'error' %}bg-red-50 text-red-700
+              {% if t_row.status == 'liked' %}bg-green-50 text-green-700
+              {% elif t_row.status == 'not_found' %}bg-orange-50 text-orange-700
+              {% elif t_row.status == 'error' %}bg-red-50 text-red-700
               {% else %}bg-gray-100 text-gray-500{% endif %}">
-              {{ status_label_map.get(t.status, t.status) }}
+              {{ status_label_map.get(t_row.status, t_row.status) }}
             </span>
           </td>
           <td class="px-4 py-2 font-mono text-xs text-gray-400 text-right whitespace-nowrap">
-            {{ "%.0f"|format(t.match_score) if t.match_score else '—' }}
+            {{ "%.0f"|format(t_row.match_score) if t_row.match_score else '—' }}
           </td>
           <td class="px-4 py-2 text-center">
-            {% if t.sc_url %}
-            <a href="{{ t.sc_url }}" target="_blank" rel="noopener"
+            {% if t_row.sc_url %}
+            <a href="{{ t_row.sc_url }}" target="_blank" rel="noopener"
               class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
             {% else %}<span class="text-gray-300">—</span>{% endif %}
           </td>
@@ -82,30 +82,30 @@
     </table>
   </div>
   {% else %}
-  <p class="text-gray-400 text-sm p-8 text-center">Треков не найдено.</p>
+  <p class="text-gray-400 text-sm p-8 text-center">{{ t('tracks_empty') }}</p>
   {% endif %}
 </div>
 
 <!-- Pagination -->
 {% if total_pages > 1 %}
 <div class="flex items-center justify-between text-sm">
-  <span class="text-xs text-gray-400">{{ total }} треков · стр. {{ page }} из {{ total_pages }}</span>
+  <span class="text-xs text-gray-400">{{ total }} {{ t('tracks_of') }} — {{ t('tracks_page_of') }} {{ page }} {{ t('tracks_of') }} {{ total_pages }}</span>
   <div class="flex gap-2">
     {% if page > 1 %}
     <a href="?status={{ status_filter }}&page={{ page - 1 }}"
       class="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:border-gray-400 text-xs transition">
-      ← Назад
+      {{ t('tracks_back_btn') }}
     </a>
     {% endif %}
     {% if page < total_pages %}
     <a href="?status={{ status_filter }}&page={{ page + 1 }}"
       class="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:border-gray-400 text-xs transition">
-      Вперёд →
+      {{ t('tracks_next_btn') }}
     </a>
     {% endif %}
   </div>
 </div>
 {% else %}
-<p class="text-xs text-gray-400 text-right">{{ total }} треков</p>
+<p class="text-xs text-gray-400 text-right">{{ total }} {{ t('tracks_of') }}</p>
 {% endif %}
 {% endblock %}

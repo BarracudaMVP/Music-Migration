@@ -294,6 +294,15 @@ async def save_spotify_token(user_id: str, token: str) -> None:
         await session.commit()
 
 
+async def save_user_lang(user_id: str, lang: str) -> None:
+    """Обновляет язык интерфейса пользователя."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserSession).where(UserSession.user_id == user_id).values(lang=lang)
+        )
+        await session.commit()
+
+
 async def load_user_session(user_id: str) -> dict | None:
     async with AsyncSessionLocal() as session:
         row = await session.get(UserSession, user_id)
@@ -304,6 +313,7 @@ async def load_user_session(user_id: str) -> dict | None:
             "soundcloud_token": decrypt_token(row.soundcloud_token),
             "spotify_token": decrypt_token(row.spotify_token) if row.spotify_token else None,
             "role": row.role,
+            "lang": row.lang,
             "updated_at": row.updated_at,
         }
 

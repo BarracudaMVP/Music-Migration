@@ -19,21 +19,51 @@ from core.db import (
     load_user_session,
     save_user_session,
     save_spotify_token,
+    save_user_lang,
     delete_user_session,
 )
 from core.db.crud import get_all_tracks
 from core.services.registry import ServiceRegistry
+from core.i18n import t as _t, detect_lang_web
 
 templates = Jinja2Templates(directory="api/templates")
 router = APIRouter()
 
-_STATUS_LABEL = {
+
+# ---------------------------------------------------------------------------
+# i18n helpers
+# ---------------------------------------------------------------------------
+
+def get_lang(request: Request) -> str:
+    return detect_lang_web(request)
+
+
+def _render(template: str, request: Request, ctx: dict) -> templates.TemplateResponse:
+    """Shortcut: inject lang + t() into every template context."""
+    lang = get_lang(request)
+    ctx["lang"] = lang
+    ctx["t"] = lambda key: _t(key, lang)
+    return templates.TemplateResponse(template, {"request": request, **ctx})
+
+
+_STATUS_LABEL_RU = {
     "pending": "В очереди",
     "running": "Выполняется",
     "done": "Завершён",
     "failed": "Ошибка",
     "cancelled": "Отменён",
 }
+_STATUS_LABEL_EN = {
+    "pending": "Queued",
+    "running": "Running",
+    "done": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+}
+
+def _status_label(status: str, lang: str) -> str:
+    labels = _STATUS_LABEL_EN if lang == "en" else _STATUS_LABEL_RU
+    return labels.get(status, status)
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +84,21 @@ def _ensure_user_id(request: Request) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Language switcher
+# ---------------------------------------------------------------------------
+
+@router.get("/set-lang", response_class=HTMLResponse)
+async def set_lang(request: Request, lang: str = "ru", next: str = "/"):
+    if lang not in ("ru", "en"):
+        lang = "ru"
+    request.session["lang"] = lang
+    user_id = _session_user_id(request)
+    if user_id:
+        await save_user_lang(user_id, lang)
+    return RedirectResponse(next, status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Index
 # ---------------------------------------------------------------------------
 
@@ -63,16 +108,12 @@ async def index(request: Request, error: str = ""):
     db_session = await load_user_session(user_id)
     matrix = ServiceRegistry.get_matrix()
     services = {a.id: a.name for a in ServiceRegistry.all()}
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "authed": db_session is not None,
-            "matrix": matrix,
-            "services": services,
-            "error": error,
-        },
-    )
+    return _render("index.html", request, {
+        "authed": db_session is not None,
+        "matrix": matrix,
+        "services": services,
+        "error": error,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -91,17 +132,13 @@ async def auth_page(request: Request, error: str = ""):
         request.session.get("spotify_connected")
         or (db_session and db_session.get("spotify_token"))
     )
-    return templates.TemplateResponse(
-        "auth.html",
-        {
-            "request": request,
-            "ym_auth_url": get_auth_url(),
-            "ym_done": ym_done,
-            "spotify_done": spotify_done,
-            "spotify_enabled": bool(cfg.spotify_client_id),
-            "error": error,
-        },
-    )
+    return _render("auth.html", request, {
+        "ym_auth_url": get_auth_url(),
+        "ym_done": ym_done,
+        "spotify_done": spotify_done,
+        "spotify_enabled": bool(cfg.spotify_client_id),
+        "error": error,
+    })
 
 
 @router.post("/auth/yandex", response_class=HTMLResponse)
@@ -282,10 +319,9 @@ async def migration_progress(request: Request, migration_id: int):
     migration = await get_migration(migration_id)
     if migration is None:
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(
-        "progress.html",
-        {"request": request, "migration_id": migration_id, "migration": migration},
-    )
+    return _render("progress.html", request, {
+        "migration_id": migration_id, "migration": migration,
+    })
 
 
 @router.get("/migrate/{migration_id}/status-fragment", response_class=HTMLResponse)
@@ -293,23 +329,20 @@ async def migration_status_fragment(request: Request, migration_id: int):
     """HTMX partial — polled every 3 s from progress.html."""
     migration = await get_migration(migration_id)
     if migration is None:
-        return HTMLResponse("<p>Миграция не найдена.</p>")
+        return HTMLResponse("<p>Migration not found.</p>")
 
     stats = await get_track_stats(migration_id)
     done = migration["status"] in ("done", "failed", "cancelled")
-    status_label = _STATUS_LABEL.get(migration["status"], migration["status"])
+    lang = get_lang(request)
+    status_label = _status_label(migration["status"], lang)
 
-    return templates.TemplateResponse(
-        "fragments/status.html",
-        {
-            "request": request,
-            "migration_id": migration_id,
-            "migration": migration,
-            "status_label": status_label,
-            "stats": stats,
-            "done": done,
-        },
-    )
+    return _render("fragments/status.html", request, {
+        "migration_id": migration_id,
+        "migration": migration,
+        "status_label": status_label,
+        "stats": stats,
+        "done": done,
+    })
 
 
 @router.get("/migrate/{migration_id}/result", response_class=HTMLResponse)
@@ -318,25 +351,28 @@ async def migration_result(request: Request, migration_id: int):
     if migration is None:
         return RedirectResponse("/", status_code=303)
     stats = await get_track_stats(migration_id)
-    status_label = _STATUS_LABEL.get(migration["status"], migration["status"])
-    return templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
-            "migration_id": migration_id,
-            "migration": migration,
-            "status_label": status_label,
-            "stats": stats,
-        },
-    )
+    lang = get_lang(request)
+    status_label = _status_label(migration["status"], lang)
+    return _render("result.html", request, {
+        "migration_id": migration_id,
+        "migration": migration,
+        "status_label": status_label,
+        "stats": stats,
+    })
 
 
 _PER_PAGE = 50
-_TRACK_STATUS_LABEL = {
+_TRACK_STATUS_LABEL_RU = {
     "liked": "Перенесён",
     "not_found": "Не найден",
     "error": "Ошибка",
     "pending": "В очереди",
+}
+_TRACK_STATUS_LABEL_EN = {
+    "liked": "Transferred",
+    "not_found": "Not found",
+    "error": "Error",
+    "pending": "Queued",
 }
 
 
@@ -360,21 +396,19 @@ async def migration_tracks(
     )
     stats = await get_track_stats(migration_id)
     total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
-    return templates.TemplateResponse(
-        "tracks.html",
-        {
-            "request": request,
-            "migration_id": migration_id,
-            "migration": migration,
-            "tracks": tracks,
-            "stats": stats,
-            "status_filter": status,
-            "status_label_map": _TRACK_STATUS_LABEL,
-            "page": page,
-            "total_pages": total_pages,
-            "total": total,
-        },
-    )
+    lang = get_lang(request)
+    track_label_map = _TRACK_STATUS_LABEL_EN if lang == "en" else _TRACK_STATUS_LABEL_RU
+    return _render("tracks.html", request, {
+        "migration_id": migration_id,
+        "migration": migration,
+        "tracks": tracks,
+        "stats": stats,
+        "status_filter": status,
+        "status_label_map": track_label_map,
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+    })
 
 
 @router.get("/migrate/{migration_id}/export")
@@ -406,7 +440,7 @@ async def import_page(request: Request, error: str = ""):
     db_session = await load_user_session(user_id)
     if not db_session:
         return RedirectResponse("/auth", status_code=303)
-    return templates.TemplateResponse("import.html", {"request": request, "error": error})
+    return _render("import.html", request, {"error": error})
 
 
 @router.post("/import/preview", response_class=HTMLResponse)
@@ -459,16 +493,12 @@ async def import_preview(request: Request, file: UploadFile = File(...)):
             pass
         return HTMLResponse(f'<p class="text-red-600 text-sm">Ошибка: {e}</p>')
 
-    return templates.TemplateResponse(
-        "fragments/import_preview.html",
-        {
-            "request": request,
-            "columns": columns,
-            "preview": preview,
-            "filename": file.filename,
-            "auto_map": auto_map,
-        },
-    )
+    return _render("fragments/import_preview.html", request, {
+        "columns": columns,
+        "preview": preview,
+        "filename": file.filename,
+        "auto_map": auto_map,
+    })
 
 
 @router.post("/import/start")
@@ -548,10 +578,7 @@ async def export_page(request: Request, error: str = ""):
 
     from core.export import exportable_services
     services = exportable_services()
-    return templates.TemplateResponse(
-        "export.html",
-        {"request": request, "services": services, "error": error},
-    )
+    return _render("export.html", request, {"services": services, "error": error})
 
 
 @router.post("/export/start")
@@ -625,16 +652,14 @@ async def history(request: Request):
         )
         rows = result.scalars().all()
 
+    lang = get_lang(request)
     migrations = [
         {
             "id": m.id,
             "status": m.status,
-            "status_label": _STATUS_LABEL.get(m.status, m.status),
+            "status_label": _status_label(m.status, lang),
             "created_at": m.created_at,
         }
         for m in rows
     ]
-    return templates.TemplateResponse(
-        "history.html",
-        {"request": request, "migrations": migrations},
-    )
+    return _render("history.html", request, {"migrations": migrations})

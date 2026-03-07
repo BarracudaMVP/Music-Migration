@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Music Migration — Главная{% endblock %}
+{% block title %}Music Migration — {{ t('index_title') }}{% endblock %}
 
 {% block content %}
 <div class="mb-8">
-  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Перенос музыки</h1>
-  <p class="text-gray-500 mt-1 text-sm">Переноси треки и плейлисты между стриминговыми сервисами.</p>
+  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">{{ t('index_title') }}</h1>
+  <p class="text-gray-500 mt-1 text-sm">{{ t('index_subtitle') }}</p>
 </div>
 
 {% if error %}
@@ -24,10 +24,10 @@
         d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
     </svg>
   </div>
-  <p class="text-gray-600 mb-5">Войдите, чтобы начать перенос</p>
+  <p class="text-gray-600 mb-5">{{ t('index_not_authed') }}</p>
   <a href="/auth"
     class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 font-medium transition">
-    Войти
+    {{ t('index_login_btn') }}
   </a>
 </div>
 
@@ -38,7 +38,7 @@
 
   <div class="grid sm:grid-cols-2 gap-4">
     <div>
-      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Откуда</label>
+      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_from') }}</label>
       <select name="from_service"
         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
         {% set seen_from = [] %}
@@ -51,7 +51,7 @@
       </select>
     </div>
     <div>
-      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Куда</label>
+      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_to') }}</label>
       <select name="to_service"
         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
         {% set seen_to = [] %}
@@ -66,32 +66,33 @@
   </div>
 
   <div>
-    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Что переносить</label>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_what') }}</label>
     <div class="grid grid-cols-2 gap-2">
       <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-400 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
         <input type="radio" name="mode" value="tracks" class="accent-indigo-600">
-        <span class="text-sm">Только треки</span>
+        <span class="text-sm">{{ t('index_mode_tracks') }}</span>
       </label>
       <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-400 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
         <input type="radio" name="mode" value="full" checked class="accent-indigo-600">
-        <span class="text-sm">Треки + плейлисты</span>
+        <span class="text-sm">{{ t('index_mode_full') }}</span>
       </label>
     </div>
   </div>
 
   <button type="submit"
     class="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 font-semibold transition text-sm">
-    Начать перенос
+    {{ t('index_start_btn') }}
   </button>
 </form>
 
 <p class="text-center text-xs text-gray-400 mt-4">
-  Или <a href="/import" class="text-indigo-500 hover:underline">загрузи файл</a> со списком треков.
+  {{ t('index_import_hint').replace(t('nav_import'), '') }}
+  <a href="/import" class="text-indigo-500 hover:underline">{{ t('nav_import').lower() }}</a>.
 </p>
 
 {% else %}
 <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-800 text-sm">
-  Нет доступных направлений для переноса.
+  {{ t('index_no_routes') }}
 </div>
 {% endif %}
 
