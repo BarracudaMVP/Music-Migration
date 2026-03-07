@@ -54,7 +54,7 @@ SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...)
 SC_RATE_LIMIT_SLEEP=2.0    # Delay between SoundCloud write ops (seconds)
 
 # Database
-DATABASE_URL=              # SQLAlchemy URL (sqlite+aiosqlite:///migration.db or postgresql+asyncpg://...)
+DATABASE_URL=              # SQLAlchemy URL — PostgreSQL only: postgresql+asyncpg://user:pass@host/db
 DB_ENCRYPTION_KEY=         # Fernet key for encrypting saved tokens
 
 # Redis + Worker
@@ -153,7 +153,7 @@ monitoring/
 1. User opens Web UI or sends `/migrate` in bot
 2. If saved session exists → silently validate both tokens → go to confirmation screen
 3. If no session → Yandex OAuth (button link → user logs in → pastes code back) → SoundCloud token (cookie from DevTools)
-4. Tokens saved encrypted in SQLite/PostgreSQL
+4. Tokens saved encrypted in PostgreSQL
 
 ## Documentation Rules
 
@@ -173,8 +173,9 @@ Rule: **no task is considered done until docs are updated.**
 - SoundCloud rate limiting: `sc_rate_limit_sleep` delay + 429 handling with backoff
 - Migration is resumable: DB tracks `pending/liked/not_found/error` per track
 - `YandexMusicClient._uid` may be None for some OAuth tokens → API calls omit `user_id` param
-- SQLAlchemy `_dialect_insert()` helper selects sqlite/postgresql dialect at runtime
-- `render_as_batch=True` in alembic for SQLite ALTER TABLE support
+- SQLAlchemy `_dialect_insert()` uses PostgreSQL insert in production; SQLite fallback only for in-memory test fixtures
+- Schema managed by `alembic upgrade head` (runs in entrypoint.sh); `init_db()` removed
+- Dev deps (aiosqlite, pytest) in `requirements-dev.txt`; production deps in `requirements.txt`
 - ARQ job_id stored in Redis key `migration_job:{id}` (TTL 86400s); admin cancel uses `Job.abort(timeout=2)`
 - `from_service`/`to_service` validated against ServiceRegistry matrix before job enqueue
 - Track search uses multi-query strategy: `split_artists()` splits compound artists (feat./&/x), runs parallel SC searches, deduplicates by sc_id, then falls back to title-only if pool is empty
