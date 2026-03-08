@@ -137,6 +137,57 @@ class SpotifyClient:
         return artists
 
     # ------------------------------------------------------------------
+    # Поиск и запись
+    # ------------------------------------------------------------------
+
+    async def search_tracks(self, query: str, limit: int = 10) -> list[SpotifyTrack]:
+        """Search tracks by query string."""
+        self._ensure_init()
+        async with self._session.get(  # type: ignore[union-attr]
+            f"{_BASE}/search",
+            params={"q": query, "type": "track", "limit": limit},
+        ) as resp:
+            data = await resp.json()
+        return [
+            self._convert_track(item)
+            for item in data.get("tracks", {}).get("items", [])
+            if item and item.get("id")
+        ]
+
+    async def like_track(self, track_id: str) -> bool:
+        """Save track to user's Liked Songs (PUT /me/tracks)."""
+        self._ensure_init()
+        async with self._session.put(  # type: ignore[union-attr]
+            f"{_BASE}/me/tracks",
+            json={"ids": [track_id]},
+        ) as resp:
+            return resp.status in (200, 201)
+
+    async def search_artists(self, query: str, limit: int = 10) -> list[SpotifyArtist]:
+        """Search artists by query string."""
+        self._ensure_init()
+        async with self._session.get(  # type: ignore[union-attr]
+            f"{_BASE}/search",
+            params={"q": query, "type": "artist", "limit": limit},
+        ) as resp:
+            data = await resp.json()
+        return [
+            SpotifyArtist(id=item["id"], name=item["name"])
+            for item in data.get("artists", {}).get("items", [])
+            if item and item.get("id")
+        ]
+
+    async def follow_artist(self, artist_id: str) -> bool:
+        """Follow an artist (PUT /me/following?type=artist)."""
+        self._ensure_init()
+        async with self._session.put(  # type: ignore[union-attr]
+            f"{_BASE}/me/following",
+            params={"type": "artist"},
+            json={"ids": [artist_id]},
+        ) as resp:
+            return resp.status in (200, 204)
+
+    # ------------------------------------------------------------------
     # Вспомогательные методы
     # ------------------------------------------------------------------
 

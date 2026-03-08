@@ -10,6 +10,8 @@ class SpotifyAdapter(MusicServiceAdapter):
         | Capability.READ_PLAYLISTS
         | Capability.READ_LIKED_ARTISTS
         | Capability.EXPORT_TRACKS
+        | Capability.WRITE_LIKED_TRACKS
+        | Capability.WRITE_LIKED_ARTISTS
     )
 
     async def fetch_liked_tracks(self, token: str) -> list[dict]:

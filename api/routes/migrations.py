@@ -16,8 +16,9 @@ class StartMigrationRequest(BaseModel):
     soundcloud_token: str = ""
     mode: Literal["tracks", "full"] = "tracks"
     from_service: Literal["yandex_music", "spotify", "soundcloud"] = "yandex_music"
-    to_service: Literal["soundcloud", "yandex_music"] = "soundcloud"
+    to_service: Literal["soundcloud", "yandex_music", "spotify"] = "soundcloud"
     spotify_token: str | None = None
+    spotify_refresh_token: str | None = None
 
 
 class StartMigrationResponse(BaseModel):
@@ -40,12 +41,28 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
             body.yandex_token,
             body.user_id,
         )
+    elif body.to_service == "spotify":
+        # Any source → Spotify (write)
+        source_token = (
+            body.soundcloud_token if body.from_service == "soundcloud"
+            else body.yandex_token
+        )
+        job = await arq.enqueue_job(
+            "run_spotify_write_job",
+            migration_id,
+            source_token,
+            body.from_service,
+            body.spotify_token or "",
+            body.spotify_refresh_token,
+            body.user_id,
+        )
     elif body.from_service == "spotify" and body.spotify_token:
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
             migration_id,
             body.spotify_token,
             body.soundcloud_token,
+            body.mode,
             body.user_id,
         )
     else:

@@ -261,18 +261,29 @@ async def save_user_session(user_id: str, yandex_token: str, soundcloud_token: s
         await session.commit()
 
 
-async def save_spotify_token(user_id: str, token: str) -> None:
-    """Сохраняет или обновляет spotify_token для пользователя.
+async def save_spotify_token(
+    user_id: str,
+    token: str,
+    refresh_token: str | None = None,
+) -> None:
+    """Сохраняет или обновляет spotify_token (и refresh_token) для пользователя.
     Если сессии нет — создаёт с пустыми yandex/soundcloud токенами."""
     async with AsyncSessionLocal() as session:
-        stmt = _dialect_insert(UserSession).values(
-            user_id=user_id,
-            yandex_token="",
-            soundcloud_token="",
-            spotify_token=encrypt_token(token),
-        ).on_conflict_do_update(
+        values: dict = {
+            "user_id": user_id,
+            "yandex_token": "",
+            "soundcloud_token": "",
+            "spotify_token": encrypt_token(token),
+        }
+        update_values: dict = {"spotify_token": encrypt_token(token)}
+        if refresh_token is not None:
+            enc_refresh = encrypt_token(refresh_token)
+            values["spotify_refresh_token"] = enc_refresh
+            update_values["spotify_refresh_token"] = enc_refresh
+
+        stmt = _dialect_insert(UserSession).values(**values).on_conflict_do_update(
             index_elements=["user_id"],
-            set_={"spotify_token": encrypt_token(token)},
+            set_=update_values,
         )
         await session.execute(stmt)
         await session.commit()
@@ -296,6 +307,7 @@ async def load_user_session(user_id: str) -> dict | None:
             "yandex_token": decrypt_token(row.yandex_token),
             "soundcloud_token": decrypt_token(row.soundcloud_token),
             "spotify_token": decrypt_token(row.spotify_token) if row.spotify_token else None,
+            "spotify_refresh_token": decrypt_token(row.spotify_refresh_token) if row.spotify_refresh_token else None,
             "role": row.role,
             "lang": row.lang,
             "updated_at": row.updated_at,
