@@ -59,20 +59,33 @@ Capability:
   READ_LIKED_ARTISTS     WRITE_LIKED_ARTISTS
   EXPORT_FILE            IMPORT_FILE
 
-Сервисы:
-  yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS
-  soundcloud:     WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS
+Сервисы (сейчас):
+  yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS
+  soundcloud:     WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
   file_csv:       EXPORT_FILE, IMPORT_FILE
-  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS
+  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS
+
+Сервисы (после MM-38, MM-39):
+  yandex_music:   + WRITE_LIKED_TRACKS, WRITE_PLAYLISTS
+  spotify:        + WRITE_LIKED_TRACKS, WRITE_PLAYLISTS
 ```
 
 ```
-FROM \ TO     | SoundCloud | File CSV
---------------|------------|----------
-Yandex Music  |     ✓      |    ✓
-Spotify       |     ✓      |    ✓  (MM-22 +)
-File CSV      |     ✓      |    –
-SoundCloud    |     –      |    ✓  (MM-28)
+Матрица переносов (сейчас):
+FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
+--------------|------------|-----------|---------------|--------
+Яндекс Музыка |     ✓      |    ✓      |       –       |    –
+Spotify       |     ✓      |    ✓      |       –       |    –
+File CSV      |     ✓      |    –      |       –       |    –
+SoundCloud    |     –      |    ✓      |       –       |    –
+
+Матрица переносов (после MM-38 + MM-39):
+FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
+--------------|------------|-----------|---------------|--------
+Яндекс Музыка |     ✓      |    ✓      |       –       |  ✓ MM-39
+Spotify       |     ✓      |    ✓      |   ✓ MM-38     |    –
+File CSV      |     ✓      |    –      |   ✓ MM-38     |  ✓ MM-39
+SoundCloud    |     –      |    ✓      |   ✓ MM-38     |  ✓ MM-39
 ```
 
 ---
@@ -462,11 +475,107 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-32 — Читаемые логи в Docker
+### 🔲 MM-36 — Выбор сервиса в Telegram боте
 
-- [ ] Убрать дублирование (сейчас одна запись выводится дважды: colored + JSON в одну строку)
-- [ ] Docker logs должны показывать только JSON (для Promtail) или только human-readable (для дебага)
-- [ ] Рассмотреть `LOG_LEVEL` фильтрацию по сервисам
+> Сейчас бот жёстко захардкожен на YM → SC. Нужно добавить выбор источника и приёмника через inline-кнопки.
+
+**Источники (FROM):** Яндекс Музыка, Spotify, File (CSV/JSON)
+**Приёмники (TO):** SoundCloud, Яндекс Музыка *(после MM-38)*, Spotify *(после MM-39)*
+
+**Реализация:**
+- [ ] После auth-шага — inline-кнопки выбора источника (только те, для которых есть токен в сессии)
+- [ ] После выбора источника — inline-кнопки выбора приёмника (ServiceRegistry matrix фильтрует допустимые пары)
+- [ ] FSM state `MigrationFlow.selecting_service` — хранит `from_service`, `to_service`
+- [ ] `bot/handlers/migration.py` — передаёт `from_service`/`to_service` в API при старте задачи
+- [ ] `bot/api_client.py` — `start_migration()` принимает `from_service`, `to_service`
+- [ ] `api/routes/migrations.py` — `StartMigrationRequest` уже содержит логику выбора, убедиться что валидирует через ServiceRegistry matrix
+- [ ] i18n: кнопки и тексты на ru/en
+
+**Auth flow изменится:**
+- Бот запрашивает токены только для выбранного источника и приёмника
+- Если токен уже сохранён в сессии — предлагает использовать сохранённый
+
+---
+
+### 🔲 MM-37 — Настройка Spotify приложения
+
+> Без `SPOTIFY_CLIENT_ID / SECRET / REDIRECT_URI` Spotify в веб-интерфейсе скрыт и не работает.
+> Задача — зафиксировать процесс настройки и убедиться что всё задокументировано.
+
+- [ ] Создать Spotify app на developer.spotify.com
+- [ ] Прописать Redirect URI: `{API_BASE_URL}/auth/spotify/callback`
+- [ ] Scopes для READ (уже): `user-library-read`, `playlist-read-private`, `user-follow-read`
+- [ ] Scopes для WRITE *(после MM-39)*: + `user-library-modify`, `playlist-modify-private`, `playlist-modify-public`
+- [ ] Добавить в `.env` на EU сервере: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`
+- [ ] Проверить что кнопка Spotify появляется на `/auth` в веб-интерфейсе
+
+---
+
+### 🔲 MM-38 — Яндекс Музыка WRITE (лайки + плейлисты)
+
+> Библиотека `yandex-music` поддерживает запись — можно переносить треки В Яндекс Музыку.
+> Открывает направления: SC → YM, Spotify → YM, File → YM.
+
+**YandexMusicClient (новые методы):**
+- [ ] `like_track(track_id)` → `client.users_likes_tracks_add([track_id])` *(или батчем)*
+- [ ] `create_playlist(title)` → `client.users_playlists_create(title, visibility='private')`
+- [ ] `add_tracks_to_playlist(playlist_kind, tracks)` → `client.users_playlists_change(kind, diff)`
+- [ ] `search_tracks(query)` — уже есть в YM API, нужен метод для поиска на YM по artist+title
+
+**YandexMusicAdapter:**
+- [ ] Добавить `WRITE_LIKED_TRACKS | WRITE_PLAYLISTS`
+- [ ] Matcher: fuzzy-поиск результатов YM аналогично SC (rapidfuzz + транслитерация)
+
+**Пайплайн:**
+- [ ] `migration/yandex_tracks.py` — `migrate_to_yandex(sc_client_or_tracks, ym_client, migration_id)` — переиспользует `_run_pending_loop` логику
+- [ ] `worker/tasks.py` — `run_yandex_migration_job`
+
+**ServiceRegistry matrix после MM-38:**
+```
+SC → YM ✓, Spotify → YM ✓, File → YM ✓
+```
+
+**Риски:**
+- `yandex-music` — неофициальная библиотека, методы write могут меняться
+- Поиск на YM: качество результатов под вопросом — нужно тестировать matcher
+
+---
+
+### 🔲 MM-39 — Spotify WRITE (лайки + плейлисты)
+
+> Официальный Spotify API поддерживает запись. Открывает направления: YM → Spotify, SC → Spotify, File → Spotify.
+
+**SpotifyClient (новые методы):**
+- [ ] `like_track(track_id)` → `PUT /me/tracks?ids={id}`
+- [ ] `search_tracks(query)` → `GET /search?type=track` (для поиска по artist+title)
+- [ ] `create_playlist(title)` → `POST /users/{user_id}/playlists`
+- [ ] `add_tracks_to_playlist(playlist_id, track_uris)` → `POST /playlists/{id}/tracks`
+
+**SpotifyAdapter:**
+- [ ] Добавить `WRITE_LIKED_TRACKS | WRITE_PLAYLISTS`
+- [ ] Дополнительные OAuth scopes: `user-library-modify`, `playlist-modify-private`, `playlist-modify-public`
+- [ ] `save_user_id(token)` — нужен `user_id` для создания плейлиста (`GET /me`)
+
+**Пайплайн:**
+- [ ] `migration/spotify_write.py` — перенос треков В Spotify (поиск + лайк/добавление в плейлист)
+- [ ] `worker/tasks.py` — `run_spotify_write_job`
+
+**ServiceRegistry matrix после MM-39:**
+```
+YM → Spotify ✓, SC → Spotify ✓, File → Spotify ✓
+```
+
+**Важно:** refresh token нужно начать сохранять (сейчас не сохраняется — MM-22 limitation). Без него токен истекает через 1 час.
+
+---
+
+### ✅ MM-32 — Читаемые логи в Docker
+
+- [x] Убрать дублирование: `LOG_FORMAT` env var переключает режим (`pretty` | `json`)
+- [x] `pretty` (default) — один sink: stderr, colored (локальная разработка)
+- [x] `json` — один sink: stdout, newline-delimited JSON (Docker/Promtail)
+- [x] `docker-compose.yml` — `LOG_FORMAT=json` прописан для api/bot/worker
+- [x] `config.py` — `log_format` поле; `CLAUDE.md` — задокументировано
 
 ---
 
