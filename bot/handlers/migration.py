@@ -207,6 +207,7 @@ async def _poll_migration(
 
         migration = data.get("migration", {})
         tracks = data.get("tracks", {})
+        current_track = data.get("current_track")
         mig_status = migration.get("status", "running")
 
         total = sum(tracks.values()) if tracks else 0
@@ -241,6 +242,9 @@ async def _poll_migration(
             )
         else:
             text = t("bot_progress_loading", lang)
+
+        if current_track:
+            text += f"\n\n♪ {current_track}"
 
         if text != last_text:
             last_text = text

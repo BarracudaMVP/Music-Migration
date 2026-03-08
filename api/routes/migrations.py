@@ -48,8 +48,18 @@ async def get_migration_status(migration_id: int):
     track_stats = await get_track_stats(migration_id)
     artist_stats = await get_artist_stats(migration_id)
 
+    current_track = None
+    if migration["status"] == "running":
+        from api.main import get_arq_pool
+        arq = get_arq_pool()
+        if arq:
+            val = await arq.get(f"migration_current_track:{migration_id}")
+            if val:
+                current_track = val.decode() if isinstance(val, bytes) else val
+
     return {
         "migration": migration,
         "tracks": track_stats,
         "artists": artist_stats,
+        "current_track": current_track,
     }
