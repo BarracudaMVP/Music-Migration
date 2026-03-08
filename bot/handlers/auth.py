@@ -8,7 +8,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 
 from bot.states import AuthFlow
 from bot.api_client import api_client
-from core.i18n import t, detect_lang_tg
+from core.i18n import t, detect_lang_tg, format_eta
 
 router = Router()
 
@@ -278,11 +278,16 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
 
+    from config import settings as _cfg
+    eta = format_eta(track_count, "soundcloud", lang, _cfg.sc_rate_limit_sleep) \
+        if isinstance(track_count, int) else ""
+
     await loading.edit_text(
         t("bot_confirm", lang).format(
             tracks=track_count,
             playlists=playlist_count,
             artists=artist_count,
+            eta=eta,
         ),
         parse_mode="HTML",
         reply_markup=kb,
@@ -313,8 +318,12 @@ async def _show_confirmation_spotify(message: Message, state: FSMContext) -> Non
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
 
+    from config import settings as _cfg
+    eta = format_eta(track_count, "soundcloud", lang, _cfg.sc_rate_limit_sleep) \
+        if isinstance(track_count, int) else ""
+
     await loading.edit_text(
-        t("bot_confirm_spotify", lang).format(tracks=track_count),
+        t("bot_confirm_spotify", lang).format(tracks=track_count, eta=eta),
         parse_mode="HTML",
         reply_markup=kb,
     )

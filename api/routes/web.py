@@ -337,6 +337,7 @@ async def migration_status_fragment(request: Request, migration_id: int):
     status_label = _status_label(migration["status"], lang)
 
     current_track = None
+    eta = None
     if not done:
         from api.main import get_arq_pool
         arq = get_arq_pool()
@@ -345,6 +346,14 @@ async def migration_status_fragment(request: Request, migration_id: int):
             if val:
                 current_track = val.decode() if isinstance(val, bytes) else val
 
+        if stats:
+            pending = stats.get("pending", 0)
+            if pending > 0:
+                from core.i18n import format_eta
+                from config import settings
+                # to_service not stored in DB yet; defaulting to soundcloud
+                eta = format_eta(pending, "soundcloud", lang, settings.sc_rate_limit_sleep)
+
     return _render("fragments/status.html", request, {
         "migration_id": migration_id,
         "migration": migration,
@@ -352,6 +361,7 @@ async def migration_status_fragment(request: Request, migration_id: int):
         "stats": stats,
         "done": done,
         "current_track": current_track,
+        "eta": eta,
     })
 
 

@@ -588,22 +588,21 @@ YM → Spotify ✓, SC → Spotify ✓, File → Spotify ✓
 
 ---
 
-### 🔲 MM-40 — Динамическая оценка времени переноса
+### ✅ MM-40 — Динамическая оценка времени переноса
 
-> Вместо хардкода «5000 треков ≈ 3–4 часа» — показывать живую оценку на основе реального количества треков.
-> Файловые миграции всё равно проходят через SC rate limit, поэтому оценка применима и к ним.
+> `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` → «⏱ ~6 мин» / «⏱ ~4 ч 52 мин»
 
-**Формула:** `SC_RATE_LIMIT_SLEEP` (сек) + ~1 сек на поиск + ~0.5 сек overhead ≈ **3–4 сек/трек**
-- Консервативная оценка: `ceil(track_count * 3.5 / 60)` минут
-- До 60 мин — показываем в минутах; больше — в часах и минутах
+**Оценки по сервису-получателю:**
+- `soundcloud`: `SC_RATE_LIMIT_SLEEP + 1.5` сек/трек (100 треков ≈ 6 мин при sleep=2.0)
+- `spotify`: 0.8 сек/трек
+- `yandex_music`: 1.5 сек/трек
 
-**Места отображения:**
-- [ ] `core/i18n.py` — хелпер `format_eta(track_count, sc_rate_limit_sleep)` → локализованная строка
-- [ ] Бот, экран подтверждения YM (`_show_confirmation`) — добавить строку `⏱ Примерно N мин`
-- [ ] Бот, экран подтверждения Spotify (`_show_confirmation_spotify`) — то же самое
-- [ ] Веб, страница `/migrate` (confirmation template) — добавить `⏱ Примерно N мин`
-- [ ] `bot_confirm`, `bot_confirm_spotify` i18n-ключи — добавить `{eta}` placeholder
-- [ ] Убрать хардкод «5000 треков ≈ 3–4 часа» из `bot_confirm_spotify`
+**Реализация:**
+- [x] `core/i18n.py` — `format_eta()`, ключи `eta_approx`, `eta_approx_hours`, `eta_label`
+- [x] `bot_confirm`, `bot_confirm_spotify` — убран хардкод, добавлен `{eta}` placeholder
+- [x] Бот, оба экрана подтверждения (`_show_confirmation`, `_show_confirmation_spotify`) — вычисляют и передают ETA
+- [x] Веб, `status.html` fragment — показывает ETA по количеству pending-треков (строка ниже current_track)
+- [x] `web.py` `migration_status_fragment` — вычисляет `eta` и передаёт в шаблон
 
 ---
 
