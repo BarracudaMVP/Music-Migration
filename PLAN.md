@@ -405,6 +405,53 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
+### 🔲 MM-34 — Файрвол на уровне провайдера (Timeweb Cloud)
+
+> Defense in depth: дублируем ufw-правила на уровне сети провайдера.
+> Timeweb Cloud → панель управления → Сеть → Файрвол.
+
+**RU сервер:**
+- [ ] TCP 22 — от всех (SSH)
+- [ ] TCP 1080 — только с EU IP (SOCKS5)
+- [ ] Всё остальное — запретить
+
+**EU сервер:**
+- [ ] TCP 22 — от всех (SSH)
+- [ ] TCP 80 — от всех (HTTP → nginx)
+- [ ] TCP 443 — от всех (HTTPS → nginx)
+- [ ] Всё остальное — запретить
+
+---
+
+### 🔲 MM-33 — YouTube Music интеграция
+
+> Импорт из YouTube Music: лайкнутые треки и плейлисты.
+> YouTube Music API официально закрыт — используем `ytmusicapi` (неофициальная библиотека через cookies).
+> Артисты — под вопросом (ytmusicapi поддерживает подписки на артистов, но нестабильно).
+
+- [ ] `core/youtube/client.py` — `YouTubeMusicClient`: `get_liked_tracks()`, `get_playlists()`
+- [ ] `core/youtube/models.py` — `YTTrack`, `YTPlaylist`
+- [ ] `core/services/youtube/adapter.py` — `YouTubeMusicAdapter`: `READ_LIKED_TRACKS | READ_PLAYLISTS | EXPORT_TRACKS`
+- [ ] Auth: cookie-based (`ytmusicapi` требует `headers_auth.json` из браузера — аналогично SC токену)
+- [ ] `api/routes/web.py` — добавить YouTube в auth flow (вставка headers JSON)
+- [ ] `worker/tasks.py` — `run_youtube_migration_job` ARQ задача
+- [ ] ServiceRegistry matrix: YouTube → SoundCloud, YouTube → File
+
+**Ограничения:**
+- Только чтение (импорт из YT → SC/File), запись в YouTube не планируется
+- `ytmusicapi` работает через scraping — может сломаться при изменении YT
+- Артисты: добавить если `ytmusicapi` стабильно их отдаёт
+
+---
+
+### 🔲 MM-32 — Читаемые логи в Docker
+
+- [ ] Убрать дублирование (сейчас одна запись выводится дважды: colored + JSON в одну строку)
+- [ ] Docker logs должны показывать только JSON (для Promtail) или только human-readable (для дебага)
+- [ ] Рассмотреть `LOG_LEVEL` фильтрацию по сервисам
+
+---
+
 ### 🔲 MM-30 — README
 
 - [ ] Описание сервиса (что делает, кому нужен)
@@ -439,9 +486,9 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - [x] `infrastructure/ansible/eu.yml` — Docker setup + git pull + `docker compose up --build -d` + healthcheck
 - [x] `infrastructure/ansible/inventory.yml` — хосты EU и RU серверов
 - [x] `infrastructure/ansible/group_vars/all.yml` — общие переменные (eu_server_ip, dante_user, deploy_dir)
-- [x] `infrastructure/ansible/group_vars/vault.yml` — секреты (dante_password, шифруется ansible-vault)
+- [x] `infrastructure/ansible/group_vars/vault.yml` — секреты (dante_password, не коммитится — gitignored)
 - [x] `infrastructure/ansible/templates/danted.conf.j2` — Dante конфиг с username auth
-- [ ] **Применить на серверах** — заполнить inventory.yml + `ansible-playbook -i inventory.yml ru.yml --ask-vault-pass`
+- [x] **Применено на серверах** — ufw активен, Dante перезапущен с новым конфигом, прокси протестирован
 
 ---
 
