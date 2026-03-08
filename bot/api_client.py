@@ -85,17 +85,23 @@ class MigrationApiClient:
         ym_token: str,
         sc_token: str,
         mode: str = "tracks",
+        from_service: str = "yandex_music",
+        spotify_token: str | None = None,
     ) -> int:
         """Запускает миграцию. Возвращает migration_id."""
+        body: dict = {
+            "user_id": user_id,
+            "yandex_token": ym_token,
+            "soundcloud_token": sc_token,
+            "mode": mode,
+            "from_service": from_service,
+        }
+        if spotify_token:
+            body["spotify_token"] = spotify_token
         async with httpx.AsyncClient(headers=self._headers) as client:
             resp = await client.post(
                 f"{self._base_url}/api/migrations",
-                json={
-                    "user_id": user_id,
-                    "yandex_token": ym_token,
-                    "soundcloud_token": sc_token,
-                    "mode": mode,
-                },
+                json=body,
                 timeout=30,
             )
             resp.raise_for_status()

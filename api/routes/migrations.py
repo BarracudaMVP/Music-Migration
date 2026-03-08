@@ -12,9 +12,11 @@ router = APIRouter(dependencies=[Depends(verify_internal_token)])
 
 class StartMigrationRequest(BaseModel):
     user_id: str
-    yandex_token: str
+    yandex_token: str = ""
     soundcloud_token: str
     mode: Literal["tracks", "full"] = "tracks"
+    from_service: Literal["yandex_music", "spotify"] = "yandex_music"
+    spotify_token: str | None = None
 
 
 class StartMigrationResponse(BaseModel):
@@ -25,14 +27,25 @@ class StartMigrationResponse(BaseModel):
 async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)):
     """Создаёт запись миграции и ставит задачу в ARQ-очередь."""
     migration_id = await create_migration(body.user_id)
-    job = await arq.enqueue_job(
-        "run_migration_job",
-        migration_id,
-        body.yandex_token,
-        body.soundcloud_token,
-        body.mode,
-        body.user_id,
-    )
+
+    if body.from_service == "spotify" and body.spotify_token:
+        job = await arq.enqueue_job(
+            "run_spotify_migration_job",
+            migration_id,
+            body.spotify_token,
+            body.soundcloud_token,
+            body.user_id,
+        )
+    else:
+        job = await arq.enqueue_job(
+            "run_migration_job",
+            migration_id,
+            body.yandex_token,
+            body.soundcloud_token,
+            body.mode,
+            body.user_id,
+        )
+
     if job:
         await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
     return StartMigrationResponse(migration_id=migration_id)

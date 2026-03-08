@@ -65,18 +65,29 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     lang = await _get_lang(state)
 
     data = await state.get_data()
-    ym_token = data["yandex_token"]
+    ym_token = data.get("yandex_token", "")
     sc_token = data["soundcloud_token"]
+    from_service = data.get("from_service", "yandex_music")
+    spotify_token = data.get("spotify_token")
     user_id = str(callback.from_user.id)
 
-    start_key = "bot_migration_started_full" if mode == "full" else "bot_migration_started_tracks"
+    if from_service == "spotify":
+        start_key = "bot_migration_started_spotify"
+    elif mode == "full":
+        start_key = "bot_migration_started_full"
+    else:
+        start_key = "bot_migration_started_tracks"
     progress_msg = await callback.message.answer(t(start_key, lang), reply_markup=_kb_cancel(lang))
 
     await state.set_state(MigrationFlow.in_progress)
     await state.update_data(progress_msg_id=progress_msg.message_id)
 
     try:
-        migration_id = await api_client.start_migration(user_id, ym_token, sc_token, mode)
+        migration_id = await api_client.start_migration(
+            user_id, ym_token, sc_token, mode,
+            from_service=from_service,
+            spotify_token=spotify_token,
+        )
     except Exception as e:
         logger.exception(f"Failed to start migration: {e}")
         await progress_msg.edit_text(

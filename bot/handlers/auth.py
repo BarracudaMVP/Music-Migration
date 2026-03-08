@@ -21,7 +21,7 @@ async def _get_lang(state: FSMContext) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Entry point — check saved session
+# Entry point — check saved session, then show FROM selection
 # ---------------------------------------------------------------------------
 
 async def start_auth(message: Message, state: FSMContext) -> None:
@@ -37,43 +37,94 @@ async def start_auth(message: Message, state: FSMContext) -> None:
             lang = session["lang"]
         await state.update_data(lang=lang)
 
-    if not session:
-        await _ask_yandex_token(message, state)
-        return
+    if session:
+        await state.update_data(
+            yandex_token=session.get("yandex_token", ""),
+            soundcloud_token=session.get("soundcloud_token", ""),
+            spotify_token=session.get("spotify_token"),
+        )
 
+    await _show_from_selection(message, state)
+
+
+async def _show_from_selection(message: Message, state: FSMContext) -> None:
+    lang = await _get_lang(state)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("bot_service_yandex", lang), callback_data="service:from:yandex_music")],
+        [InlineKeyboardButton(text=t("bot_service_spotify", lang), callback_data="service:from:spotify")],
+    ])
+    await message.answer(t("bot_select_from", lang), reply_markup=kb)
+    await state.set_state(AuthFlow.selecting_from)
+
+
+@router.callback_query(AuthFlow.selecting_from, F.data == "service:from:yandex_music")
+async def on_select_from_ym(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await state.update_data(from_service="yandex_music")
+
+    data = await state.get_data()
+    user_id = str(callback.from_user.id)
     lang = await _get_lang(state)
 
-    # Validate YM token
-    try:
-        from core.yandex.client import YandexMusicClient
+    # If we have a saved YM token, validate it
+    if data.get("yandex_token"):
+        try:
+            from core.yandex.client import YandexMusicClient
+            from config import settings
+            await YandexMusicClient(data["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
+            logger.info(f"Saved YM token valid for user_id={user_id}")
+            # Also validate SC token
+            if data.get("soundcloud_token"):
+                try:
+                    from core.soundcloud.client import SoundCloudClient
+                    sc = await SoundCloudClient(data["soundcloud_token"]).init()
+                    await sc.close()
+                    logger.info(f"Saved SC token valid for user_id={user_id}")
+                    await _show_confirmation(callback.message, state)
+                    return
+                except Exception:
+                    await api_client.delete_session(user_id)
+                    logger.warning(f"SC token expired for user_id={user_id}")
+                    await callback.message.answer(t("bot_sc_expired", lang))
+            await _ask_soundcloud_token(callback.message, state)
+        except Exception:
+            await api_client.delete_session(user_id)
+            logger.warning(f"YM token expired for user_id={user_id}")
+            await callback.message.answer(t("bot_ym_expired", lang))
+            await _ask_yandex_token(callback.message, state)
+    else:
+        await _ask_yandex_token(callback.message, state)
+
+
+@router.callback_query(AuthFlow.selecting_from, F.data == "service:from:spotify")
+async def on_select_from_spotify(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await state.update_data(from_service="spotify")
+
+    data = await state.get_data()
+    lang = await _get_lang(state)
+
+    if not data.get("spotify_token"):
         from config import settings
-        await YandexMusicClient(session["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
-        logger.info(f"Saved YM token valid for user_id={user_id}")
-    except Exception:
-        await api_client.delete_session(user_id)
-        logger.warning(f"YM token expired for user_id={user_id}")
-        await message.answer(t("bot_ym_expired", lang))
-        await _ask_yandex_token(message, state)
+        web_url = settings.api_base_url.rstrip("/")
+        await callback.message.answer(
+            t("bot_spotify_no_token", lang).format(url=web_url),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        await state.clear()
         return
 
-    # Validate SC token
-    try:
-        from core.soundcloud.client import SoundCloudClient
-        sc = await SoundCloudClient(session["soundcloud_token"]).init()
-        await sc.close()
-        logger.info(f"Saved SC token valid for user_id={user_id}")
-    except Exception:
-        await api_client.delete_session(user_id)
-        logger.warning(f"SC token expired for user_id={user_id}")
-        await message.answer(t("bot_sc_expired", lang))
-        await _ask_soundcloud_token(message, state, ym_token=session["yandex_token"])
-        return
+    await _show_confirmation_spotify(callback.message, state)
 
-    await state.update_data(
-        yandex_token=session["yandex_token"],
-        soundcloud_token=session["soundcloud_token"],
-    )
-    await _show_confirmation(message, state)
+
+@router.callback_query(F.data == "auth:new_tokens")
+async def on_new_tokens(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await _ask_yandex_token(callback.message, state)
 
 
 @router.callback_query(F.data == "auth:new_tokens")
@@ -194,10 +245,11 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Confirmation screen
+# Confirmation screens
 # ---------------------------------------------------------------------------
 
 async def _show_confirmation(message: Message, state: FSMContext) -> None:
+    """Yandex Music → SoundCloud confirmation."""
     lang = await _get_lang(state)
     loading = await message.answer(t("bot_loading_account", lang))
 
@@ -232,6 +284,37 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
             playlists=playlist_count,
             artists=artist_count,
         ),
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    await state.set_state(AuthFlow.confirming)
+
+
+async def _show_confirmation_spotify(message: Message, state: FSMContext) -> None:
+    """Spotify → SoundCloud confirmation."""
+    lang = await _get_lang(state)
+    loading = await message.answer(t("bot_loading_account", lang))
+
+    data = await state.get_data()
+    spotify_token = data["spotify_token"]
+
+    track_count = "?"
+    try:
+        from core.spotify.client import SpotifyClient
+        sp_client = SpotifyClient(spotify_token)
+        tracks = await sp_client.get_liked_tracks()
+        track_count = len(tracks)
+        await state.update_data(track_count=track_count)
+    except Exception:
+        pass
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks")],
+        [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
+    ])
+
+    await loading.edit_text(
+        t("bot_confirm_spotify", lang).format(tracks=track_count),
         parse_mode="HTML",
         reply_markup=kb,
     )

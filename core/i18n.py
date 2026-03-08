@@ -269,6 +269,35 @@ _S: dict[str, dict[str, str]] = {
     "bot_sc_ok":            {"ru": "SoundCloud подключён! Сессия сохранена.", "en": "SoundCloud connected! Session saved."},
     "bot_sc_error":         {"ru": "Не удалось подключиться к SoundCloud: {detail}\n\nПопробуй ещё раз:", "en": "Could not connect to SoundCloud: {detail}\n\nTry again:"},
 
+    "bot_select_from": {
+        "ru": "Выбери источник переноса:",
+        "en": "Select transfer source:",
+    },
+    "bot_service_yandex":  {"ru": "Яндекс Музыка 🎵", "en": "Yandex Music 🎵"},
+    "bot_service_spotify": {"ru": "Spotify 🟢",        "en": "Spotify 🟢"},
+    "bot_spotify_no_token": {
+        "ru": (
+            "Для Spotify нужна авторизация через веб-интерфейс.\n\n"
+            "1. Открой: <a href=\"{url}\">{url}</a>\n"
+            "2. Нажми «Подключить Spotify»\n"
+            "3. Вернись сюда и отправь /migrate снова."
+        ),
+        "en": (
+            "Spotify requires web authorization.\n\n"
+            "1. Open: <a href=\"{url}\">{url}</a>\n"
+            "2. Click «Connect Spotify»\n"
+            "3. Return here and send /migrate again."
+        ),
+    },
+    "bot_confirm_spotify": {
+        "ru": "<b>Spotify подключён! Перенести треки в SoundCloud?</b>\n\nТреков в Spotify: <b>{tracks}</b>\n\n5000 треков ≈ 3–4 часа.",
+        "en": "<b>Spotify connected! Transfer tracks to SoundCloud?</b>\n\nSpotify tracks: <b>{tracks}</b>\n\n5000 tracks ≈ 3–4 hours.",
+    },
+    "bot_migration_started_spotify": {
+        "ru": "Перенос запущен (Spotify → SoundCloud)...\nЗагружаю треки из Spotify, подожди немного.",
+        "en": "Transfer started (Spotify → SoundCloud)...\nFetching tracks from Spotify, please wait.",
+    },
+
     "bot_loading_account":  {"ru": "Получаю информацию об аккаунте...", "en": "Fetching account info..."},
     "bot_confirm": {
         "ru": (
