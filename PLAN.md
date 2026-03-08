@@ -425,30 +425,63 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ### 🔲 MM-33 — YouTube Music интеграция
 
-> Импорт из YouTube Music: лайкнутые треки и плейлисты.
-> YouTube Music API официально закрыт — используем `ytmusicapi` (неофициальная библиотека через cookies).
-> Артисты — под вопросом (ytmusicapi поддерживает подписки на артистов, но нестабильно).
+> Двунаправленная интеграция: чтение через `ytmusicapi` (unofficial, cookies), запись через YouTube Data API v3 (official, OAuth).
+> YouTube Data API v3 поддерживает лайки, плейлисты, подписки на каналы официально.
 
-- [ ] `core/youtube/client.py` — `YouTubeMusicClient`: `get_liked_tracks()`, `get_playlists()`
-- [ ] `core/youtube/models.py` — `YTTrack`, `YTPlaylist`
-- [ ] `core/services/youtube/adapter.py` — `YouTubeMusicAdapter`: `READ_LIKED_TRACKS | READ_PLAYLISTS | EXPORT_TRACKS`
-- [ ] Auth: cookie-based (`ytmusicapi` требует `headers_auth.json` из браузера — аналогично SC токену)
-- [ ] `api/routes/web.py` — добавить YouTube в auth flow (вставка headers JSON)
+**Архитектура:**
+- **Чтение** (`ytmusicapi`, cookie-based): `get_liked_tracks()`, `get_playlists()`, `get_followed_artists()`
+- **Запись** (YouTube Data API v3, OAuth): `like_track()` (`videos.rate`), `create_playlist()` (`playlists.insert`), `add_to_playlist()` (`playlistItems.insert`), `follow_artist()` (`subscriptions.insert`)
+- Auth разделена: cookies для чтения, OAuth для записи
+
+**Read (YT → другие сервисы):**
+- [ ] `core/youtube/client.py` — `YouTubeMusicClient`: `get_liked_tracks()`, `get_playlists()`, `get_followed_artists()` (через `ytmusicapi`)
+- [ ] `core/youtube/models.py` — `YTTrack`, `YTPlaylist`, `YTArtist`
+- [ ] `core/services/youtube/adapter.py` — `YouTubeMusicAdapter`: `READ_LIKED_TRACKS | READ_PLAYLISTS | READ_LIKED_ARTISTS | EXPORT_TRACKS`
+- [ ] Auth (чтение): cookie/headers JSON из браузера — аналогично SC токену
+
+**Write (другие → YT):**
+- [ ] `core/youtube/api_client.py` — `YouTubeAPIClient`: `like_track()`, `create_playlist()`, `add_to_playlist()`, `follow_channel()` (через YouTube Data API v3)
+- [ ] Auth (запись): Google OAuth 2.0 (scopes: `youtube.force-ssl`)
+- [ ] `core/services/youtube/adapter.py` — добавить `WRITE_LIKED_TRACKS | WRITE_PLAYLISTS | WRITE_LIKED_ARTISTS`
+- [ ] ServiceRegistry matrix: * → YouTube (треки, плейлисты, артисты)
 - [ ] `worker/tasks.py` — `run_youtube_migration_job` ARQ задача
-- [ ] ServiceRegistry matrix: YouTube → SoundCloud, YouTube → File
 
-**Ограничения:**
-- Только чтение (импорт из YT → SC/File), запись в YouTube не планируется
-- `ytmusicapi` работает через scraping — может сломаться при изменении YT
-- Артисты: добавить если `ytmusicapi` стабильно их отдаёт
+**Web:**
+- [ ] `api/routes/web.py` — YouTube в auth flow: отдельные секции для cookies (чтение) и OAuth (запись)
+- [ ] ServiceRegistry matrix обновить: YT → SC/File, YM/Spotify/SC → YT
+
+**Риски:**
+- `ytmusicapi` — scraping, может сломаться при изменении YT
+- YouTube Data API v3 — квоты (10 000 units/day по умолчанию); лайк = 50 units, создание плейлиста = 50 units
+- Поиск треков: в YT нет прямого аналога "найти песню по artist+title" — нужен `search()` через ytmusicapi или YouTube Search API
 
 ---
 
-### 🔲 MM-32 — Читаемые логи в Docker
+### 🔲 MM-35 — Текущий трек в прогрессе и логах
 
-- [ ] Убрать дублирование (сейчас одна запись выводится дважды: colored + JSON в одну строку)
-- [ ] Docker logs должны показывать только JSON (для Promtail) или только human-readable (для дебага)
-- [ ] Рассмотреть `LOG_LEVEL` фильтрацию по сервисам
+> Показывать пользователю, какой трек сейчас обрабатывается. Логировать каждый трек в воркере.
+> Часть про логи может быть объединена с MM-32 если реализуются вместе.
+
+**Воркер / пайплайн:**
+- [ ] `migration/tracks.py` — `logger.info("Processing track: {artist} - {title}", ...)` перед поиском
+- [ ] `worker/tasks.py` — при обновлении прогресса в Redis писать `current_track: "{artist} - {title}"`
+
+**Веб:**
+- [ ] `api/routes/web.py` — GET `/migrate/{id}` возвращает `current_track` из Redis-прогресса
+- [ ] `api/templates/fragments/status.html` — строка «Сейчас: {artist} - {title}» под прогресс-баром (HTMX обновляет каждые 3 с)
+
+**Telegram бот:**
+- [ ] `bot/handlers/migration.py` — poll-цикл показывает текущий трек в сообщении прогресса
+
+---
+
+### ✅ MM-32 — Читаемые логи в Docker
+
+- [x] Убрать дублирование: `LOG_FORMAT` env var переключает режим (`pretty` | `json`)
+- [x] `pretty` (default) — один sink: stderr, colored (локальная разработка)
+- [x] `json` — один sink: stdout, newline-delimited JSON (Docker/Promtail)
+- [x] `docker-compose.yml` — `LOG_FORMAT=json` прописан для api/bot/worker
+- [x] `config.py` — `log_format` поле; `CLAUDE.md` — задокументировано
 
 ---
 

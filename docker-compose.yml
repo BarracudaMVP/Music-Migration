@@ -45,6 +45,8 @@ services:
       dockerfile: Dockerfile.api
     restart: unless-stopped
     env_file: .env
+    environment:
+      LOG_FORMAT: json
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,6 +73,8 @@ services:
       dockerfile: Dockerfile.bot
     restart: unless-stopped
     env_file: .env
+    environment:
+      LOG_FORMAT: json
     depends_on:
       api:
         condition: service_healthy
@@ -89,6 +93,8 @@ services:
       dockerfile: Dockerfile.worker
     restart: unless-stopped
     env_file: .env
+    environment:
+      LOG_FORMAT: json
     depends_on:
       redis:
         condition: service_healthy

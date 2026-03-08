@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     sc_rate_limit_sleep: float = Field(default=2.0)
     match_threshold: float = Field(default=75.0)
     log_level: str = Field(default="INFO")
+    log_format: str = Field(default="pretty")  # "pretty" = colored stderr (dev), "json" = JSON stdout (Docker)
 
     # FastAPI (MVP4)
     database_url: str = Field(default="")

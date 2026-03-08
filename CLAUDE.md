@@ -73,6 +73,7 @@ WEB_ALLOWED_IPS=           # comma-separated IPs allowed to access web UI; empty
 # Misc
 MATCH_THRESHOLD=75.0       # Minimum fuzzy match score (0–100)
 LOG_LEVEL=INFO
+LOG_FORMAT=pretty           # "pretty" = colored stderr (dev), "json" = JSON stdout (Docker/Promtail)
 ```
 
 Generate encryption key:
