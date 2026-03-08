@@ -43,6 +43,11 @@
     <span class="truncate">{{ t('status_current_track') }}: <span class="text-gray-600">{{ current_track }}</span></span>
   </div>
   {% endif %}
+  {% if eta %}
+  <div class="px-6 py-1.5 text-xs text-gray-400 border-b border-gray-50">
+    {{ t('eta_label') }}: <span class="text-gray-600 font-medium">{{ eta }}</span>
+  </div>
+  {% endif %}
   {% endif %}
 
   <!-- Stats -->

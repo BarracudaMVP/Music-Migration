@@ -294,8 +294,8 @@ _S: dict[str, dict[str, str]] = {
         ),
     },
     "bot_confirm_spotify": {
-        "ru": "<b>Spotify подключён! Перенести треки в SoundCloud?</b>\n\nТреков в Spotify: <b>{tracks}</b>\n\n5000 треков ≈ 3–4 часа.",
-        "en": "<b>Spotify connected! Transfer tracks to SoundCloud?</b>\n\nSpotify tracks: <b>{tracks}</b>\n\n5000 tracks ≈ 3–4 hours.",
+        "ru": "<b>Spotify подключён! Перенести треки в SoundCloud?</b>\n\nТреков в Spotify: <b>{tracks}</b>\n\n{eta}. Бот пришлёт уведомление когда закончит.",
+        "en": "<b>Spotify connected! Transfer tracks to SoundCloud?</b>\n\nSpotify tracks: <b>{tracks}</b>\n\n{eta}. The bot will notify you when done.",
     },
     "bot_migration_started_spotify": {
         "ru": "Перенос запущен (Spotify → SoundCloud)...\nЗагружаю треки из Spotify, подожди немного.",
@@ -309,14 +309,14 @@ _S: dict[str, dict[str, str]] = {
             "Лайкнутых треков:   <b>{tracks}</b>\n"
             "Плейлистов:         <b>{playlists}</b>\n"
             "Лайкнутых артистов: <b>{artists}</b>\n\n"
-            "5000 треков ≈ 3–4 часа. Бот пришлёт уведомление когда закончит."
+            "{eta}. Бот пришлёт уведомление когда закончит."
         ),
         "en": (
             "<b>Ready! What would you like to transfer?</b>\n\n"
             "Liked tracks:   <b>{tracks}</b>\n"
             "Playlists:      <b>{playlists}</b>\n"
             "Liked artists:  <b>{artists}</b>\n\n"
-            "5000 tracks ≈ 3–4 hours. The bot will notify you when done."
+            "{eta}. The bot will notify you when done."
         ),
     },
     "bot_btn_tracks_only":  {"ru": "Только треки",                    "en": "Tracks only"},
@@ -369,7 +369,34 @@ _S: dict[str, dict[str, str]] = {
     },
     "notif_done_link":    {"ru": "Открыть результат",   "en": "View result"},
     "notif_failed":       {"ru": "Перенос #{id} завершился с ошибкой.\n\nПопробуй запустить снова через /migrate", "en": "Transfer #{id} failed.\n\nTry again with /migrate"},
+
+    # ETA
+    "eta_approx":         {"ru": "⏱ ~{n} мин",         "en": "⏱ ~{n} min"},
+    "eta_approx_hours":   {"ru": "⏱ ~{h} ч {m} мин",   "en": "⏱ ~{h} h {m} min"},
+    "eta_label":          {"ru": "Примерное время",      "en": "Estimated time"},
 }
+
+
+# Seconds per track by destination service (conservative estimates)
+_SECS_PER_TRACK: dict[str, float] = {
+    "yandex_music": 1.5,  # no strict rate limit
+    "spotify":      0.8,  # generous Spotify API limits
+}
+
+
+def format_eta(track_count: int, to_service: str, lang: str = "ru",
+               sc_rate_limit_sleep: float = 2.0) -> str:
+    """Return localised ETA string, e.g. '⏱ ~5 мин' or '⏱ ~2 ч 30 мин'."""
+    import math
+    if to_service == "soundcloud":
+        secs = sc_rate_limit_sleep + 1.5
+    else:
+        secs = _SECS_PER_TRACK.get(to_service, 3.0)
+    total_min = max(1, math.ceil(track_count * secs / 60))
+    if total_min < 60:
+        return t("eta_approx", lang).format(n=total_min)
+    h, m = divmod(total_min, 60)
+    return t("eta_approx_hours", lang).format(h=h, m=m)
 
 
 def t(key: str, lang: str = "ru") -> str:
