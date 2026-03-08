@@ -13,9 +13,10 @@ router = APIRouter(dependencies=[Depends(verify_internal_token)])
 class StartMigrationRequest(BaseModel):
     user_id: str
     yandex_token: str = ""
-    soundcloud_token: str
+    soundcloud_token: str = ""
     mode: Literal["tracks", "full"] = "tracks"
-    from_service: Literal["yandex_music", "spotify"] = "yandex_music"
+    from_service: Literal["yandex_music", "spotify", "soundcloud"] = "yandex_music"
+    to_service: Literal["soundcloud", "yandex_music"] = "soundcloud"
     spotify_token: str | None = None
 
 
@@ -28,7 +29,18 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
     """Создаёт запись миграции и ставит задачу в ARQ-очередь."""
     migration_id = await create_migration(body.user_id)
 
-    if body.from_service == "spotify" and body.spotify_token:
+    if body.to_service == "yandex_music":
+        # Source token depends on from_service
+        source_token = body.spotify_token if body.from_service == "spotify" else body.soundcloud_token
+        job = await arq.enqueue_job(
+            "run_yandex_migration_job",
+            migration_id,
+            source_token,
+            body.from_service,
+            body.yandex_token,
+            body.user_id,
+        )
+    elif body.from_service == "spotify" and body.spotify_token:
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
             migration_id,

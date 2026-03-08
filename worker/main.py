@@ -2,11 +2,21 @@
 from arq.connections import RedisSettings
 
 from config import settings
-from worker.tasks import run_migration_job, run_file_migration_job, run_spotify_migration_job
+from worker.tasks import (
+    run_migration_job,
+    run_file_migration_job,
+    run_spotify_migration_job,
+    run_yandex_migration_job,
+)
 
 
 class WorkerSettings:
-    functions = [run_migration_job, run_file_migration_job, run_spotify_migration_job]
+    functions = [
+        run_migration_job,
+        run_file_migration_job,
+        run_spotify_migration_job,
+        run_yandex_migration_job,
+    ]
     cron_jobs = []
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 5

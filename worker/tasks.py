@@ -27,6 +27,56 @@ async def _get_user_lang(user_id: str) -> str:
     return "ru"
 
 
+async def run_yandex_migration_job(
+    ctx,
+    migration_id: int,
+    source_token: str,
+    from_service: str,
+    ym_token: str,
+    user_id: str,
+) -> None:
+    """ARQ job: migrate liked tracks from any source service → Yandex Music."""
+    from migration.yandex_tracks import migrate_to_yandex
+    from core.yandex.client import YandexMusicClient
+    from core.db import update_migration, get_track_stats
+    from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
+    from config import settings
+
+    logger.info(
+        f"[job] YM migration #{migration_id} from {from_service!r} for user {user_id!r}"
+    )
+    lang = await _get_user_lang(user_id)
+    progress_cb = _make_progress_callback(ctx["redis"], migration_id)
+
+    try:
+        # Fetch source tracks via the appropriate adapter
+        from core.services.registry import ServiceRegistry
+        adapter = ServiceRegistry.get(from_service)
+        tracks_data = await adapter.fetch_liked_tracks(source_token)
+        logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
+
+        ym_client = await YandexMusicClient(
+            ym_token, proxy_url=settings.ym_proxy_url or None
+        ).init()
+
+        await migrate_to_yandex(
+            tracks_data=tracks_data,
+            ym_client=ym_client,
+            migration_id=migration_id,
+            progress_callback=progress_cb,
+        )
+        logger.info(f"[job] YM migration #{migration_id} finished")
+
+        tracks = await get_track_stats(migration_id)
+        await notify_telegram(user_id, migration_done_text(migration_id, tracks, lang=lang))
+
+    except Exception as e:
+        logger.error(f"[job] YM migration #{migration_id} failed: {e}")
+        await update_migration(migration_id, status="failed")
+        await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
+        raise
+
+
 async def run_spotify_migration_job(
     ctx,
     migration_id: int,
