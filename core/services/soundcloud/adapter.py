@@ -6,7 +6,8 @@ class SoundCloudAdapter(MusicServiceAdapter):
     name = "SoundCloud"
     session_token_key = "soundcloud_token"
     capabilities = (
-        Capability.WRITE_LIKED_TRACKS
+        Capability.READ_LIKED_TRACKS
+        | Capability.WRITE_LIKED_TRACKS
         | Capability.WRITE_PLAYLISTS
         | Capability.WRITE_LIKED_ARTISTS
         | Capability.EXPORT_TRACKS

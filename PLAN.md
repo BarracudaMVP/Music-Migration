@@ -520,33 +520,24 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-38 — Яндекс Музыка WRITE (лайки + плейлисты)
+### ✅ MM-38 — Яндекс Музыка WRITE (лайки)
 
-> Библиотека `yandex-music` поддерживает запись — можно переносить треки В Яндекс Музыку.
-> Открывает направления: SC → YM, Spotify → YM, File → YM.
+> Открывает направления: SC → YM ✓, Spotify → YM ✓
 
 **YandexMusicClient (новые методы):**
-- [ ] `like_track(track_id)` → `client.users_likes_tracks_add([track_id])` *(или батчем)*
-- [ ] `create_playlist(title)` → `client.users_playlists_create(title, visibility='private')`
-- [ ] `add_tracks_to_playlist(playlist_kind, tracks)` → `client.users_playlists_change(kind, diff)`
-- [ ] `search_tracks(query)` — уже есть в YM API, нужен метод для поиска на YM по artist+title
+- [x] `search_tracks(query, limit=10)` → `client.search(type_="track")`
+- [x] `like_track(track_id)` → `client.users_likes_tracks_add([track_id])`
 
-**YandexMusicAdapter:**
-- [ ] Добавить `WRITE_LIKED_TRACKS | WRITE_PLAYLISTS`
-- [ ] Matcher: fuzzy-поиск результатов YM аналогично SC (rapidfuzz + транслитерация)
+**Адаптеры:**
+- [x] `YandexMusicAdapter` — добавлен `WRITE_LIKED_TRACKS`
+- [x] `SoundCloudAdapter` — добавлен `READ_LIKED_TRACKS` (метод уже был, флаг отсутствовал)
+- ServiceRegistry matrix автоматически открывает SC→YM и Spotify→YM
 
 **Пайплайн:**
-- [ ] `migration/yandex_tracks.py` — `migrate_to_yandex(sc_client_or_tracks, ym_client, migration_id)` — переиспользует `_run_pending_loop` логику
-- [ ] `worker/tasks.py` — `run_yandex_migration_job`
-
-**ServiceRegistry matrix после MM-38:**
-```
-SC → YM ✓, Spotify → YM ✓, File → YM ✓
-```
-
-**Риски:**
-- `yandex-music` — неофициальная библиотека, методы write могут меняться
-- Поиск на YM: качество результатов под вопросом — нужно тестировать matcher
+- [x] `migration/yandex_tracks.py` — `migrate_to_yandex(tracks_data, ym_client, migration_id)` — те же паттерны что в `tracks.py`: multi-query, dedup, fuzzy match, sleep 1.0s/трек
+- [x] `worker/tasks.py` — `run_yandex_migration_job(ctx, migration_id, source_token, from_service, ym_token, user_id)` — читает треки через ServiceRegistry adapter
+- [x] `worker/main.py` — зарегистрирован новый job
+- [x] `api/routes/migrations.py` — добавлен `to_service` (`soundcloud` | `yandex_music`), маршрутизация на нужный job
 
 ---
 

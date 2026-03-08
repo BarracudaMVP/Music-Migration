@@ -211,6 +211,36 @@ class YandexMusicClient:
         return result
 
     # ------------------------------------------------------------------
+    # Поиск и запись (WRITE)
+    # ------------------------------------------------------------------
+
+    async def search_tracks(self, query: str, limit: int = 10) -> list[YMTrack]:
+        """Поиск треков на Яндекс Музыке по строке запроса."""
+        self._ensure_init()
+        try:
+            result = await self._client.search(query, type_="track", nocorrect=False)
+            if result is None or result.tracks is None:
+                return []
+            tracks = result.tracks.results or []
+            return [self._convert_track(t) for t in tracks[:limit]]
+        except Exception as e:
+            logger.warning(f"Ошибка поиска на YM {query!r}: {e}")
+            return []
+
+    async def like_track(self, track_id: str) -> bool:
+        """Добавляет трек в лайкнутые. track_id — строковый ID трека YM."""
+        self._ensure_init()
+        try:
+            await self._client.users_likes_tracks_add(
+                [track_id],
+                **({} if self._uid is None else {"user_id": self._uid}),
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка лайка трека {track_id} на YM: {e}")
+            return False
+
+    # ------------------------------------------------------------------
     # Вспомогательные методы
     # ------------------------------------------------------------------
 
