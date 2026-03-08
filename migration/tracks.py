@@ -107,7 +107,8 @@ async def _run_pending_loop(
     for i, row in enumerate(pending, start=1):
         track_str = f"{row['ym_artist']} — {row['ym_title']}"
 
-        if progress_callback and i % 10 == 0:
+        logger.info(f"[{i}/{total}] ▶ {track_str}")
+        if progress_callback:
             await progress_callback(i, total, track_str)
 
         try:

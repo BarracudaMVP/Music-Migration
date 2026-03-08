@@ -444,6 +444,24 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
+### ✅ MM-35 — Текущий трек в прогрессе и логах
+
+**Воркер / пайплайн:**
+- [x] `migration/tracks.py` — `logger.info(f"[{i}/{total}] ▶ {track_str}")` перед каждым треком; `progress_callback` вызывается на каждом треке
+- [x] `worker/tasks.py` — `_make_progress_callback(redis, migration_id)` → пишет `migration_current_track:{id}` в Redis (TTL 86400s) для всех трёх job типов
+- [x] `migration/spotify_tracks.py` — `run_spotify_migration()` принимает и пробрасывает `progress_callback`
+
+**Веб:**
+- [x] `api/routes/web.py` — `status_fragment` читает `migration_current_track:{id}` из Redis, передаёт `current_track` в шаблон
+- [x] `api/templates/fragments/status.html` — строка «♪ Сейчас: {track}» под прогресс-баром (HTMX обновляет каждые 3 с)
+
+**REST API + Telegram бот:**
+- [x] `api/routes/migrations.py` — `GET /api/migrations/{id}` включает `current_track` из Redis
+- [x] `bot/handlers/migration.py` — poll-цикл добавляет `♪ {current_track}` к тексту прогресса
+- [x] `core/i18n.py` — ключ `status_current_track` (ru/en)
+
+---
+
 ### 🔲 MM-32 — Читаемые логи в Docker
 
 - [ ] Убрать дублирование (сейчас одна запись выводится дважды: colored + JSON в одну строку)

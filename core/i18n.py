@@ -68,7 +68,8 @@ _S: dict[str, dict[str, str]] = {
     "status_in_queue":    {"ru": "В очереди",           "en": "In queue"},
     "status_report_btn":  {"ru": "Подробный отчёт",     "en": "Detailed report"},
     "status_csv_btn":     {"ru": "Скачать CSV",         "en": "Download CSV"},
-    "status_progress":    {"ru": "Перенесено",          "en": "Transferred"},
+    "status_progress":      {"ru": "Перенесено",  "en": "Transferred"},
+    "status_current_track": {"ru": "Сейчас",      "en": "Now"},
 
     # Status labels (migration status)
     "mstatus_pending":   {"ru": "В очереди",    "en": "Queued"},

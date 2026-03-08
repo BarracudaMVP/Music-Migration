@@ -65,6 +65,7 @@ async def run_spotify_migration(
     migration_id: int,
     user_id: str = "cli",
     mode: str = "tracks",
+    progress_callback=None,
 ) -> MigrationStats:
     """
     Точка входа для ARQ worker.
@@ -74,7 +75,7 @@ async def run_spotify_migration(
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
     try:
-        stats = await migrate_spotify_tracks(spotify_client, sc_client, migration_id)
+        stats = await migrate_spotify_tracks(spotify_client, sc_client, migration_id, progress_callback)
     finally:
         await spotify_client.close()
         await sc_client.close()

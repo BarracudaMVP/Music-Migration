@@ -1,6 +1,19 @@
 """ARQ job definitions for the migration worker."""
 from loguru import logger
 
+_CURRENT_TRACK_TTL = 86400  # seconds
+
+
+def _make_progress_callback(redis, migration_id: int):
+    """Returns an async callback that writes the current track to Redis."""
+    async def callback(current: int, total: int, track_str: str) -> None:
+        await redis.set(
+            f"migration_current_track:{migration_id}",
+            track_str,
+            ex=_CURRENT_TRACK_TTL,
+        )
+    return callback
+
 
 async def _get_user_lang(user_id: str) -> str:
     """Look up user's preferred language from DB session."""
@@ -29,6 +42,7 @@ async def run_spotify_migration_job(
 
     logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}")
     lang = await _get_user_lang(user_id)
+    progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     try:
         await run_spotify_migration(
             spotify_token=spotify_token,
@@ -36,6 +50,7 @@ async def run_spotify_migration_job(
             migration_id=migration_id,
             user_id=user_id,
             mode=mode,
+            progress_callback=progress_cb,
         )
         logger.info(f"[job] Spotify migration #{migration_id} finished")
 
@@ -64,6 +79,7 @@ async def run_migration_job(
 
     logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}")
     lang = await _get_user_lang(user_id)
+    progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     try:
         migrate_full = mode == "full"
         await run_migration(
@@ -73,6 +89,7 @@ async def run_migration_job(
             migration_id=migration_id,
             migrate_playlists=migrate_full,
             migrate_artists=migrate_full,
+            progress_callback=progress_cb,
         )
         logger.info(f"[job] Migration #{migration_id} finished")
 
@@ -105,10 +122,11 @@ async def run_file_migration_job(
         f"{len(tracks)} tracks"
     )
     lang = await _get_user_lang(user_id)
+    progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     try:
         sc_client = await SoundCloudClient(sc_token).init()
         try:
-            await migrate_from_file_tracks(sc_client, migration_id, tracks)
+            await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb)
         finally:
             await sc_client.close()
         logger.info(f"[job] File migration #{migration_id} finished")
