@@ -7,6 +7,7 @@ from worker.tasks import (
     run_file_migration_job,
     run_spotify_migration_job,
     run_yandex_migration_job,
+    run_spotify_write_job,
 )
 
 
@@ -16,6 +17,7 @@ class WorkerSettings:
         run_file_migration_job,
         run_spotify_migration_job,
         run_yandex_migration_job,
+        run_spotify_write_job,
     ]
     cron_jobs = []
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

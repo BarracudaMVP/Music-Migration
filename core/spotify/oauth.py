@@ -17,7 +17,7 @@ from config import settings
 
 _AUTH_URL = "https://accounts.spotify.com/authorize"
 _TOKEN_URL = "https://accounts.spotify.com/api/token"
-_SCOPES = "user-library-read playlist-read-private user-follow-read"
+_SCOPES = "user-library-read playlist-read-private user-follow-read user-library-modify user-follow-modify"
 
 
 def generate_state() -> str:

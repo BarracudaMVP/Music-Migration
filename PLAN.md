@@ -541,31 +541,39 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-39 — Spotify WRITE (лайки + плейлисты)
+### ✅ MM-39 — Spotify WRITE (лайки треков + подписки на артистов)
 
-> Официальный Spotify API поддерживает запись. Открывает направления: YM → Spotify, SC → Spotify, File → Spotify.
+> Официальный Spotify API поддерживает запись. Открывает направления: YM → Spotify ✓, SC → Spotify ✓
 
 **SpotifyClient (новые методы):**
-- [ ] `like_track(track_id)` → `PUT /me/tracks?ids={id}`
-- [ ] `search_tracks(query)` → `GET /search?type=track` (для поиска по artist+title)
-- [ ] `create_playlist(title)` → `POST /users/{user_id}/playlists`
-- [ ] `add_tracks_to_playlist(playlist_id, track_uris)` → `POST /playlists/{id}/tracks`
+- [x] `search_tracks(query, limit=10)` → `GET /search?type=track`
+- [x] `like_track(track_id)` → `PUT /me/tracks` body `{"ids": [id]}`
+- [x] `search_artists(query, limit=10)` → `GET /search?type=artist`
+- [x] `follow_artist(artist_id)` → `PUT /me/following?type=artist` body `{"ids": [id]}`
+
+**OAuth scopes:**
+- [x] Добавлены `user-library-modify` и `user-follow-modify`
+- [x] `spotify_refresh_token` — новый столбец в БД + алембик-миграция, сохраняется при OAuth
 
 **SpotifyAdapter:**
-- [ ] Добавить `WRITE_LIKED_TRACKS | WRITE_PLAYLISTS`
-- [ ] Дополнительные OAuth scopes: `user-library-modify`, `playlist-modify-private`, `playlist-modify-public`
-- [ ] `save_user_id(token)` — нужен `user_id` для создания плейлиста (`GET /me`)
+- [x] Добавлены `WRITE_LIKED_TRACKS | WRITE_LIKED_ARTISTS`
 
 **Пайплайн:**
-- [ ] `migration/spotify_write.py` — перенос треков В Spotify (поиск + лайк/добавление в плейлист)
-- [ ] `worker/tasks.py` — `run_spotify_write_job`
+- [x] `migration/spotify_write.py` — `migrate_to_spotify()` (треки) + `migrate_artists_to_spotify()` (артисты)
+- [x] `worker/tasks.py` — `run_spotify_write_job`: читает треки через ServiceRegistry adapter, авто-рефреш токена перед стартом
+- [x] `api/routes/migrations.py` — `to_service=spotify` маршрутизирует на `run_spotify_write_job`
 
-**ServiceRegistry matrix после MM-39:**
-```
-YM → Spotify ✓, SC → Spotify ✓, File → Spotify ✓
-```
+---
 
-**Важно:** refresh token нужно начать сохранять (сейчас не сохраняется — MM-22 limitation). Без него токен истекает через 1 час.
+### 🔲 MM-42 — Яндекс Музыка WRITE артисты
+
+> Дополнение к MM-38: лайки артистов в Яндекс Музыке.
+
+- [ ] `YandexMusicClient.search_artists(query, limit=10)` → `client.search(type_="artist")`
+- [ ] `YandexMusicClient.like_artist(artist_id)` → `users_likes_artists_add([artist_id])`
+- [ ] `YandexMusicAdapter`: добавить `WRITE_LIKED_ARTISTS`
+- [ ] `migration/yandex_tracks.py`: добавить `migrate_artists_to_yandex(artists_data, ym_client, migration_id)`
+- [ ] `worker/tasks.py`: расширить `run_yandex_migration_job` поддержкой `migrate_artists`
 
 ---
 

@@ -226,7 +226,7 @@ async def auth_spotify_callback(request: Request, code: str = "", state: str = "
         access_token = token_data["access_token"]
         client = await SpotifyClient(access_token).init()
         await client.close()
-        await save_spotify_token(user_id, access_token)
+        await save_spotify_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
         request.session["spotify_connected"] = True
     except Exception as e:
         return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
