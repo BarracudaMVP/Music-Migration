@@ -487,25 +487,22 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-36 — Выбор сервиса в Telegram боте
+### ✅ MM-36 — Выбор сервиса в Telegram боте
 
 > Сейчас бот жёстко захардкожен на YM → SC. Нужно добавить выбор источника и приёмника через inline-кнопки.
 
-**Источники (FROM):** Яндекс Музыка, Spotify, File (CSV/JSON)
-**Приёмники (TO):** SoundCloud, Яндекс Музыка *(после MM-38)*, Spotify *(после MM-39)*
+**Источники (FROM):** Яндекс Музыка, Spotify *(TO всегда SoundCloud на данном этапе)*
 
 **Реализация:**
-- [ ] После auth-шага — inline-кнопки выбора источника (только те, для которых есть токен в сессии)
-- [ ] После выбора источника — inline-кнопки выбора приёмника (ServiceRegistry matrix фильтрует допустимые пары)
-- [ ] FSM state `MigrationFlow.selecting_service` — хранит `from_service`, `to_service`
-- [ ] `bot/handlers/migration.py` — передаёт `from_service`/`to_service` в API при старте задачи
-- [ ] `bot/api_client.py` — `start_migration()` принимает `from_service`, `to_service`
-- [ ] `api/routes/migrations.py` — `StartMigrationRequest` уже содержит логику выбора, убедиться что валидирует через ServiceRegistry matrix
-- [ ] i18n: кнопки и тексты на ru/en
-
-**Auth flow изменится:**
-- Бот запрашивает токены только для выбранного источника и приёмника
-- Если токен уже сохранён в сессии — предлагает использовать сохранённый
+- [x] `/migrate` теперь сначала показывает inline-кнопки выбора источника (Яндекс Музыка / Spotify)
+- [x] FSM state `AuthFlow.selecting_from` — хранит выбор до перехода к авторизации
+- [x] `bot/handlers/auth.py` — `_show_from_selection()`, `on_select_from_ym()`, `on_select_from_spotify()`
+- [x] Если выбран Spotify и токен есть в сессии → показываем подтверждение для Spotify
+- [x] Если выбран Spotify и токена нет → сообщение с ссылкой на веб-интерфейс
+- [x] `bot/handlers/migration.py` — передаёт `from_service` и `spotify_token` в API
+- [x] `bot/api_client.py` — `start_migration()` принимает `from_service`, `spotify_token`
+- [x] `api/routes/migrations.py` — `StartMigrationRequest` маршрутизирует на `run_migration_job` или `run_spotify_migration_job`
+- [x] i18n: `bot_select_from`, `bot_service_yandex`, `bot_service_spotify`, `bot_spotify_no_token`, `bot_confirm_spotify`, `bot_migration_started_spotify`
 
 ---
 
