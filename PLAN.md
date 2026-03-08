@@ -506,17 +506,25 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-37 — Настройка Spotify приложения
+### ✅ MM-37 — Настройка Spotify приложения
 
 > Без `SPOTIFY_CLIENT_ID / SECRET / REDIRECT_URI` Spotify в веб-интерфейсе скрыт и не работает.
-> Задача — зафиксировать процесс настройки и убедиться что всё задокументировано.
 
-- [ ] Создать Spotify app на developer.spotify.com
-- [ ] Прописать Redirect URI: `{API_BASE_URL}/auth/spotify/callback`
-- [ ] Scopes для READ (уже): `user-library-read`, `playlist-read-private`, `user-follow-read`
-- [ ] Scopes для WRITE *(после MM-39)*: + `user-library-modify`, `playlist-modify-private`, `playlist-modify-public`
-- [ ] Добавить в `.env` на EU сервере: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`
-- [ ] Проверить что кнопка Spotify появляется на `/auth` в веб-интерфейсе
+**Scopes (все нужные, задаются в developer.spotify.com при создании app):**
+- READ: `user-library-read`, `playlist-read-private`, `user-follow-read`
+- WRITE (MM-39): `user-library-modify`, `user-follow-modify`
+
+**Шаги (однократно на EU сервере):**
+- [x] Создать Spotify app на developer.spotify.com → My Apps → Create app
+- [x] Прописать Redirect URI: `{API_BASE_URL}/auth/spotify/callback`
+- [x] Добавить в `.env` на EU сервере: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`
+- [x] `docker compose restart api bot worker`
+- [x] Проверить что кнопка Spotify появляется на `/auth` в веб-интерфейсе
+
+**Код (уже готов):**
+- `spotify_enabled = bool(cfg.spotify_client_id)` — кнопка скрыта если `SPOTIFY_CLIENT_ID` не задан
+- `/auth/spotify` → 303 redirect с ошибкой если `spotify_client_id` пустой
+- Все scopes прописаны в `core/spotify/oauth.py` (`_SCOPES`)
 
 ---
 
