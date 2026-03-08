@@ -433,12 +433,15 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 > Dante SOCKS5 прокси на RU сервере сейчас доступен без ограничений по IP.
 > Нужно закрыть порт 1080 для всех кроме EU сервера (и опционально локальной машины разработчика).
+> Реализовано через Ansible playbooks (не bash-скрипты).
 
-- [x] `infra/ru-server/setup-firewall.sh` — ufw: только 22/SSH + 1080 с EU IP (и опционально dev IP)
-- [x] `infra/ru-server/danted.conf` — Dante с `socksmethod: username` (обязательная аутентификация)
-- [x] `infra/ru-server/add-proxy-user.sh` — создание системного пользователя для auth
-- [x] `infra/ru-server/README.md` — пошаговая инструкция применения + проверка + rollback
-- [ ] **Применить на сервере** — запустить скрипты на RU сервере (требует SSH доступа)
+- [x] `infrastructure/ansible/ru.yml` — ufw (deny all, allow 22 + 1080 только с EU IP / dev IP) + Dante с `socksmethod: username` + создание системного пользователя
+- [x] `infrastructure/ansible/eu.yml` — Docker setup + git pull + `docker compose up --build -d` + healthcheck
+- [x] `infrastructure/ansible/inventory.yml` — хосты EU и RU серверов
+- [x] `infrastructure/ansible/group_vars/all.yml` — общие переменные (eu_server_ip, dante_user, deploy_dir)
+- [x] `infrastructure/ansible/group_vars/vault.yml` — секреты (dante_password, шифруется ansible-vault)
+- [x] `infrastructure/ansible/templates/danted.conf.j2` — Dante конфиг с username auth
+- [ ] **Применить на серверах** — заполнить inventory.yml + `ansible-playbook -i inventory.yml ru.yml --ask-vault-pass`
 
 ---
 

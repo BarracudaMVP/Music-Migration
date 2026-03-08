@@ -1,0 +1,17 @@
+# ── Shared variables ─────────────────────────────────────────────────────────
+
+# Public IP of EU server — whitelisted in RU firewall for SOCKS5 port
+eu_server_ip: "EU_SERVER_IP"  # REQUIRED
+
+# Optional: dev machine IP to also allow on port 1080 (leave empty to skip)
+dev_ip: ""
+
+# ── RU server — Dante SOCKS5 ──────────────────────────────────────────────────
+dante_port: 1080
+dante_user: mmproxy          # Linux system user created for auth
+
+# ── EU server — deployment ───────────────────────────────────────────────────
+deploy_dir: /root/Music-Migration
+git_branch: main
+# SSH-формат: git@github.com:USERNAME/music-migration.git
+git_repo: ""  # FILL IN

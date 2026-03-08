@@ -1,0 +1,137 @@
+---
+# EU server: Docker stack deployment
+#
+# Tags:
+#   setup   — install Docker + git (first run only)
+#   deploy  — git pull + docker compose up --build -d
+#
+# Usage (first deploy):
+#   ansible-playbook -i inventory.yml eu.yml
+#
+# Usage (update):
+#   ansible-playbook -i inventory.yml eu.yml --tags deploy
+
+- name: Deploy EU server (Docker stack)
+  hosts: eu
+  become: true
+
+  tasks:
+
+    # ── Docker setup (first run) ──────────────────────────────────────────────
+
+    - name: Install dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - git
+        state: present
+        update_cache: true
+      tags: [setup]
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      tags: [setup]
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      tags: [setup]
+
+    - name: Install Docker engine and compose plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      tags: [setup]
+
+    - name: Start and enable Docker
+      service:
+        name: docker
+        state: started
+        enabled: true
+      tags: [setup]
+
+    # ── Deployment ────────────────────────────────────────────────────────────
+
+    - name: Ensure deploy directory exists
+      file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        mode: "0755"
+      tags: [deploy]
+
+    - name: Check if repo is already cloned
+      stat:
+        path: "{{ deploy_dir }}/.git"
+      register: git_dir
+      tags: [deploy]
+
+    - name: Clone repository (first time)
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ deploy_dir }}"
+        version: "{{ git_branch }}"
+        force: false
+        accept_hostkey: true
+      when: not git_dir.stat.exists and git_repo | length > 0
+      tags: [deploy]
+
+    - name: Pull latest code
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ deploy_dir }}"
+        version: "{{ git_branch }}"
+        force: false
+        accept_hostkey: true
+      when: git_dir.stat.exists and git_repo | length > 0
+      tags: [deploy]
+
+    - name: Check .env exists
+      stat:
+        path: "{{ deploy_dir }}/.env"
+      register: env_file
+      tags: [deploy]
+
+    - name: Fail if .env is missing
+      fail:
+        msg: ".env not found at {{ deploy_dir }}/.env — create it manually on the server first"
+      when: not env_file.stat.exists
+      tags: [deploy]
+
+    - name: Build and start Docker stack
+      shell: docker compose up --build -d
+      args:
+        chdir: "{{ deploy_dir }}"
+      tags: [deploy]
+
+    # ── Verification ──────────────────────────────────────────────────────────
+
+    - name: Wait for API healthcheck
+      uri:
+        url: "http://localhost/health"
+        status_code: 200
+      register: health
+      retries: 10
+      delay: 5
+      until: health.status == 200
+      tags: [deploy]
+
+    - name: Show running containers
+      command: docker compose -f {{ deploy_dir }}/docker-compose.yml ps
+      register: compose_ps
+      changed_when: false
+      tags: [deploy]
+
+    - name: Show container status
+      debug:
+        var: compose_ps.stdout_lines
+      tags: [deploy]

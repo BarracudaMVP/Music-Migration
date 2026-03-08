@@ -1,0 +1,4 @@
+# Скопируй в infrastructure/ansible/group_vars/vault.yml и заполни
+# vault.yml не коммитится — только этот пример
+
+vault_dante_password: "CHANGE_ME"
