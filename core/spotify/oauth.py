@@ -4,7 +4,7 @@ Spotify OAuth 2.0 — Authorization Code Flow.
 Настройка на developer.spotify.com:
   1. My Apps → Create app
   2. Redirect URI: {API_BASE_URL}/auth/spotify/callback
-  3. Права: user-library-read, playlist-read-private, user-follow-read
+  3. Права: user-library-read, playlist-read-private, user-follow-read, user-library-modify, user-follow-modify
   4. Client ID и Client Secret → в .env
 """
 import base64
