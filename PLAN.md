@@ -59,33 +59,21 @@ Capability:
   READ_LIKED_ARTISTS     WRITE_LIKED_ARTISTS
   EXPORT_FILE            IMPORT_FILE
 
-Сервисы (сейчас):
-  yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS
-  soundcloud:     WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
+Сервисы (текущее состояние, MM-38 + MM-39 реализованы):
+  yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS
+  soundcloud:     READ_LIKED_TRACKS, WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
   file_csv:       EXPORT_FILE, IMPORT_FILE
-  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS
-
-Сервисы (после MM-38, MM-39):
-  yandex_music:   + WRITE_LIKED_TRACKS, WRITE_PLAYLISTS
-  spotify:        + WRITE_LIKED_TRACKS, WRITE_PLAYLISTS
+  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS
 ```
 
 ```
-Матрица переносов (сейчас):
+Матрица переносов (текущая):
 FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
 --------------|------------|-----------|---------------|--------
-Яндекс Музыка |     ✓      |    ✓      |       –       |    –
-Spotify       |     ✓      |    ✓      |       –       |    –
-File CSV      |     ✓      |    –      |       –       |    –
-SoundCloud    |     –      |    ✓      |       –       |    –
-
-Матрица переносов (после MM-38 + MM-39):
-FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
---------------|------------|-----------|---------------|--------
-Яндекс Музыка |     ✓      |    ✓      |       –       |  ✓ MM-39
-Spotify       |     ✓      |    ✓      |   ✓ MM-38     |    –
-File CSV      |     ✓      |    –      |   ✓ MM-38     |  ✓ MM-39
-SoundCloud    |     –      |    ✓      |   ✓ MM-38     |  ✓ MM-39
+Яндекс Музыка |     ✓      |    ✓      |       –       |    ✓
+Spotify       |     ✓      |    ✓      |       ✓       |    –
+File CSV      |     ✓      |    –      |       ✓       |    ✓
+SoundCloud    |     –      |    ✓      |       ✓       |    ✓
 ```
 
 ---

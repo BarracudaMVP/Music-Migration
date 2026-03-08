@@ -195,3 +195,4 @@ Rule: **no task is considered done until docs are updated.**
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` in `core/i18n.py` — localised ETA string per destination service
+- `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
