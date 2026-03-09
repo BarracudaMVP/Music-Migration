@@ -221,7 +221,7 @@ Rule: **no task is considered done until docs are updated.**
 
 - All I/O is async (SQLAlchemy 2.x async, aiohttp, aiogram)
 - YM API calls batch by 150 tracks (`_BATCH_SIZE`)
-- SoundCloud rate limiting: `sc_rate_limit_sleep` delay (default 0.1s) + 429 handling with backoff. Official OAuth has no documented aggregate rate limit (only 15k/24h for stream endpoints); delay was 2.0s with cookie tokens to avoid Datadome
+- SoundCloud rate limiting: no proactive sleep (like Spotify pattern); 429 backoff in `like_track`/`follow_user`. Official OAuth has no documented aggregate rate limit (only 15k/24h for `/tracks/:id/stream` which we don't use)
 - Migration is resumable: DB tracks `pending/liked/not_found/error` per track
 - `YandexMusicClient._uid` may be None for some OAuth tokens → API calls omit `user_id` param
 - SQLAlchemy `_dialect_insert()` uses PostgreSQL insert in production; SQLite fallback only for in-memory test fixtures
@@ -240,7 +240,7 @@ Rule: **no task is considered done until docs are updated.**
 - `soundcloud_refresh_token` saved in DB (encrypted) during SC OAuth (MM-52); `_refresh_sc_token_if_needed()` in `worker/tasks.py` auto-refreshes in all SC-destination jobs
 - SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to web `/auth/soundcloud` instead of asking for cookie token
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
-- `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` in `core/i18n.py` — localised ETA string per destination service
+- `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
 - SC write endpoints: `PUT /me/track_likes/{id}`, `POST /playlists`, `PUT /me/followings/{id}` — all correct; Authorization Code Flow grants write access without explicit scope declarations
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available

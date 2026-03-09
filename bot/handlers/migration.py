@@ -15,7 +15,7 @@ from loguru import logger
 from bot.states import AuthFlow, MigrationFlow
 from bot.api_client import api_client
 from config import settings
-from core.i18n import t, format_eta as _format_eta
+from core.i18n import t
 
 router = Router()
 

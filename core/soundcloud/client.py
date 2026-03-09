@@ -15,7 +15,6 @@ import aiohttp
 import soundcloud as sc_lib
 
 from core.soundcloud.models import SCTrack, SCUser, SCPlaylist
-from config import settings
 
 _BASE_URL = "https://api-v2.soundcloud.com"
 # Кол-во результатов поиска для выбора кандидатов
@@ -156,21 +155,16 @@ class SoundCloudClient:
     # ------------------------------------------------------------------
 
     async def like_track(self, track_id: int) -> bool:
-        """
-        Лайкает трек. Возвращает True при успехе.
-        Автоматически ждёт при rate limit (429).
-        """
+        """Лайкает трек. Возвращает True при успехе. Ждёт при 429."""
         self._ensure_init()
         url = f"/me/track_likes/{track_id}"
         try:
             await self._put(url)
-            await asyncio.sleep(settings.sc_rate_limit_sleep)
             return True
         except RateLimitError as e:
             await self._wait_rate_limit(e.reset_time)
             try:
                 await self._put(url)
-                await asyncio.sleep(settings.sc_rate_limit_sleep)
                 return True
             except Exception as retry_err:
                 logger.error(f"like_track {track_id}: retry failed — {retry_err}")
@@ -180,18 +174,16 @@ class SoundCloudClient:
             return False
 
     async def follow_user(self, user_id: int) -> bool:
-        """Подписывается на артиста."""
+        """Подписывается на артиста. Ждёт при 429."""
         self._ensure_init()
         url = f"/me/followings/{user_id}"
         try:
             await self._put(url)
-            await asyncio.sleep(settings.sc_rate_limit_sleep)
             return True
         except RateLimitError as e:
             await self._wait_rate_limit(e.reset_time)
             try:
                 await self._put(url)
-                await asyncio.sleep(settings.sc_rate_limit_sleep)
                 return True
             except Exception as retry_err:
                 logger.error(f"follow_user {user_id}: retry failed — {retry_err}")

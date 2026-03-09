@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     soundcloud_token: str = ""
 
     # Миграция
-    sc_rate_limit_sleep: float = Field(default=0.1)  # official OAuth: no aggregate rate limit documented
     sc_playlist_batch_size: int = Field(default=500)   # макс. треков в одном SC-плейлисте при playlist_mode
     match_threshold: float = Field(default=75.0)
     log_level: str = Field(default="INFO")

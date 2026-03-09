@@ -403,21 +403,18 @@ _S: dict[str, dict[str, str]] = {
 }
 
 
-# Seconds per track by destination service (conservative estimates)
+# Seconds per track by destination service (search + write, no rate limiting)
 _SECS_PER_TRACK: dict[str, float] = {
-    "yandex_music": 1.5,  # no strict rate limit
-    "spotify":      0.8,  # generous Spotify API limits
+    "yandex_music": 1.5,
+    "spotify":      0.8,
+    "soundcloud":   1.5,  # search via soundcloud-v2 (~1-1.5s); official OAuth has no aggregate rate limit
 }
 
 
-def format_eta(track_count: int, to_service: str, lang: str = "ru",
-               sc_rate_limit_sleep: float = 2.0) -> str:
+def format_eta(track_count: int, to_service: str, lang: str = "ru") -> str:
     """Return localised ETA string, e.g. '⏱ ~5 мин' or '⏱ ~2 ч 30 мин'."""
     import math
-    if to_service == "soundcloud":
-        secs = sc_rate_limit_sleep + 1.5
-    else:
-        secs = _SECS_PER_TRACK.get(to_service, 3.0)
+    secs = _SECS_PER_TRACK.get(to_service, 1.5)
     total_min = max(1, math.ceil(track_count * secs / 60))
     if total_min < 60:
         return t("eta_approx", lang).format(n=total_min)

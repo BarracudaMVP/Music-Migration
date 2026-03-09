@@ -404,9 +404,8 @@ async def migration_status_fragment(request: Request, migration_id: int):
             pending = stats.get("pending", 0)
             if pending > 0:
                 from core.i18n import format_eta
-                from config import settings
                 # to_service not stored in DB yet; defaulting to soundcloud
-                eta = format_eta(pending, "soundcloud", lang, settings.sc_rate_limit_sleep)
+                eta = format_eta(pending, "soundcloud", lang)
 
     return _render("fragments/status.html", request, {
         "migration_id": migration_id,
