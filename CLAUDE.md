@@ -241,5 +241,6 @@ Rule: **no task is considered done until docs are updated.**
 - SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to web `/auth/soundcloud` instead of asking for cookie token
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` in `core/i18n.py` — localised ETA string per destination service
-- `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` disabled because SC API returns 404
+- `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
+- SC write endpoints: `PUT /me/track_likes/{id}`, `POST /playlists`, `PUT /me/followings/{id}` — all correct; Authorization Code Flow grants write access without explicit scope declarations
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available

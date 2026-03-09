@@ -4,9 +4,8 @@ SoundCloud клиент.
 Поиск  — через библиотеку soundcloud-v2 (read-only).
 Write  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-токеном.
 
-Токен берётся из куки oauth_token на soundcloud.com:
-  DevTools → Application → Cookies → oauth_token
-  Формат: "OAuth 3-XXXXX-XXXXX-XXXXXXXXXXXXXXXX"
+Токен получается через официальный OAuth Authorization Code Flow (MM-52).
+Формат заголовка: "Authorization: OAuth {access_token}"
 """
 import asyncio
 import time
@@ -71,7 +70,7 @@ class SoundCloudClient:
         except (KeyError, TypeError):
             raise ValueError(
                 "Не удалось получить данные аккаунта SoundCloud. "
-                "Токен истёк или неверен — получи новый из куки браузера."
+                "Токен истёк или неверен — авторизуйся через веб-интерфейс заново."
             )
         self._username = me.get("username", "unknown")
         logger.info(f"SoundCloud: авторизован как {self._username!r} (id={self._user_id})")
