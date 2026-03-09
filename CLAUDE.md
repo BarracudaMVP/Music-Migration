@@ -221,7 +221,7 @@ Rule: **no task is considered done until docs are updated.**
 
 - All I/O is async (SQLAlchemy 2.x async, aiohttp, aiogram)
 - YM API calls batch by 150 tracks (`_BATCH_SIZE`)
-- SoundCloud rate limiting: `sc_rate_limit_sleep` delay + 429 handling with backoff
+- SoundCloud rate limiting: `sc_rate_limit_sleep` delay (default 0.1s) + 429 handling with backoff. Official OAuth has no documented aggregate rate limit (only 15k/24h for stream endpoints); delay was 2.0s with cookie tokens to avoid Datadome
 - Migration is resumable: DB tracks `pending/liked/not_found/error` per track
 - `YandexMusicClient._uid` may be None for some OAuth tokens → API calls omit `user_id` param
 - SQLAlchemy `_dialect_insert()` uses PostgreSQL insert in production; SQLite fallback only for in-memory test fixtures
