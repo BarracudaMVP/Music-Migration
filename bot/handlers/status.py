@@ -48,7 +48,7 @@ async def cmd_status(message: Message, state: FSMContext) -> None:
     done = liked + not_found + errors
     percent = int(done / total * 100) if total else 0
 
-    web_url = settings.api_base_url.rstrip("/")
+    web_url = settings.public_url
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text=t("bot_btn_open_browser", lang),

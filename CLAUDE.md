@@ -74,7 +74,8 @@ DB_ENCRYPTION_KEY=         # Fernet key for encrypting saved tokens
 REDIS_URL=redis://localhost:6379
 
 # API
-API_BASE_URL=http://localhost:8000
+API_BASE_URL=http://localhost:8000  # internal bot→API (http://api:8000 in Docker)
+WEB_BASE_URL=                       # public URL for user-facing links; falls back to API_BASE_URL if empty
 API_INTERNAL_TOKEN=        # Shared secret for bot↔API calls
 SECRET_KEY=                # SessionMiddleware secret (generate with: python -c "import secrets; print(secrets.token_hex(32))")
 ADMIN_PASSWORD=            # Admin UI password

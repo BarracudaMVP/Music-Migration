@@ -35,7 +35,7 @@ def _kb_cancel(lang: str) -> InlineKeyboardMarkup:
 
 
 def _kb_result(migration_id: int, not_found: int, lang: str) -> InlineKeyboardMarkup:
-    web_url = settings.api_base_url.rstrip("/")
+    web_url = settings.public_url
     rows = []
     if not_found > 0:
         rows.append([InlineKeyboardButton(
@@ -198,7 +198,7 @@ async def on_show_not_found(callback: CallbackQuery, state: FSMContext) -> None:
     text += "\n".join(f"• {tr}" for tr in preview)
     if len(tracks) > _NOT_FOUND_PREVIEW:
         remaining = len(tracks) - _NOT_FOUND_PREVIEW
-        web_url = settings.api_base_url.rstrip("/")
+        web_url = settings.public_url
         text += t("bot_not_found_more", lang).format(
             n=remaining,
             url=f"{web_url}/migrate/{migration_id}/tracks?status=not_found",

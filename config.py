@@ -37,8 +37,14 @@ class Settings(BaseSettings):
 
     # FastAPI (MVP4)
     database_url: str = Field(default="")
-    api_base_url: str = Field(default="http://localhost:8000")
+    api_base_url: str = Field(default="http://localhost:8000")   # internal bot→API (http://api:8000 in Docker)
+    web_base_url: str = Field(default="")                        # public URL shown to users; falls back to api_base_url
     api_internal_token: str = Field(default="")
+
+    @property
+    def public_url(self) -> str:
+        """Public-facing URL for links shown to users (web UI, OAuth callbacks)."""
+        return (self.web_base_url or self.api_base_url).rstrip("/")
 
     # ARQ Worker (MVP5)
     redis_url: str = Field(default="redis://localhost:6379")

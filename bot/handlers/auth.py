@@ -108,7 +108,7 @@ async def on_select_from_spotify(callback: CallbackQuery, state: FSMContext) -> 
 
     if not data.get("spotify_token"):
         from config import settings
-        web_url = settings.api_base_url.rstrip("/")
+        web_url = settings.public_url
         await callback.message.answer(
             t("bot_spotify_no_token", lang).format(url=web_url),
             parse_mode="HTML",
@@ -192,7 +192,7 @@ async def _ask_soundcloud_token(message: Message, state: FSMContext, ym_token: s
 
     from config import settings
     if settings.sc_client_id:
-        web_url = settings.api_base_url.rstrip("/")
+        web_url = settings.public_url
         await message.answer(
             t("bot_sc_no_token", lang).format(url=web_url),
             parse_mode="HTML",

@@ -52,7 +52,7 @@ def migration_done_text(
     errors = tracks.get("error", 0)
     total = sum(tracks.values())
 
-    web_url = settings.api_base_url.rstrip("/")
+    web_url = settings.public_url
     text = t("notif_done", lang).format(
         id=migration_id, liked=liked, nf=not_found, err=errors, total=total,
     )
