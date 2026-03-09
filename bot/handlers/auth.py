@@ -8,7 +8,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 
 from bot.states import AuthFlow
 from bot.api_client import api_client
-from core.i18n import t, detect_lang_tg, format_eta
+from core.i18n import t, detect_lang_tg
 
 router = Router()
 
@@ -249,46 +249,20 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
 # ---------------------------------------------------------------------------
 
 async def _show_confirmation(message: Message, state: FSMContext) -> None:
-    """Yandex Music → SoundCloud confirmation."""
+    """Show mode selection — no API calls, user picks what to transfer first."""
     lang = await _get_lang(state)
-    loading = await message.answer(t("bot_loading_account", lang))
-
     data = await state.get_data()
-    ym_token = data["yandex_token"]
-
-    track_count = playlist_count = artist_count = "?"
-    try:
-        from core.yandex.client import YandexMusicClient
-        from config import settings
-        ym_client = await YandexMusicClient(ym_token, proxy_url=settings.ym_proxy_url or None).init()
-        track_count = len(await ym_client.get_liked_tracks())
-        playlist_count = len(await ym_client.get_playlists())
-        artist_count = len(await ym_client.get_liked_artists())
-        await state.update_data(
-            track_count=track_count,
-            playlist_count=playlist_count,
-            artist_count=artist_count,
-        )
-    except Exception:
-        pass
+    from_service = data.get("from_service", "yandex_music")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")],
         [InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="select_mode:full")],
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
-
-    from config import settings as _cfg
-    eta = format_eta(track_count, "soundcloud", lang, _cfg.sc_rate_limit_sleep) \
-        if isinstance(track_count, int) else ""
-
-    await loading.edit_text(
-        t("bot_confirm", lang).format(
-            tracks=track_count,
-            playlists=playlist_count,
-            artists=artist_count,
-            eta=eta,
-        ),
+    service_name = t(f"bot_service_{from_service}", lang) if from_service != "yandex_music" \
+        else t("bot_service_yandex", lang)
+    await message.answer(
+        t("bot_confirm_ready", lang).format(service=service_name),
         parse_mode="HTML",
         reply_markup=kb,
     )
@@ -296,34 +270,14 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
 
 
 async def _show_confirmation_spotify(message: Message, state: FSMContext) -> None:
-    """Spotify → SoundCloud confirmation."""
+    """Show mode selection for Spotify source — no API calls."""
     lang = await _get_lang(state)
-    loading = await message.answer(t("bot_loading_account", lang))
-
-    data = await state.get_data()
-    spotify_token = data["spotify_token"]
-
-    track_count = "?"
-    try:
-        from core.spotify.client import SpotifyClient
-        sp_client = SpotifyClient(spotify_token)
-        tracks = await sp_client.get_liked_tracks()
-        track_count = len(tracks)
-        await state.update_data(track_count=track_count)
-    except Exception:
-        pass
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")],
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
-
-    from config import settings as _cfg
-    eta = format_eta(track_count, "soundcloud", lang, _cfg.sc_rate_limit_sleep) \
-        if isinstance(track_count, int) else ""
-
-    await loading.edit_text(
-        t("bot_confirm_spotify", lang).format(tracks=track_count, eta=eta),
+    await message.answer(
+        t("bot_confirm_ready", lang).format(service=t("bot_service_spotify", lang)),
         parse_mode="HTML",
         reply_markup=kb,
     )

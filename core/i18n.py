@@ -306,6 +306,10 @@ _S: dict[str, dict[str, str]] = {
     },
 
     "bot_loading_account":  {"ru": "Получаю информацию об аккаунте...", "en": "Fetching account info..."},
+    "bot_confirm_ready": {
+        "ru": "<b>Готово! Что перенести из {service}?</b>",
+        "en": "<b>Ready! What to transfer from {service}?</b>",
+    },
     "bot_confirm": {
         "ru": (
             "<b>Всё готово! Что перенести?</b>\n\n"
