@@ -54,18 +54,23 @@ async def migrate_tracks(
     migration_id: int,
     progress_callback=None,
     playlist_mode: bool = False,
+    track_limit: int | None = None,
 ) -> MigrationStats:
     """
     Основной пайплайн миграции треков.
 
     progress_callback(current, total, track_str) — опциональный колбэк
     для обновления прогресса (используется ботом).
+    track_limit — ограничить количество треков (None = все).
     """
     await update_migration(migration_id, status="running")
 
     # --- Шаг 1: загружаем треки из ЯМ ---
     logger.info("Шаг 1/3: загружаю треки из Яндекс Музыки...")
     ym_tracks = await ym_client.get_liked_tracks()
+    if track_limit:
+        ym_tracks = ym_tracks[:track_limit]
+        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(ym_tracks)}")
 
     if not ym_tracks:
         logger.warning("Нет лайкнутых треков в Яндекс Музыке")
@@ -165,6 +170,7 @@ async def migrate_from_file_tracks(
     tracks_data: list[dict],
     progress_callback=None,
     playlist_mode: bool = False,
+    track_limit: int | None = None,
 ) -> MigrationStats:
     """
     Пайплайн переноса треков из файла (без Яндекс Музыки).
@@ -172,6 +178,9 @@ async def migrate_from_file_tracks(
     """
     await update_migration(migration_id, status="running")
 
+    if track_limit:
+        tracks_data = tracks_data[:track_limit]
+        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(tracks_data)}")
     logger.info(f"Вставляю {len(tracks_data)} треков из файла в БД...")
     await bulk_insert_tracks(
         migration_id,
@@ -296,6 +305,7 @@ async def run_migration(
     on_migration_created=None,
     migration_id: int | None = None,
     playlist_mode: bool = False,
+    track_limit: int | None = None,
 ) -> tuple[int, "FullMigrationStats"]:
     """
     Точка входа для CLI и бота.
@@ -324,7 +334,8 @@ async def run_migration(
 
     try:
         track_stats = await migrate_tracks(
-            ym_client, sc_client, migration_id, progress_callback, playlist_mode=playlist_mode
+            ym_client, sc_client, migration_id, progress_callback,
+            playlist_mode=playlist_mode, track_limit=track_limit,
         )
 
         pl_stats = None

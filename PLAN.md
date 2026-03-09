@@ -19,33 +19,48 @@
 ## Архитектура
 
 ```
-┌──────────────────┐     ┌──────────────────┐
-│  Telegram Bot    │     │  Web UI          │
-│  (aiogram 3.x)   │     │  (Jinja2 + HTMX) │
-└────────┬─────────┘     └────────┬─────────┘
-         │ HTTP (internal API)    │ HTTP
-         └────────────┬───────────┘
-                      ▼
-         ┌────────────────────────┐
-         │    FastAPI Server      │
-         │  /api/* + /web/*       │
-         │  /admin/*              │
-         └──────┬─────────────────┘
-                │
-        ┌───────┼───────────┐
-        ▼       ▼           ▼
-  [PostgreSQL] [Redis]  [Redis pub/sub]
-                │            │ (progress events)
-                ▼            │
-     ┌─────────────────┐     │
-     │   Worker Pool   │─────┘
-     │   (arq workers) │
-     └────────┬────────┘
-              │
-    ┌─────────┼──────────┐
-    ▼         ▼          ▼
-[YM Adapter] [SC Adapter] [File Adapter]
-(RU proxy)   (EU server)  (CSV/JSON)
+┌─────────────────────┐     ┌──────────────────────────────────────┐
+│   Telegram Bot      │     │   Web UI (Jinja2 + HTMX)             │
+│   (aiogram 3.x)     │     │   / /auth /migrate /history          │
+│   FSM: YM / Spotify │     │   /import /export /admin             │
+└──────────┬──────────┘     └─────────────────┬────────────────────┘
+           │ HTTP (internal API)               │ HTTP
+           └───────────────────┬───────────────┘
+                               ▼
+              ┌────────────────────────────────┐
+              │         FastAPI Server          │
+              │  /api/*  /auth/*  /admin/*      │
+              │  Middleware: IP whitelist,       │
+              │  AllowedUsers, RateLimit         │
+              └────────┬───────────────────────┘
+                       │
+            ┌──────────┼───────────┐
+            ▼          ▼           ▼
+      [PostgreSQL]   [Redis]   [Sessions]
+       (tokens,     (ARQ jobs,  (cookies)
+        migrations,  progress,
+        tracks)      rate limit)
+                       │
+                       ▼
+          ┌────────────────────────┐
+          │      ARQ Worker        │
+          │  run_migration_job     │  ← YM → SC (playlist_mode)
+          │  run_file_migration_job│  ← File → SC (playlist_mode)
+          │  run_spotify_mig_job   │  ← Spotify → SC (playlist_mode)
+          │  run_yandex_mig_job    │  ← any → YM
+          │  run_spotify_write_job │  ← any → Spotify (auto-refresh)
+          └────────────┬───────────┘
+                       │
+         ┌─────────────┼──────────────┐
+         ▼             ▼              ▼
+  ┌─────────────┐ ┌──────────┐ ┌──────────────┐
+  │ YM Adapter  │ │SC Adapter│ │Spotify Adapt.│  + FileAdapter
+  │ (RU proxy   │ │(EU server│ │(OAuth +       │    (CSV/JSON)
+  │  socks5://) │ │playlist) │ │ auto-refresh) │
+  └──────┬──────┘ └────┬─────┘ └──────┬───────┘
+         │             │              │
+         ▼             ▼              ▼
+  api.music.yandex  api-v2.soundcloud  api.spotify.com
 ```
 
 ---
@@ -733,6 +748,100 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - [ ] Удалить `/root/Music-Migration/` после проверки
 
 > Выполнять вместе с каким-либо плановым деплоем (например MM-9), чтобы не делать лишний даунтайм.
+
+---
+
+### ✅ MM-50 — Лимит треков при переносе
+
+> Для тестирования и поэтапного переноса: пользователь выбирает сколько треков перенести — все или первые N.
+> Лимит применяется после загрузки из источника, перед вставкой в БД.
+
+**Веб:**
+- [x] `api/templates/index.html` — поле "Лимит треков": дропдаун (Все / 50 / 100 / 500)
+- [x] `api/routes/web.py` — `track_limit: int = Form(0)` в `start_migrate`, `0` → `None`
+- [x] `core/i18n.py` — ключи `index_track_limit`, `index_limit_all`, `index_limit_first`
+
+**Бот:**
+- [x] `bot/handlers/auth.py` — кнопки: "Только треки" / "Треки+полное" / "🧪 Тест: 100 треков"; callback `start_migration:mode:limit`
+- [x] `bot/handlers/migration.py` — парсит `parts[1]`=mode, `parts[2]`=limit из callback
+- [x] `bot/api_client.py` — `start_migration()` принимает и передаёт `track_limit`
+- [x] `core/i18n.py` — ключ `bot_limit_test`
+
+**Пайплайн:**
+- [x] `migration/tracks.py` — `migrate_tracks(..., track_limit=None)` + `migrate_from_file_tracks`
+- [x] `migration/spotify_tracks.py` — `migrate_spotify_tracks(..., track_limit=None)`
+- [x] `worker/tasks.py` — все 5 джобов принимают и пробрасывают `track_limit: int | None = None`
+- [x] `api/routes/migrations.py` — `StartMigrationRequest` добавлен `track_limit: int | None = None`
+
+---
+
+### 🔲 MM-48 — Выбор режима лайков при переносе
+
+> Сейчас `playlist_mode` жёстко захардкожен в воркере. Пользователь не влияет на то, лайкать ли треки.
+> Нужно спрашивать при каждом переносе (кроме File): "Проставить лайки?" и действовать по ответу.
+> Если лайки недоступны (SC 404) — автоматически fallback на плейлист.
+
+**Флоу:**
+```
+Подтверждение переноса
+  ├── [✓] Проставить лайки  →  пробуем like_track, при 404 fallback → playlist
+  └── [ ] Только плейлист   →  playlist_mode=True, like_track не вызывается
+```
+
+**Статусы:**
+- Переименовать отображение `liked` → **"Добавлено"** везде (БД-статус `liked` не меняется)
+- MigrationStats.liked → отображается как "Добавлено" в вебе, боте, уведомлениях
+
+**Веб:**
+- [ ] `api/templates/index.html` или `auth.html` — чекбокс "Проставить лайки" (по умолчанию выключен для SC, включён для Spotify/YM)
+- [ ] `api/routes/web.py` — принимать `like_tracks: bool = Form(False)`, передавать в ARQ job
+- [ ] `api/templates/fragments/status.html`, `result.html`, `tracks.html` — "Добавлено" вместо "Перенесено/Лайкнуто"
+- [ ] `core/i18n.py` — ключ `status_liked` → "Добавлено" / "Added"
+
+**Бот:**
+- [ ] `bot/handlers/auth.py` — в экране подтверждения добавить inline-кнопку "Лайкать треки ✓/✗" как toggle перед стартом
+- [ ] `bot/handlers/migration.py` — передавать `like_tracks` в API
+- [ ] `core/i18n.py` — ключи `bot_like_tracks_yes`, `bot_like_tracks_no`, `bot_liked_count` → "Добавлено"
+
+**Пайплайн:**
+- [ ] `api/routes/migrations.py` — `StartMigrationRequest` добавить поле `like_tracks: bool = False`
+- [ ] `worker/tasks.py` — все SC-джобы: `playlist_mode = not like_tracks`; при `like_tracks=True` — пробуем `like_track`, при HTTP 404 автоматически переключаемся в `playlist_mode`
+- [ ] `migration/tracks.py` — `_process_one_track`: при `like_tracks=True` вызывать `like_track`, при 404 → собрать в `collected_ids` (fallback); итоговый `_create_liked_playlists` только если есть `collected_ids`
+- [ ] `core/soundcloud/client.py` — `like_track` при 404 поднимать специфичный `LikeNotSupportedError` вместо generic Exception (чтобы отличить от других ошибок)
+
+**Уведомления:**
+- [ ] `worker/notifications.py` — `migration_done_text`: "Добавлено" вместо "Перенесено"
+
+---
+
+### 🔲 MM-49 — Редизайн флоу веб-интерфейса
+
+> Текущий флоу неинтуитивен: пользователь сначала выбирает сервисы на главной, потом идёт авторизовываться — и непонятно как связаны шаги. Нет явной "воронки".
+
+**Проблемы текущего флоу:**
+- `/` — выбор источника/назначения смешан с режимом (треки/полный), нет контекста "что будет дальше"
+- `/auth` — авторизация выглядит как отдельная страница, не как шаг воронки
+- Нет экрана подтверждения перед стартом (сразу POST /migrate)
+- Чекбокс режима (треки/полный) неочевиден для новых пользователей
+- После авторизации не возвращает к тому шагу откуда пришёл
+
+**Предлагаемый флоу:**
+```
+Шаг 1: /         — "Откуда" + "Куда" (крупные карточки сервисов)
+Шаг 2: /auth     — авторизация нужных сервисов (только те что выбраны)
+Шаг 3: /confirm  — подтверждение: кол-во треков, режим, чекбокс лайков, ETA → [Начать]
+Шаг 4: /migrate/{id} — прогресс
+Шаг 5: /result/{id} — итог
+```
+
+**Что менять:**
+- [ ] `api/templates/index.html` — крупные карточки-кнопки для выбора FROM/TO, прогресс-индикатор шагов (1→2→3)
+- [ ] `api/routes/web.py` — `GET /confirm` + `POST /confirm/start` — экран подтверждения с треками, ETA, режимом, чекбоксом лайков
+- [ ] `api/templates/confirm.html` — новый шаблон: статистика аккаунта, режим (треки/полный), чекбокс лайков, ETA, кнопка старт
+- [ ] `api/templates/auth.html` — показывать только блоки авторизации для выбранных сервисов, step-indicator (шаг 2 из 3)
+- [ ] `api/templates/result.html` — переименовать в `result.html`, добавить CTA "Перенести ещё"
+- [ ] `core/i18n.py` — новые ключи для шагов и подтверждения
+- [ ] Сохранять выбор FROM/TO/режим в сессии между шагами
 
 ---
 

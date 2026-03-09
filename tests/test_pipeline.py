@@ -50,7 +50,7 @@ async def test_process_track_liked():
          patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "liked"
+    assert result[0] == "liked"
     sc_client.like_track.assert_called_once_with(42)
     mock_update.assert_called_once_with(
         1, status="liked", sc_id=42, sc_url="http://sc/42", match_score=90.0
@@ -70,7 +70,7 @@ async def test_process_track_no_sc_results():
     with patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "not_found"
+    assert result[0] == "not_found"
     mock_update.assert_called_once_with(2, status="not_found")
 
 
@@ -88,7 +88,7 @@ async def test_process_track_find_best_match_returns_none():
          patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "not_found"
+    assert result[0] == "not_found"
     mock_update.assert_called_once_with(3, status="not_found")
 
 
@@ -108,7 +108,7 @@ async def test_process_track_uncertain():
          patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "uncertain"
+    assert result[0] == "uncertain"
     mock_update.assert_called_once_with(
         5, status="not_found", sc_id=99, sc_url="http://sc/99", match_score=68.0
     )
@@ -130,7 +130,7 @@ async def test_process_track_below_threshold_not_uncertain():
          patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "not_found"
+    assert result[0] == "not_found"
     mock_update.assert_called_once_with(6, status="not_found", match_score=20.0)
 
 
@@ -149,7 +149,7 @@ async def test_process_track_like_fails():
          patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
-    assert result == "error"
+    assert result[0] == "error"
     mock_update.assert_called_once_with(7, status="error")
 
 

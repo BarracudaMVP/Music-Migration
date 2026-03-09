@@ -33,6 +33,9 @@ _S: dict[str, dict[str, str]] = {
     "index_login_btn":   {"ru": "Войти",                                   "en": "Sign in"},
     "index_import_hint": {"ru": "Или загрузи файл со списком треков.",      "en": "Or upload a file with your track list."},
     "index_no_routes":   {"ru": "Нет доступных направлений для переноса.", "en": "No transfer directions available."},
+    "index_track_limit": {"ru": "Лимит треков",       "en": "Track limit"},
+    "index_limit_all":   {"ru": "Все треки",           "en": "All tracks"},
+    "index_limit_first": {"ru": "Первые {n}",          "en": "First {n}"},
 
     # ------------------------------------------------------------------ #
     # Auth
@@ -322,6 +325,7 @@ _S: dict[str, dict[str, str]] = {
     "bot_btn_tracks_only":  {"ru": "Только треки",                    "en": "Tracks only"},
     "bot_btn_full":         {"ru": "Треки + плейлисты + артисты",     "en": "Tracks + playlists + artists"},
     "bot_btn_cancel":       {"ru": "Отмена",                          "en": "Cancel"},
+    "bot_limit_test":       {"ru": "🧪 Тест: {n} треков",             "en": "🧪 Test: {n} tracks"},
     "bot_btn_detach":       {"ru": "Отключиться от переноса",         "en": "Detach from transfer"},
     "bot_btn_not_found":    {"ru": "Ненайденные треки ({n})",         "en": "Not found tracks ({n})"},
     "bot_btn_open_browser": {"ru": "Открыть в браузере",              "en": "Open in browser"},

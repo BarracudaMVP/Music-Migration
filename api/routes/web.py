@@ -253,6 +253,7 @@ async def start_migrate(
     from_service: str = Form(...),
     to_service: str = Form(...),
     mode: str = Form("full"),
+    track_limit: int = Form(0),
 ):
     from api.main import get_arq_pool
 
@@ -283,6 +284,7 @@ async def start_migrate(
     migration_id = await create_migration(user_id)
     arq = get_arq_pool()
     job_mode = "full" if mode == "full" else "tracks"
+    limit = track_limit if track_limit and track_limit > 0 else None
 
     if from_service == "spotify":
         spotify_token = db_session.get("spotify_token") or ""
@@ -293,20 +295,14 @@ async def start_migrate(
             )
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
-            migration_id,
-            spotify_token,
-            db_session["soundcloud_token"],
-            job_mode,
-            user_id,
+            migration_id, spotify_token, db_session["soundcloud_token"], job_mode, user_id,
+            track_limit=limit,
         )
     else:
         job = await arq.enqueue_job(
             "run_migration_job",
-            migration_id,
-            db_session["yandex_token"],
-            db_session["soundcloud_token"],
-            job_mode,
-            user_id,
+            migration_id, db_session["yandex_token"], db_session["soundcloud_token"], job_mode, user_id,
+            track_limit=limit,
         )
 
     if job:

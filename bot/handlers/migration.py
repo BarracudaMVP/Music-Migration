@@ -61,7 +61,9 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
 
-    mode = callback.data.split(":")[-1]  # "tracks" or "full"
+    parts = callback.data.split(":")
+    mode = parts[1]  # "tracks" or "full"
+    track_limit = int(parts[2]) if len(parts) > 2 and parts[2] != "0" else None
     lang = await _get_lang(state)
 
     data = await state.get_data()
@@ -87,6 +89,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
             user_id, ym_token, sc_token, mode,
             from_service=from_service,
             spotify_token=spotify_token,
+            track_limit=track_limit,
         )
     except Exception as e:
         logger.exception(f"Failed to start migration: {e}")

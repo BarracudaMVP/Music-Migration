@@ -89,6 +89,7 @@ class MigrationApiClient:
         to_service: str = "soundcloud",
         spotify_token: str | None = None,
         spotify_refresh_token: str | None = None,
+        track_limit: int | None = None,
     ) -> int:
         """Запускает миграцию. Возвращает migration_id."""
         body: dict = {
@@ -103,6 +104,8 @@ class MigrationApiClient:
             body["spotify_token"] = spotify_token
         if spotify_refresh_token:
             body["spotify_refresh_token"] = spotify_refresh_token
+        if track_limit:
+            body["track_limit"] = track_limit
         async with httpx.AsyncClient(headers=self._headers) as client:
             resp = await client.post(
                 f"{self._base_url}/api/migrations",

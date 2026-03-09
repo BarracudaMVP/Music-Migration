@@ -26,6 +26,7 @@ async def migrate_spotify_tracks(
     migration_id: int,
     progress_callback=None,
     playlist_mode: bool = False,
+    track_limit: int | None = None,
 ) -> MigrationStats:
     """Переносит лайкнутые треки Spotify → SoundCloud."""
     await update_migration(migration_id, status="running")
@@ -38,6 +39,9 @@ async def migrate_spotify_tracks(
         await update_migration(migration_id, status="done")
         return MigrationStats()
 
+    if track_limit:
+        sp_tracks = sp_tracks[:track_limit]
+        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(sp_tracks)}")
     logger.info(f"Шаг 2/3: сохраняю {len(sp_tracks)} треков в БД...")
     await bulk_insert_tracks(
         migration_id,
@@ -68,6 +72,7 @@ async def run_spotify_migration(
     mode: str = "tracks",
     progress_callback=None,
     playlist_mode: bool = False,
+    track_limit: int | None = None,
 ) -> MigrationStats:
     """
     Точка входа для ARQ worker.
@@ -77,7 +82,7 @@ async def run_spotify_migration(
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
     try:
-        stats = await migrate_spotify_tracks(spotify_client, sc_client, migration_id, progress_callback, playlist_mode=playlist_mode)
+        stats = await migrate_spotify_tracks(spotify_client, sc_client, migration_id, progress_callback, playlist_mode=playlist_mode, track_limit=track_limit)
     finally:
         await spotify_client.close()
         await sc_client.close()

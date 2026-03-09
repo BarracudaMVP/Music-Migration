@@ -34,6 +34,7 @@ async def run_yandex_migration_job(
     from_service: str,
     ym_token: str,
     user_id: str,
+    track_limit: int | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks from any source service → Yandex Music."""
     from migration.yandex_tracks import migrate_to_yandex
@@ -53,6 +54,8 @@ async def run_yandex_migration_job(
         from core.services.registry import ServiceRegistry
         adapter = ServiceRegistry.get(from_service)
         tracks_data = await adapter.fetch_liked_tracks(source_token)
+        if track_limit:
+            tracks_data = tracks_data[:track_limit]
         logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
         ym_client = await YandexMusicClient(
@@ -84,6 +87,7 @@ async def run_spotify_migration_job(
     sc_token: str,
     mode: str,
     user_id: str,
+    track_limit: int | None = None,
 ) -> None:
     """ARQ job: migrate tracks from Spotify to SoundCloud."""
     from migration.spotify_tracks import run_spotify_migration
@@ -102,6 +106,7 @@ async def run_spotify_migration_job(
             mode=mode,
             progress_callback=progress_cb,
             playlist_mode=True,
+            track_limit=track_limit,
         )
         logger.info(f"[job] Spotify migration #{migration_id} finished")
 
@@ -123,6 +128,7 @@ async def run_spotify_write_job(
     spotify_token: str,
     spotify_refresh_token: str | None,
     user_id: str,
+    track_limit: int | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
     from migration.spotify_write import migrate_to_spotify
@@ -153,6 +159,8 @@ async def run_spotify_write_job(
         from core.services.registry import ServiceRegistry
         adapter = ServiceRegistry.get(from_service)
         tracks_data = await adapter.fetch_liked_tracks(source_token)
+        if track_limit:
+            tracks_data = tracks_data[:track_limit]
         logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
         # Fetch artists if adapter implements fetch_liked_artists
@@ -197,6 +205,7 @@ async def run_migration_job(
     sc_token: str,
     mode: str,
     user_id: str,
+    track_limit: int | None = None,
 ) -> None:
     """ARQ job: runs the migration pipeline for a pre-created migration record."""
     from migration.tracks import run_migration
@@ -217,6 +226,7 @@ async def run_migration_job(
             migrate_artists=migrate_full,
             progress_callback=progress_cb,
             playlist_mode=True,
+            track_limit=track_limit,
         )
         logger.info(f"[job] Migration #{migration_id} finished")
 
@@ -237,6 +247,7 @@ async def run_file_migration_job(
     sc_token: str,
     tracks: list[dict],
     user_id: str,
+    track_limit: int | None = None,
 ) -> None:
     """ARQ job: migrate tracks from a file to SoundCloud (no Yandex Music)."""
     from migration.tracks import migrate_from_file_tracks
@@ -253,7 +264,7 @@ async def run_file_migration_job(
     try:
         sc_client = await SoundCloudClient(sc_token).init()
         try:
-            await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb, playlist_mode=True)
+            await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb, playlist_mode=True, track_limit=track_limit)
         finally:
             await sc_client.close()
         logger.info(f"[job] File migration #{migration_id} finished")

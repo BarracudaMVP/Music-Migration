@@ -19,6 +19,7 @@ class StartMigrationRequest(BaseModel):
     to_service: Literal["soundcloud", "yandex_music", "spotify"] = "soundcloud"
     spotify_token: str | None = None
     spotify_refresh_token: str | None = None
+    track_limit: int | None = None
 
 
 class StartMigrationResponse(BaseModel):
@@ -31,48 +32,34 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
     migration_id = await create_migration(body.user_id)
 
     if body.to_service == "yandex_music":
-        # Source token depends on from_service
         source_token = body.spotify_token if body.from_service == "spotify" else body.soundcloud_token
         job = await arq.enqueue_job(
             "run_yandex_migration_job",
-            migration_id,
-            source_token,
-            body.from_service,
-            body.yandex_token,
-            body.user_id,
+            migration_id, source_token, body.from_service, body.yandex_token, body.user_id,
+            track_limit=body.track_limit,
         )
     elif body.to_service == "spotify":
-        # Any source → Spotify (write)
         source_token = (
             body.soundcloud_token if body.from_service == "soundcloud"
             else body.yandex_token
         )
         job = await arq.enqueue_job(
             "run_spotify_write_job",
-            migration_id,
-            source_token,
-            body.from_service,
-            body.spotify_token or "",
-            body.spotify_refresh_token,
-            body.user_id,
+            migration_id, source_token, body.from_service,
+            body.spotify_token or "", body.spotify_refresh_token, body.user_id,
+            track_limit=body.track_limit,
         )
     elif body.from_service == "spotify" and body.spotify_token:
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
-            migration_id,
-            body.spotify_token,
-            body.soundcloud_token,
-            body.mode,
-            body.user_id,
+            migration_id, body.spotify_token, body.soundcloud_token, body.mode, body.user_id,
+            track_limit=body.track_limit,
         )
     else:
         job = await arq.enqueue_job(
             "run_migration_job",
-            migration_id,
-            body.yandex_token,
-            body.soundcloud_token,
-            body.mode,
-            body.user_id,
+            migration_id, body.yandex_token, body.soundcloud_token, body.mode, body.user_id,
+            track_limit=body.track_limit,
         )
 
     if job:

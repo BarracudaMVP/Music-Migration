@@ -273,8 +273,9 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
         pass
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks")],
-        [InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="start_migration:full")],
+        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks:0")],
+        [InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="start_migration:full:0")],
+        [InlineKeyboardButton(text=t("bot_limit_test", lang).format(n=100), callback_data="start_migration:tracks:100")],
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
 
@@ -314,7 +315,8 @@ async def _show_confirmation_spotify(message: Message, state: FSMContext) -> Non
         pass
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks")],
+        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="start_migration:tracks:0")],
+        [InlineKeyboardButton(text=t("bot_limit_test", lang).format(n=100), callback_data="start_migration:tracks:100")],
         [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
     ])
 
