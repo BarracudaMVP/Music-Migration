@@ -194,7 +194,7 @@ async def auth_soundcloud(request: Request, sc_token: str = Form(...)):
 @router.get("/auth/soundcloud")
 async def auth_soundcloud_redirect(request: Request):
     """Redirect пользователя на страницу авторизации SoundCloud."""
-    from core.soundcloud.oauth import generate_state, get_auth_url
+    from core.soundcloud.oauth import generate_pkce_pair, generate_state, get_auth_url
     from config import settings
 
     if not settings.sc_client_id:
@@ -204,8 +204,12 @@ async def auth_soundcloud_redirect(request: Request):
         )
     _ensure_user_id(request)
     state = generate_state()
-    request.session["sc_oauth_state"] = state
-    return RedirectResponse(get_auth_url(state), status_code=303)
+    code_verifier, code_challenge = generate_pkce_pair()
+    response = RedirectResponse(get_auth_url(state, code_challenge), status_code=303)
+    # Store state + verifier in dedicated cookies (not session) to survive cross-site redirect
+    response.set_cookie("_sc_state", state, httponly=True, samesite="lax", max_age=600)
+    response.set_cookie("_sc_verifier", code_verifier, httponly=True, samesite="lax", max_age=600)
+    return response
 
 
 @router.get("/auth/soundcloud/callback")
@@ -219,26 +223,32 @@ async def auth_soundcloud_callback(request: Request, code: str = "", state: str 
             status_code=303,
         )
 
-    expected_state = request.session.get("sc_oauth_state")
-    if not state or state != expected_state:
+    expected_state = request.cookies.get("_sc_state", "")
+    code_verifier = request.cookies.get("_sc_verifier", "")
+    if not state or state != expected_state or not code_verifier:
         return RedirectResponse(
             f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
             status_code=303,
         )
-    request.session.pop("sc_oauth_state", None)
 
     user_id = _ensure_user_id(request)
     try:
-        token_data = await exchange_code(code)
+        token_data = await exchange_code(code, code_verifier)
         access_token = token_data["access_token"]
         sc_client = await SoundCloudClient(access_token).init()
         await sc_client.close()
         await save_soundcloud_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
         request.session["sc_connected"] = True
     except Exception as e:
-        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+        response = RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+        response.delete_cookie("_sc_state")
+        response.delete_cookie("_sc_verifier")
+        return response
 
-    return RedirectResponse("/auth", status_code=303)
+    response = RedirectResponse("/auth", status_code=303)
+    response.delete_cookie("_sc_state")
+    response.delete_cookie("_sc_verifier")
+    return response
 
 
 @router.get("/auth/spotify")
