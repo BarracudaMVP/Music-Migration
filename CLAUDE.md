@@ -131,16 +131,17 @@ worker/                                 — ARQ job definitions
 
 core/
     ├── db/                             — SQLAlchemy 2.x async package
-    │   ├── models.py                   — UserSession (yandex_token, soundcloud_token, spotify_token,
-    │   │                                  spotify_refresh_token, lang, role)
+    │   ├── models.py                   — UserSession (yandex_token, soundcloud_token, soundcloud_refresh_token,
+    │   │                                  spotify_token, spotify_refresh_token, lang, role)
     │   ├── session.py                  — async engine + sessionmaker
-    │   ├── crud.py                     — DB operations (save_spotify_token, get_all_tracks, set_user_role…)
+    │   ├── crud.py                     — DB operations (save_spotify_token, save_soundcloud_token, get_all_tracks, set_user_role…)
     │   └── __init__.py                 — public re-exports
     ├── yandex/
     │   ├── client.py                   — YandexMusicClient: liked tracks, playlists, artists, search, like_track
     │   └── proxy_request.py            — SocksProxyRequest (aiohttp-socks, socks5://)
     ├── soundcloud/
     │   ├── client.py                   — SoundCloudClient: search, write ops, get_liked_tracks, create_playlist
+    │   ├── oauth.py                    — SC Authorization Code Flow: get_auth_url, exchange_code, refresh_access_token (MM-52)
     │   └── models.py                   — SCTrack, SCUser, SCPlaylist
     ├── spotify/
     │   ├── models.py                   — SpotifyTrack, SpotifyPlaylist, SpotifyArtist
@@ -236,6 +237,8 @@ Rule: **no task is considered done until docs are updated.**
 - Bot Spotify path: requires `spotify_token` already in DB session (set via web UI OAuth); bot shows web link if missing
 - `api/routes/migrations.py` routes based on `to_service`: `yandex_music` → `run_yandex_migration_job`, `spotify` → `run_spotify_write_job`, default SC → `run_migration_job` or `run_spotify_migration_job`
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
+- `soundcloud_refresh_token` saved in DB (encrypted) during SC OAuth (MM-52); `_refresh_sc_token_if_needed()` in `worker/tasks.py` auto-refreshes in all SC-destination jobs
+- SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to web `/auth/soundcloud` instead of asking for cookie token
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` in `core/i18n.py` — localised ETA string per destination service
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` disabled because SC API returns 404

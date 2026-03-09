@@ -261,6 +261,32 @@ async def save_user_session(user_id: str, yandex_token: str, soundcloud_token: s
         await session.commit()
 
 
+async def save_soundcloud_token(
+    user_id: str,
+    token: str,
+    refresh_token: str | None = None,
+) -> None:
+    """Сохраняет или обновляет soundcloud_token (и refresh_token) для пользователя."""
+    async with AsyncSessionLocal() as session:
+        values: dict = {
+            "user_id": user_id,
+            "yandex_token": "",
+            "soundcloud_token": encrypt_token(token),
+        }
+        update_values: dict = {"soundcloud_token": encrypt_token(token)}
+        if refresh_token is not None:
+            enc_refresh = encrypt_token(refresh_token)
+            values["soundcloud_refresh_token"] = enc_refresh
+            update_values["soundcloud_refresh_token"] = enc_refresh
+
+        stmt = _dialect_insert(UserSession).values(**values).on_conflict_do_update(
+            index_elements=["user_id"],
+            set_=update_values,
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
 async def save_spotify_token(
     user_id: str,
     token: str,
@@ -306,6 +332,7 @@ async def load_user_session(user_id: str) -> dict | None:
         return {
             "yandex_token": decrypt_token(row.yandex_token),
             "soundcloud_token": decrypt_token(row.soundcloud_token),
+            "soundcloud_refresh_token": decrypt_token(row.soundcloud_refresh_token) if row.soundcloud_refresh_token else None,
             "spotify_token": decrypt_token(row.spotify_token) if row.spotify_token else None,
             "spotify_refresh_token": decrypt_token(row.spotify_refresh_token) if row.spotify_refresh_token else None,
             "role": row.role,

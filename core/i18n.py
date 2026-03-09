@@ -58,6 +58,8 @@ _S: dict[str, dict[str, str]] = {
     "auth_step2_devtools": {"ru": "DevTools → Application → Cookies → значение", "en": "DevTools → Application → Cookies → value of"},
     "auth_sc_hint":        {"ru": "oauth_token (2-... или 3-...)",         "en": "oauth_token (2-... or 3-...)"},
     "auth_save_btn":       {"ru": "Сохранить",                             "en": "Save"},
+    "auth_sc_oauth_hint":  {"ru": "Нажми кнопку ниже, чтобы войти через SoundCloud и разрешить доступ к аккаунту.", "en": "Click the button below to sign in with SoundCloud and grant access to your account."},
+    "auth_sc_oauth_btn":   {"ru": "Подключить SoundCloud",                 "en": "Connect SoundCloud"},
 
     # ------------------------------------------------------------------ #
     # Progress page
@@ -275,6 +277,20 @@ _S: dict[str, dict[str, str]] = {
     "bot_sc_checking":      {"ru": "Проверяю токен SoundCloud...", "en": "Checking SoundCloud token..."},
     "bot_sc_ok":            {"ru": "SoundCloud подключён! Сессия сохранена.", "en": "SoundCloud connected! Session saved."},
     "bot_sc_error":         {"ru": "Не удалось подключиться к SoundCloud: {detail}\n\nПопробуй ещё раз:", "en": "Could not connect to SoundCloud: {detail}\n\nTry again:"},
+    "bot_sc_no_token": {
+        "ru": (
+            "Для SoundCloud нужна авторизация через веб-интерфейс.\n\n"
+            "1. Открой: <a href=\"{url}\">{url}</a>\n"
+            "2. Нажми «Подключить SoundCloud»\n"
+            "3. Вернись сюда и отправь /migrate снова."
+        ),
+        "en": (
+            "SoundCloud requires web authorization.\n\n"
+            "1. Open: <a href=\"{url}\">{url}</a>\n"
+            "2. Click «Connect SoundCloud»\n"
+            "3. Return here and send /migrate again."
+        ),
+    },
 
     "bot_select_from": {
         "ru": "Выбери источник переноса:",

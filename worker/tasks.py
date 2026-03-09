@@ -97,6 +97,7 @@ async def run_spotify_migration_job(
     logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
+    sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
     try:
         await run_spotify_migration(
             spotify_token=spotify_token,
@@ -198,6 +199,24 @@ async def run_spotify_write_job(
         raise
 
 
+async def _refresh_sc_token_if_needed(sc_token: str, user_id: str) -> str:
+    """Auto-refresh SC access token using stored refresh token."""
+    try:
+        from core.db import load_user_session
+        from core.soundcloud.oauth import refresh_access_token
+        from core.db.crud import save_soundcloud_token
+        session = await load_user_session(user_id)
+        if session and session.get("soundcloud_refresh_token"):
+            refreshed = await refresh_access_token(session["soundcloud_refresh_token"])
+            new_token = refreshed["access_token"]
+            await save_soundcloud_token(user_id, new_token, refresh_token=refreshed.get("refresh_token"))
+            logger.info(f"[job] Refreshed SC access token for user {user_id!r}")
+            return new_token
+    except Exception as e:
+        logger.warning(f"[job] Could not refresh SC token: {e}, using existing token")
+    return sc_token
+
+
 async def run_migration_job(
     ctx,
     migration_id: int,
@@ -215,6 +234,7 @@ async def run_migration_job(
     logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
+    sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
     try:
         migrate_full = mode == "full"
         await run_migration(
@@ -261,6 +281,7 @@ async def run_file_migration_job(
     )
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
+    sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
     try:
         sc_client = await SoundCloudClient(sc_token).init()
         try:
