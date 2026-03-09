@@ -762,16 +762,69 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - [x] `core/i18n.py` — ключи `index_track_limit`, `index_limit_all`, `index_limit_first`
 
 **Бот:**
-- [x] `bot/handlers/auth.py` — кнопки: "Только треки" / "Треки+полное" / "🧪 Тест: 100 треков"; callback `start_migration:mode:limit`
-- [x] `bot/handlers/migration.py` — парсит `parts[1]`=mode, `parts[2]`=limit из callback
+- [x] `bot/states.py` — добавлен `AuthFlow.selecting_limit`
+- [x] `bot/handlers/auth.py` — кнопки режима `select_mode:tracks/full`; отдельный шаг лимита (Все/50/100/500)
+- [x] `bot/handlers/migration.py` — `on_select_mode` → `selecting_limit`; `on_start_migration` парсит лимит
 - [x] `bot/api_client.py` — `start_migration()` принимает и передаёт `track_limit`
-- [x] `core/i18n.py` — ключ `bot_limit_test`
+- [x] `core/i18n.py` — `bot_select_limit`, `bot_btn_limit_all`, `bot_btn_limit_n`
 
 **Пайплайн:**
 - [x] `migration/tracks.py` — `migrate_tracks(..., track_limit=None)` + `migrate_from_file_tracks`
 - [x] `migration/spotify_tracks.py` — `migrate_spotify_tracks(..., track_limit=None)`
 - [x] `worker/tasks.py` — все 5 джобов принимают и пробрасывают `track_limit: int | None = None`
 - [x] `api/routes/migrations.py` — `StartMigrationRequest` добавлен `track_limit: int | None = None`
+
+---
+
+### 🔲 MM-51 — Выбор целевого сервиса (to_service) в боте
+
+> Сейчас бот намертво переносит только в SoundCloud. Нужно добавить выбор куда переносим —
+> SoundCloud, Яндекс Музыку или Spotify — симметрично тому как уже работает веб (дропдауны из матрицы).
+
+**Текущее состояние:**
+- Веб — ✅ уже имеет `from_service`/`to_service` дропдауны из `ServiceRegistry.get_matrix()`; небольшой баг: ETA считается hardcode-`"soundcloud"` → нужно передавать реальный `to_service`
+- Бот — `_show_confirmation` = YM→SC, `_show_confirmation_spotify` = Spotify→SC; `to_service` в `api_client.start_migration` не передаётся (дефолт `soundcloud`)
+
+**FSM: добавить стейт `selecting_to`**
+
+Новый флоу бота:
+```
+/migrate
+  → selecting_from   (YM | Spotify)     — уже есть
+  → selecting_to     (SC | YM | Spotify — отфильтровано по матрице)  ← NEW
+  → waiting_*_token  (собираем токены для FROM + TO)
+  → confirming       (статистика + кнопки старт / тест 100)
+```
+
+**Матрица токенов по выбору FROM→TO:**
+```
+YM   → SC       : yandex_token + soundcloud_token   (уже работает)
+YM   → Spotify  : yandex_token + spotify_token      (требует веб-OAuth для Spotify)
+Spotify → SC    : spotify_token + soundcloud_token  (уже работает)
+Spotify → YM    : spotify_token + yandex_token      (нужен YM OAuth в боте)
+SC   → YM       : soundcloud_token + yandex_token   (нужен SC-ввод + YM OAuth)
+SC   → Spotify  : soundcloud_token + spotify_token  (требует веб-OAuth для Spotify)
+```
+Примечание: SC как FROM — пока нет кнопки в боте (нет SC FROM в `_show_from_selection`); оставить на потом.
+
+**Что менять:**
+
+- [ ] `bot/states.py` — добавить `selecting_to = State()` в `AuthFlow`
+- [ ] `bot/handlers/auth.py`:
+  - После выбора FROM — показывать `_show_to_selection(message, state)` вместо сразу идти к токенам
+  - `_show_to_selection` — получает список доступных TO из `ServiceRegistry.get_matrix()` для выбранного FROM, рисует кнопки
+  - `on_select_to_*` — сохраняет `to_service` в state, переходит к сбору токенов (логика зависит от FROM+TO)
+  - `_show_confirmation` — стать универсальным: принимать `from_service`/`to_service`, показывать правильную ETA и текст
+  - Удалить `_show_confirmation_spotify` — заменить на единый `_show_confirmation`
+  - Если TO=Spotify и `spotify_token` нет в сессии → показывать web-ссылку (как сейчас для FROM=Spotify)
+- [ ] `bot/api_client.py` — `start_migration()` уже принимает `to_service` — проверить что передаётся
+- [ ] `bot/handlers/migration.py` — передавать `to_service` из state в `api_client.start_migration`
+- [ ] `core/i18n.py` — ключи: `bot_select_to`, `bot_service_soundcloud`, ETA-текст под каждый сервис
+- [ ] `api/routes/web.py` — убрать `# to_service not stored in DB yet; defaulting to soundcloud`; передавать реальный `to_service` из формы в `format_eta`
+
+**Что НЕ делать в этой задаче:**
+- SC как FROM в боте — отдельная задача (MM-45 исследует SC auth)
+- Добавлять новые сервисы — только wiremap существующих
 
 ---
 

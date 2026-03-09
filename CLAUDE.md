@@ -173,7 +173,7 @@ migration/
 bot/
     ├── main.py                         — aiogram 3.x entry
     ├── api_client.py                   — MigrationApiClient (talks to FastAPI)
-    ├── handlers/                       — start, auth (FSM: selecting_from → token collection → confirming),
+    ├── handlers/                       — start, auth (FSM: selecting_from → token collection → confirming → selecting_limit),
     │                                     migration, status
     └── oauth/yandex.py                 — Yandex OAuth 2.0 (verification_code flow)
 
@@ -232,7 +232,7 @@ Rule: **no task is considered done until docs are updated.**
 - `_SEARCH_LIMIT = 10` in SoundCloudClient for better candidate coverage
 - `setup_logger(service)` in `core/logger.py` — call once per entry point; stdout JSON sink for Promtail, stderr colored for dev
 - Monitoring stack is opt-in: `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d`
-- Bot FSM flow: `AuthFlow.selecting_from` → choose source (YM/Spotify) → token collection → `AuthFlow.confirming`
+- Bot FSM flow: `AuthFlow.selecting_from` → choose source (YM/Spotify) → token collection → `AuthFlow.confirming` (mode: tracks/full) → `AuthFlow.selecting_limit` (All/50/100/500) → start
 - Bot Spotify path: requires `spotify_token` already in DB session (set via web UI OAuth); bot shows web link if missing
 - `api/routes/migrations.py` routes based on `to_service`: `yandex_music` → `run_yandex_migration_job`, `spotify` → `run_spotify_write_job`, default SC → `run_migration_job` or `run_spotify_migration_job`
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
