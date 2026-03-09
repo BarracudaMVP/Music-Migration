@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     spotify_client_secret: str = Field(default="")
     spotify_redirect_uri: str = Field(default="http://localhost:8000/auth/spotify/callback")
 
+    # SoundCloud OAuth (soundcloud.com/you/apps)
+    sc_client_id: str = Field(default="")
+    sc_client_secret: str = Field(default="")
+    sc_redirect_uri: str = Field(default="http://localhost:8000/auth/soundcloud/callback")
+
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():
             return set()

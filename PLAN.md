@@ -722,7 +722,7 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-52 — SoundCloud официальный OAuth (замена cookie-авторизации)
+### ✅ MM-52 — SoundCloud официальный OAuth (замена cookie-авторизации)
 
 > Текущий метод (cookie `oauth_token` из DevTools) использует внутренний браузерный токен.
 > SC API блокирует write-операции (like_track → 404, create_playlist → 403 Datadome) для таких токенов с server IP.
@@ -743,15 +743,15 @@ SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
 ```
 
 **Реализация (аналогично Spotify):**
-- [ ] `core/soundcloud/oauth.py` — `get_auth_url()`, `exchange_code()`, `refresh_access_token()`
-- [ ] `api/routes/web.py` — `GET /auth/soundcloud` (редирект на SC), `GET /auth/soundcloud/callback` (обмен кода, сохранение токена)
-- [ ] `api/templates/auth.html` — кнопка "Подключить SoundCloud" вместо поля ввода cookie
-- [ ] `core/db/models.py` — `UserSession.soundcloud_refresh_token` (новое поле)
-- [ ] `core/db/crud.py` — сохранение/загрузка SC refresh token
-- [ ] `alembic/` — новая миграция для поля
-- [ ] `SoundCloudClient` — принимает официальный access_token; `worker/tasks.py` — auto-refresh перед стартом джоба (как для Spotify)
-- [ ] Бот — убрать шаг ввода SC cookie, заменить на ссылку на веб (`/auth/soundcloud`)
-- [ ] `core/soundcloud/client.py` — убрать `like_track` no-op, вернуть настоящий лайк
+- [x] `core/soundcloud/oauth.py` — `get_auth_url()`, `exchange_code()`, `refresh_access_token()`
+- [x] `api/routes/web.py` — `GET /auth/soundcloud` (редирект на SC), `GET /auth/soundcloud/callback` (обмен кода, сохранение токена)
+- [x] `api/templates/auth.html` — кнопка "Подключить SoundCloud" вместо поля ввода cookie
+- [x] `core/db/models.py` — `UserSession.soundcloud_refresh_token` (новое поле)
+- [x] `core/db/crud.py` — `save_soundcloud_token()`, `load_user_session()` обновлён
+- [x] `alembic/versions/f6a7b8c9d0e1_add_soundcloud_refresh_token.py` — новая миграция
+- [x] `worker/tasks.py` — `_refresh_sc_token_if_needed()` + auto-refresh в 3 джобах
+- [x] Бот — `_ask_soundcloud_token()` → ссылка на веб если `sc_client_id` задан
+- [x] `core/i18n.py` — `auth_sc_oauth_hint`, `auth_sc_oauth_btn`, `bot_sc_no_token`
 
 **Порядок:**
 1. Дождаться одобрения SC приложения (или протестировать с текущими credentials)

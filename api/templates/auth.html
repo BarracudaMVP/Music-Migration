@@ -108,25 +108,29 @@
 
 <!-- SoundCloud -->
 <p class="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">{{ t('auth_dest_label') }}</p>
-<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden
+<div class="bg-white rounded-2xl border shadow-sm overflow-hidden
+  {% if sc_done %}border-green-200{% else %}border-gray-200{% endif %}
   {% if not ym_done and not spotify_done %}opacity-50 pointer-events-none{% endif %}">
-  <div class="px-5 py-3.5 border-b border-gray-100">
+  <div class="px-5 py-3.5 border-b {% if sc_done %}border-green-100 bg-green-50{% else %}border-gray-100{% endif %} flex items-center justify-between">
     <h2 class="font-semibold text-sm">SoundCloud</h2>
+    {% if sc_done %}
+    <span class="flex items-center gap-1 text-green-600 text-xs font-medium">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      {{ t('auth_connected') }}
+    </span>
+    {% endif %}
   </div>
+  {% if not sc_done %}
   <div class="px-5 py-4">
-    <p class="text-sm text-gray-500 mb-1">
-      {{ t('auth_step2_desc1') }} <a href="https://soundcloud.com" target="_blank" class="text-indigo-600 hover:underline">soundcloud.com</a>{{ t('auth_step2_desc2') }}
-    </p>
-    <p class="text-sm text-gray-500 mb-3">
-      {{ t('auth_step2_devtools') }} <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">oauth_token</code>.
-    </p>
-    <form method="post" action="/auth/soundcloud" class="flex gap-2">
-      <input name="sc_token" type="text" placeholder="{{ t('auth_sc_hint') }}" autocomplete="off"
-        class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-      <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 text-sm font-medium transition">
-        {{ t('auth_save_btn') }}
-      </button>
-    </form>
+    <p class="text-sm text-gray-500 mb-3">{{ t('auth_sc_oauth_hint') }}</p>
+    <a href="/auth/soundcloud"
+      class="inline-flex items-center gap-2 bg-[#f50] text-white px-4 py-2 rounded-xl hover:bg-orange-600 text-sm font-semibold transition">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M1.175 12.225c-.15 0-.25.1-.25.25l-.312 2.062.312 2.1c0 .15.1.25.25.25s.25-.1.25-.25l.35-2.1-.35-2.063c0-.15-.1-.25-.25-.25zm1.5-.637c-.175 0-.312.125-.312.3l-.275 2.4.275 2.4c0 .175.137.3.312.3s.313-.125.313-.3l.312-2.4-.312-2.4c0-.175-.138-.3-.313-.3zm1.5-.2c-.2 0-.35.15-.35.35l-.25 2.6.25 2.6c0 .2.15.35.35.35s.35-.15.35-.35l.287-2.6-.287-2.6c0-.2-.15-.35-.35-.35zm9.625-3.563c-.1-.025-.2-.037-.3-.037-1.125 0-2.137.575-2.737 1.45-.2-2.475-2.263-4.413-4.788-4.413-.662 0-1.287.137-1.85.387-.212.088-.275.188-.287.275v8.9c.012.1.087.175.187.2h9.775c.9 0 1.637-.712 1.637-1.612 0-.9-.737-1.638-1.637-1.638z"/>
+      </svg>
+      {{ t('auth_sc_oauth_btn') }}
+    </a>
   </div>
+  {% endif %}
 </div>
 {% endblock %}

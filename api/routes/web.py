@@ -18,12 +18,14 @@ from core.db import (
     get_tracks_page,
     load_user_session,
     save_user_session,
+    save_soundcloud_token,
     save_spotify_token,
     save_user_lang,
     delete_user_session,
 )
 from core.db.crud import get_all_tracks
 from core.services.registry import ServiceRegistry
+from core.soundcloud.client import SoundCloudClient
 from core.i18n import t as _t, detect_lang_web
 
 templates = Jinja2Templates(directory="api/templates")
@@ -132,11 +134,17 @@ async def auth_page(request: Request, error: str = ""):
         request.session.get("spotify_connected")
         or (db_session and db_session.get("spotify_token"))
     )
+    sc_done = bool(
+        request.session.get("sc_connected")
+        or (db_session and db_session.get("soundcloud_token"))
+    )
     return _render("auth.html", request, {
         "ym_auth_url": get_auth_url(),
         "ym_done": ym_done,
         "spotify_done": spotify_done,
         "spotify_enabled": bool(cfg.spotify_client_id),
+        "sc_done": sc_done,
+        "sc_enabled": bool(cfg.sc_client_id),
         "error": error,
     })
 
@@ -181,6 +189,56 @@ async def auth_soundcloud(request: Request, sc_token: str = Form(...)):
     request.session.pop("ym_token", None)
     request.session.pop("ym_login", None)
     return RedirectResponse("/", status_code=303)
+
+
+@router.get("/auth/soundcloud")
+async def auth_soundcloud_redirect(request: Request):
+    """Redirect пользователя на страницу авторизации SoundCloud."""
+    from core.soundcloud.oauth import generate_state, get_auth_url
+    from config import settings
+
+    if not settings.sc_client_id:
+        return RedirectResponse(
+            f"/auth?error={quote('SoundCloud не настроен (отсутствует SC_CLIENT_ID)')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = generate_state()
+    request.session["sc_oauth_state"] = state
+    return RedirectResponse(get_auth_url(state), status_code=303)
+
+
+@router.get("/auth/soundcloud/callback")
+async def auth_soundcloud_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Callback от SoundCloud после авторизации пользователя."""
+    from core.soundcloud.oauth import exchange_code
+
+    if error:
+        return RedirectResponse(
+            f"/auth?error={quote(f'SoundCloud отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+
+    expected_state = request.session.get("sc_oauth_state")
+    if not state or state != expected_state:
+        return RedirectResponse(
+            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+    request.session.pop("sc_oauth_state", None)
+
+    user_id = _ensure_user_id(request)
+    try:
+        token_data = await exchange_code(code)
+        access_token = token_data["access_token"]
+        sc_client = await SoundCloudClient(access_token).init()
+        await sc_client.close()
+        await save_soundcloud_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
+        request.session["sc_connected"] = True
+    except Exception as e:
+        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+
+    return RedirectResponse("/auth", status_code=303)
 
 
 @router.get("/auth/spotify")

@@ -189,6 +189,19 @@ async def _ask_soundcloud_token(message: Message, state: FSMContext, ym_token: s
     lang = await _get_lang(state)
     if ym_token:
         await state.update_data(yandex_token=ym_token)
+
+    from config import settings
+    if settings.sc_client_id:
+        web_url = settings.api_base_url.rstrip("/")
+        await message.answer(
+            t("bot_sc_no_token", lang).format(url=web_url),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        await state.clear()
+        return
+
+    # Fallback: cookie method (when SC OAuth is not configured)
     instructions = t("bot_sc_instructions", lang)
     await message.answer(
         t("bot_sc_step2", lang).format(instructions=instructions),
