@@ -14,7 +14,7 @@ from loguru import logger
 from bot.states import AuthFlow, MigrationFlow
 from bot.api_client import api_client
 from config import settings
-from core.i18n import t
+from core.i18n import t, format_eta as _format_eta
 
 router = Router()
 
@@ -56,7 +56,28 @@ def _kb_result(migration_id: int, not_found: int, lang: str) -> InlineKeyboardMa
 # Start migration
 # ---------------------------------------------------------------------------
 
-@router.callback_query(AuthFlow.confirming, F.data.startswith("start_migration"))
+def _kb_limit(mode: str, lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("bot_btn_limit_all", lang),      callback_data=f"start_migration:{mode}:0")],
+        [InlineKeyboardButton(text=t("bot_btn_limit_n", lang).format(n=50),  callback_data=f"start_migration:{mode}:50")],
+        [InlineKeyboardButton(text=t("bot_btn_limit_n", lang).format(n=100), callback_data=f"start_migration:{mode}:100")],
+        [InlineKeyboardButton(text=t("bot_btn_limit_n", lang).format(n=500), callback_data=f"start_migration:{mode}:500")],
+        [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
+    ])
+
+
+@router.callback_query(AuthFlow.confirming, F.data.startswith("select_mode:"))
+async def on_select_mode(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    mode = callback.data.split(":")[1]  # "tracks" or "full"
+    lang = await _get_lang(state)
+    await state.update_data(selected_mode=mode)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(t("bot_select_limit", lang), reply_markup=_kb_limit(mode, lang))
+    await state.set_state(AuthFlow.selecting_limit)
+
+
+@router.callback_query(AuthFlow.selecting_limit, F.data.startswith("start_migration:"))
 async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -114,7 +135,10 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     )
 
 
-@router.callback_query(AuthFlow.confirming, F.data == "cancel_migration")
+@router.callback_query(
+    F.data == "cancel_migration",
+    AuthFlow.confirming | AuthFlow.selecting_limit,
+)
 async def on_cancel_migration(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     lang = await _get_lang(state)
