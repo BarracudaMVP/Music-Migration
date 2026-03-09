@@ -1,6 +1,7 @@
 import asyncio
 
 from aiogram import Router, F
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -136,8 +137,8 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
 
 
 @router.callback_query(
+    StateFilter(AuthFlow.confirming, AuthFlow.selecting_limit),
     F.data == "cancel_migration",
-    AuthFlow.confirming | AuthFlow.selecting_limit,
 )
 async def on_cancel_migration(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
