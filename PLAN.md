@@ -653,6 +653,89 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
+### ✅ MM-47 — SoundCloud playlist_mode (замена like_track плейлистами)
+
+> SC API возвращает HTTP 404 на `PUT /me/track_likes/{id}` для внешних токенов.
+> Решение: собирать sc_id в памяти в ходе поиска, в конце создавать плейлисты батчами.
+
+- [x] `config.py` — `sc_playlist_batch_size: int = 500` (env: `SC_PLAYLIST_BATCH_SIZE`)
+- [x] `migration/tracks.py` — `playlist_mode: bool = False` во всех функциях пайплайна
+- [x] `migration/tracks.py` — `_process_one_track` возвращает `tuple[str, int | None]`; в playlist_mode не вызывает `like_track`, сразу маркирует `status=liked` и возвращает `sc_id`
+- [x] `migration/tracks.py` — `_run_pending_loop` собирает `collected_ids`, после цикла вызывает `_create_liked_playlists`
+- [x] `migration/tracks.py` — `_create_liked_playlists(sc_client, track_ids)`: батчи по `sc_playlist_batch_size`, плейлисты "YM Liked #1", "YM Liked #2"…
+- [x] `migration/spotify_tracks.py` — `playlist_mode` пробрасывается через `migrate_spotify_tracks` и `run_spotify_migration`
+- [x] `worker/tasks.py` — все три SC-джоба (`run_migration_job`, `run_file_migration_job`, `run_spotify_migration_job`) с `playlist_mode=True`
+- [x] `CLAUDE.md` — `SC_PLAYLIST_BATCH_SIZE` в env vars, паттерн в Key Patterns, Architecture обновлена
+
+**Ключевые решения:**
+- Поиск и `like_track` разделены: весь цикл — только search+match (без write API), плейлист создаётся один раз в конце
+- `playlist_mode=False` по умолчанию — не ломает тесты и CLI
+- При одном батче плейлист называется "YM Liked", при нескольких — "YM Liked #N"
+
+---
+
+### 🔲 MM-43 — Яндекс OAuth автоматический callback (веб)
+
+> Сейчас веб-пользователь видит код на странице Яндекса и копирует его вручную.
+> Цель: использовать собственный redirect_uri — код приходит на наш сервер автоматически.
+> **Требует MM-9 (домен + HTTPS)** — Яндекс не принимает http:// для кастомного redirect_uri.
+
+- [ ] Зарегистрировать новый redirect_uri в приложении oauth.yandex.ru: `https://ourdomain.com/auth/yandex/callback`
+- [ ] `bot/oauth/yandex.py` — `_REDIRECT_URI` и `get_auth_url()` обновить на кастомный URI (параметризовать через `config.py`)
+- [ ] `api/routes/web.py` — добавить `GET /auth/yandex/callback`: принять `?code=`, вызвать `exchange_code()`, сохранить токен в сессию, редирект на `/auth`
+- [ ] `config.py` — `yandex_redirect_uri: str` (аналогично `spotify_redirect_uri`)
+- [ ] `api/templates/auth.html` — убрать поле ввода кода Яндекса (шаг становится полностью автоматическим)
+
+---
+
+### 🔲 MM-44 — Яндекс OAuth через веб-посредник для Telegram-бота
+
+> Бот не имеет web-callback. Решение: пользователь нажимает кнопку в боте → открывается наш сайт → OAuth → токен сохраняется → возврат в Telegram через deeplink.
+> **Требует MM-43.**
+
+- [ ] `bot/handlers/auth.py` — при запросе Яндекс-токена генерировать уникальный `state` (UUID), сохранять в FSM, отправлять кнопку с ссылкой `https://ourdomain.com/auth/yandex/bot?state=UUID`
+- [ ] `api/routes/web.py` — `GET /auth/yandex/bot` → сохраняет `state` в сессии, редиректит на Яндекс OAuth (с `redirect_uri=/auth/yandex/bot/callback`)
+- [ ] `api/routes/web.py` — `GET /auth/yandex/bot/callback` → принимает `?code=&state=`, обменивает код, сохраняет токен в Redis с ключом `ym_auth:{state}` (TTL 300с), редиректит в Telegram `tg://resolve?domain=botname`
+- [ ] `bot/handlers/auth.py` — после отправки ссылки бот поллит Redis-ключ `ym_auth:{state}` (30 попыток × 5с), при получении токена — сохраняет и переходит к следующему шагу авторизации
+- [ ] Fallback: если поллинг истёк — предложить ввести код вручную (старый путь)
+
+---
+
+### 🔲 MM-45 — SoundCloud мобильная авторизация
+
+> Текущий метод (cookie `oauth_token` из DevTools) недоступен на мобильных устройствах.
+> Нужен способ авторизоваться в SC без DevTools.
+
+**Исследование вариантов:**
+- [ ] Проверить, работает ли SoundCloud OAuth (client_credentials / authorization_code) с текущим `client_id` из cookie — некоторые старые app_id ещё принимают запросы
+- [ ] Если OAuth недоступен: реализовать веб-страницу-помощник на нашем сервере — пользователь логинится в SC в том же браузере, JS читает cookie через `document.cookie` (только если same-origin) и POST-ит на наш backend
+- [ ] Альтернатива: инструкция для мобиля — Chrome на Android с desktop-режимом + Eruda/vConsole как мобильный DevTools
+
+**Реализация (после исследования):**
+- [ ] Если OAuth: `core/soundcloud/oauth.py` — Authorization Code Flow; `api/routes/web.py` — `/auth/soundcloud` + `/auth/soundcloud/callback`; убрать ручной ввод cookie
+- [ ] Если веб-помощник: `api/routes/web.py` — `/auth/soundcloud/helper` — страница с iframe или redirect на SC, JS перехватчик cookie → POST на `/auth/soundcloud/capture`
+- [ ] `api/templates/auth.html` — мобильная инструкция (кнопка + описание шагов) вместо поля «вставьте cookie»
+
+---
+
+### 🔲 MM-46 — Перенос приложения из /root/ в /opt/ на EU сервере
+
+> Технический долг: приложение лежит в `/root/Music-Migration/` — домашней директории root.
+> Стандартное место для сервисов: `/opt/music-migration/`.
+
+- [ ] Создать системного пользователя `musicmigration` (без shell, без пароля)
+- [ ] Перенести проект: `cp -r /root/Music-Migration /opt/music-migration`
+- [ ] Обновить `deploy_dir` в Ansible `group_vars/all.yml`
+- [ ] Обновить `docker-compose.yml` если есть абсолютные пути (volume mounts)
+- [ ] Проверить nginx конфиг — путей к проекту там нет, но проверить
+- [ ] `docker compose down` → перенос → `docker compose up -d` в новом месте
+- [ ] Убедиться что `.env` скопирован и данные БД (postgres volume) сохранены
+- [ ] Удалить `/root/Music-Migration/` после проверки
+
+> Выполнять вместе с каким-либо плановым деплоем (например MM-9), чтобы не делать лишний даунтайм.
+
+---
+
 ## Риски и митигации
 
 | Риск | Митигация |

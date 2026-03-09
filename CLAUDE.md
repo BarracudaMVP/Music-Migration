@@ -5,8 +5,20 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MVP9**, deployed on EU server.
-Supports: Yandex Music → SoundCloud (liked tracks, playlists, artists), Web UI, Telegram bot.
+Current state: **MVP9 + MM-47**, deployed on EU server.
+Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
+
+Transfer matrix:
+```
+FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
+--------------|------------|-----------|---------------|--------
+Яндекс Музыка |     ✓      |    ✓      |       –       |    ✓
+Spotify       |     ✓      |    ✓      |       ✓       |    –
+File CSV      |     ✓      |    –      |       ✓       |    ✓
+SoundCloud    |     –      |    ✓      |       ✓       |    ✓
+```
+
+Note: SC destination uses **playlist_mode** — tracks are collected then placed into "YM Liked #N" playlists (SC `like_track` API returns 404 for external tokens).
 
 ## Install & Run
 
@@ -52,6 +64,7 @@ SPOTIFY_REDIRECT_URI=      # e.g. https://yourdomain.com/auth/spotify/callback
 # SoundCloud
 SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...)
 SC_RATE_LIMIT_SLEEP=2.0    # Delay between SoundCloud write ops (seconds)
+SC_PLAYLIST_BATCH_SIZE=500 # Max tracks per SoundCloud playlist in playlist_mode
 
 # Database
 DATABASE_URL=              # SQLAlchemy URL — PostgreSQL only: postgresql+asyncpg://user:pass@host/db
@@ -84,70 +97,90 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 ## Architecture
 
 ```
-run_api.py       → api/main.py          — FastAPI app (6 routers, SessionMiddleware)
+run_api.py       → api/main.py          — FastAPI app (routers, SessionMiddleware)
 run_worker.py    → worker/              — ARQ worker (background migration jobs)
 run.py           → bot/main.py          — aiogram 3.x Telegram bot
 cli.py                                  — CLI migration runner
 
 api/
-    ├── main.py                         — FastAPI entry, router registration
+    ├── main.py                         — FastAPI entry, router registration (web+admin gated by WEB_ENABLED)
+    ├── middleware.py                   — AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
     ├── routes/
-    │   ├── web.py                      — Web UI: /, /auth, /migrate, /history (Jinja2+HTMX)
+    │   ├── web.py                      — Web UI: /, /auth, /auth/spotify, /auth/yandex,
+    │   │                                  /migrate, /migrate/{id}/tracks, /history,
+    │   │                                  /import, /export, /set-lang (Jinja2+HTMX)
     │   ├── migrations.py               — REST: POST /migrations, GET /migrations/{id}
     │   ├── reports.py                  — GET /migrations/{id}/not-found (queries DB)
     │   ├── services.py                 — GET /api/services, GET /api/services/matrix
-    │   └── admin.py                    — Admin UI: /admin/login, /dashboard, /migrations, /users
-    ├── templates/                      — Jinja2 templates (base, index, auth, progress, result, history)
+    │   └── admin.py                    — Admin UI: /admin/login, /dashboard, /migrations, /users, /services
+    ├── templates/                      — Jinja2 templates
+    │   ├── base.html, index.html, auth.html, progress.html, result.html
+    │   ├── history.html, tracks.html, import.html, export.html
+    │   ├── fragments/status.html, fragments/import_preview.html
     │   └── admin/                      — Admin templates
-    └── deps.py                         — FastAPI dependencies (verify_internal_token)
+    └── deps.py                         — FastAPI dependencies (verify_internal_token, check_migration_rate_limit)
 
 worker/                                 — ARQ job definitions
-    ├── main.py                         — WorkerSettings (functions, cron_jobs, redis_settings)
-    ├── tasks.py                        — run_migration_job, run_file_migration_job, run_spotify_migration_job, run_yandex_migration_job, run_spotify_write_job
+    ├── main.py                         — WorkerSettings (functions, redis_settings)
+    ├── tasks.py                        — run_migration_job (YM→SC, playlist_mode=True)
+    │                                     run_file_migration_job (File→SC, playlist_mode=True)
+    │                                     run_spotify_migration_job (Spotify→SC, playlist_mode=True)
+    │                                     run_yandex_migration_job (any→YM)
+    │                                     run_spotify_write_job (any→Spotify, auto-refresh token)
     └── notifications.py               — notify_telegram(), migration_done_text(), migration_failed_text()
 
 core/
     ├── db/                             — SQLAlchemy 2.x async package
-    │   ├── models.py                   — ORM models (UserSession.spotify_token nullable)
+    │   ├── models.py                   — UserSession (yandex_token, soundcloud_token, spotify_token,
+    │   │                                  spotify_refresh_token, lang, role)
     │   ├── session.py                  — async engine + sessionmaker
-    │   ├── crud.py                     — DB operations (save_spotify_token, get_all_tracks)
+    │   ├── crud.py                     — DB operations (save_spotify_token, get_all_tracks, set_user_role…)
     │   └── __init__.py                 — public re-exports
-    ├── yandex/client.py                — YandexMusicClient: liked tracks, playlists, artists
-    ├── yandex/proxy_request.py         — SocksProxyRequest (aiohttp-socks)
-    ├── soundcloud/client.py            — SoundCloudClient: search + write ops
-    ├── soundcloud/models.py            — SCTrack, SCUser, SCPlaylist
-    ├── spotify/                        — Spotify integration (MM-22)
+    ├── yandex/
+    │   ├── client.py                   — YandexMusicClient: liked tracks, playlists, artists, search, like_track
+    │   └── proxy_request.py            — SocksProxyRequest (aiohttp-socks, socks5://)
+    ├── soundcloud/
+    │   ├── client.py                   — SoundCloudClient: search, write ops, get_liked_tracks, create_playlist
+    │   └── models.py                   — SCTrack, SCUser, SCPlaylist
+    ├── spotify/
     │   ├── models.py                   — SpotifyTrack, SpotifyPlaylist, SpotifyArtist
-    │   ├── oauth.py                    — Authorization Code Flow: get_auth_url, exchange_code, refresh_access_token
-    │   └── client.py                   — SpotifyClient: get_liked_tracks, get_playlists, get_followed_artists; search_tracks, like_track, search_artists, follow_artist (MM-39)
+    │   ├── oauth.py                    — Authorization Code Flow + refresh_access_token
+    │   └── client.py                   — SpotifyClient: read (liked tracks/playlists/artists) +
+    │                                     write (search_tracks, like_track, search_artists, follow_artist)
     ├── services/                       — Service registry + adapters
     │   ├── base.py                     — Capability flags + MusicServiceAdapter ABC
     │   ├── registry.py                 — ServiceRegistry singleton
-    │   ├── yandex/adapter.py           — YandexMusicAdapter
-    │   ├── soundcloud/adapter.py       — SoundCloudAdapter
-    │   ├── spotify/adapter.py          — SpotifyAdapter (READ + WRITE: LIKED_TRACKS | PLAYLISTS | LIKED_ARTISTS)
-    │   └── file/adapter.py             — FileAdapter (CSV/JSON)
+    │   ├── yandex/adapter.py           — YandexMusicAdapter (READ + WRITE_LIKED_TRACKS + EXPORT)
+    │   ├── soundcloud/adapter.py       — SoundCloudAdapter (READ + WRITE + EXPORT)
+    │   ├── spotify/adapter.py          — SpotifyAdapter (READ + WRITE: LIKED_TRACKS | PLAYLISTS | LIKED_ARTISTS + EXPORT)
+    │   └── file/adapter.py             — FileAdapter (CSV/JSON import/export)
+    ├── export.py                       — export_library(service_id, token, fmt), exportable_services()
+    ├── i18n.py                         — t(key, lang), detect_lang_web/tg, format_eta()
+    ├── logger.py                       — setup_logger(service): single sink (pretty|json via LOG_FORMAT)
     ├── matcher.py                      — Fuzzy matching + Cyrillic transliteration + split_artists
     └── crypto.py                       — Token encryption/decryption (Fernet)
 
 migration/
-    ├── tracks.py                       — MVP1 pipeline: YM likes → SC likes (multi-query search)
-    ├── playlists.py                    — MVP2: YM playlists → SC playlists
-    ├── artists.py                      — MVP2: YM liked artists → SC follows
-    ├── spotify_tracks.py               — MM-22: Spotify likes → SC likes (reuses _run_pending_loop)
-    ├── yandex_tracks.py                — MM-38: any source → YM likes (multi-query, fuzzy match, sleep 1.0s)
-    └── spotify_write.py                — MM-39: any source → Spotify likes + artist follows (auto-refresh token)
+    ├── tracks.py                       — * → SC pipeline: search → match → collect sc_ids →
+    │                                     create "YM Liked #N" playlists (playlist_mode=True)
+    │                                     _run_pending_loop, _process_one_track, _create_liked_playlists
+    ├── playlists.py                    — YM playlists → SC playlists
+    ├── artists.py                      — YM liked artists → SC follows
+    ├── spotify_tracks.py               — Spotify → SC (reuses _run_pending_loop, playlist_mode)
+    ├── yandex_tracks.py                — any source → YM likes (multi-query, fuzzy match, sleep 1.0s)
+    └── spotify_write.py                — any source → Spotify likes + artist follows (auto-refresh token)
 
 bot/
     ├── main.py                         — aiogram 3.x entry
     ├── api_client.py                   — MigrationApiClient (talks to FastAPI)
-    ├── handlers/                       — start, auth, migration, status
-    └── oauth/yandex.py                 — Yandex OAuth 2.0
+    ├── handlers/                       — start, auth (FSM: selecting_from → token collection → confirming),
+    │                                     migration, status
+    └── oauth/yandex.py                 — Yandex OAuth 2.0 (verification_code flow)
 
 config.py                               — Pydantic settings (all env vars)
 alembic/                                — DB migrations (alembic upgrade head)
 nginx/nginx.conf                        — Reverse proxy to api:8000
-docker-compose.yml                      — postgres + redis + api + bot + worker + nginx (all with log rotation)
+docker-compose.yml                      — postgres + redis + api + bot + worker + nginx (log rotation)
 docker-compose.monitoring.yml           — opt-in: Loki + Promtail + Grafana
 monitoring/
     ├── loki/config.yml                 — Loki local filesystem storage
@@ -157,10 +190,20 @@ monitoring/
 
 ## Auth Flow
 
-1. User opens Web UI or sends `/migrate` in bot
-2. If saved session exists → silently validate both tokens → go to confirmation screen
-3. If no session → Yandex OAuth (button link → user logs in → pastes code back) → SoundCloud token (cookie from DevTools)
+**Web UI:**
+1. User opens `/` → selects source/destination → goes to `/auth`
+2. If saved session exists → silently validate tokens → go to confirmation
+3. If no session:
+   - Yandex: OAuth button → `https://oauth.yandex.ru/verification_code` → user pastes code back
+   - SoundCloud: user pastes `oauth_token` cookie from DevTools
+   - Spotify: OAuth redirect → `/auth/spotify/callback` → token saved automatically
 4. Tokens saved encrypted in PostgreSQL
+
+**Telegram bot:**
+1. `/migrate` → inline buttons: choose source (Yandex Music / Spotify)
+2. Yandex path: saved token validation → if expired, re-auth via OAuth code
+3. Spotify path: requires `spotify_token` already in DB (set via web UI); shows web link if missing
+4. Confirmation screen with track count + ETA → start migration
 
 ## Documentation Rules
 
@@ -195,4 +238,5 @@ Rule: **no task is considered done until docs are updated.**
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` in `core/i18n.py` — localised ETA string per destination service
+- `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` disabled because SC API returns 404
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available

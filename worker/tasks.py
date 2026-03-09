@@ -101,6 +101,7 @@ async def run_spotify_migration_job(
             user_id=user_id,
             mode=mode,
             progress_callback=progress_cb,
+            playlist_mode=True,
         )
         logger.info(f"[job] Spotify migration #{migration_id} finished")
 
@@ -215,6 +216,7 @@ async def run_migration_job(
             migrate_playlists=migrate_full,
             migrate_artists=migrate_full,
             progress_callback=progress_cb,
+            playlist_mode=True,
         )
         logger.info(f"[job] Migration #{migration_id} finished")
 
@@ -251,7 +253,7 @@ async def run_file_migration_job(
     try:
         sc_client = await SoundCloudClient(sc_token).init()
         try:
-            await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb)
+            await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb, playlist_mode=True)
         finally:
             await sc_client.close()
         logger.info(f"[job] File migration #{migration_id} finished")
