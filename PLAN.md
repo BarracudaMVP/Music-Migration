@@ -716,20 +716,48 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-45 — SoundCloud мобильная авторизация
+### ✅ MM-45 — SoundCloud мобильная авторизация
 
-> Текущий метод (cookie `oauth_token` из DevTools) недоступен на мобильных устройствах.
-> Нужен способ авторизоваться в SC без DevTools.
+> Закрыта как часть MM-52 — официальный OAuth полностью заменяет cookie-подход и решает мобильную авторизацию заодно.
 
-**Исследование вариантов:**
-- [ ] Проверить, работает ли SoundCloud OAuth (client_credentials / authorization_code) с текущим `client_id` из cookie — некоторые старые app_id ещё принимают запросы
-- [ ] Если OAuth недоступен: реализовать веб-страницу-помощник на нашем сервере — пользователь логинится в SC в том же браузере, JS читает cookie через `document.cookie` (только если same-origin) и POST-ит на наш backend
-- [ ] Альтернатива: инструкция для мобиля — Chrome на Android с desktop-режимом + Eruda/vConsole как мобильный DevTools
+---
 
-**Реализация (после исследования):**
-- [ ] Если OAuth: `core/soundcloud/oauth.py` — Authorization Code Flow; `api/routes/web.py` — `/auth/soundcloud` + `/auth/soundcloud/callback`; убрать ручной ввод cookie
-- [ ] Если веб-помощник: `api/routes/web.py` — `/auth/soundcloud/helper` — страница с iframe или redirect на SC, JS перехватчик cookie → POST на `/auth/soundcloud/capture`
-- [ ] `api/templates/auth.html` — мобильная инструкция (кнопка + описание шагов) вместо поля «вставьте cookie»
+### 🔲 MM-52 — SoundCloud официальный OAuth (замена cookie-авторизации)
+
+> Текущий метод (cookie `oauth_token` из DevTools) использует внутренний браузерный токен.
+> SC API блокирует write-операции (like_track → 404, create_playlist → 403 Datadome) для таких токенов с server IP.
+> Решение: официальный OAuth Authorization Code Flow — как уже сделано для Spotify (MM-22/39).
+> Приложение зарегистрировано на soundcloud.com/you/apps, ожидается одобрение write scope.
+
+**Что решает:**
+- ✅ `PUT /me/track_likes/{id}` — нормальный лайк трека
+- ✅ `POST /playlists` — создание плейлиста без Datadome
+- ✅ Авторизация без DevTools (мобилка, любой браузер)
+- ✅ refresh_token — токен не протухает
+
+**Env vars (добавить в `.env` и `config.py`):**
+```
+SC_CLIENT_ID=
+SC_CLIENT_SECRET=
+SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
+```
+
+**Реализация (аналогично Spotify):**
+- [ ] `core/soundcloud/oauth.py` — `get_auth_url()`, `exchange_code()`, `refresh_access_token()`
+- [ ] `api/routes/web.py` — `GET /auth/soundcloud` (редирект на SC), `GET /auth/soundcloud/callback` (обмен кода, сохранение токена)
+- [ ] `api/templates/auth.html` — кнопка "Подключить SoundCloud" вместо поля ввода cookie
+- [ ] `core/db/models.py` — `UserSession.soundcloud_refresh_token` (новое поле)
+- [ ] `core/db/crud.py` — сохранение/загрузка SC refresh token
+- [ ] `alembic/` — новая миграция для поля
+- [ ] `SoundCloudClient` — принимает официальный access_token; `worker/tasks.py` — auto-refresh перед стартом джоба (как для Spotify)
+- [ ] Бот — убрать шаг ввода SC cookie, заменить на ссылку на веб (`/auth/soundcloud`)
+- [ ] `core/soundcloud/client.py` — убрать `like_track` no-op, вернуть настоящий лайк
+
+**Порядок:**
+1. Дождаться одобрения SC приложения (или протестировать с текущими credentials)
+2. Проверить что `GET /me` работает с OAuth token
+3. Проверить что `PUT /me/track_likes/{id}` работает
+4. Реализовать полный flow
 
 ---
 
