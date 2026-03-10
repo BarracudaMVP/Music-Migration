@@ -36,6 +36,8 @@ _S: dict[str, dict[str, str]] = {
     "index_track_limit": {"ru": "Лимит треков",       "en": "Track limit"},
     "index_limit_all":   {"ru": "Все треки",           "en": "All tracks"},
     "index_limit_first": {"ru": "Первые {n}",          "en": "First {n}"},
+    "index_skip_migrated":      {"ru": "Пропустить уже перенесённые треки", "en": "Skip already transferred tracks"},
+    "index_skip_migrated_hint": {"ru": "Треки из предыдущих переносов в этот сервис не будут обработаны повторно", "en": "Tracks from previous transfers to this service will not be processed again"},
 
     # ------------------------------------------------------------------ #
     # Auth
@@ -361,6 +363,8 @@ _S: dict[str, dict[str, str]] = {
     "bot_btn_tracks_only":  {"ru": "Только треки",                    "en": "Tracks only"},
     "bot_btn_full":         {"ru": "Треки + плейлисты + артисты",     "en": "Tracks + playlists + artists"},
     "bot_btn_cancel":       {"ru": "Отмена",                          "en": "Cancel"},
+    "bot_skip_migrated_on":  {"ru": "♻️ Пропускать уже перенесённые: Вкл", "en": "♻️ Skip transferred: On"},
+    "bot_skip_migrated_off": {"ru": "♻️ Пропускать уже перенесённые: Выкл", "en": "♻️ Skip transferred: Off"},
     "bot_select_limit":     {"ru": "Сколько треков перенести?",        "en": "How many tracks to transfer?"},
     "bot_btn_limit_all":    {"ru": "Все треки",                        "en": "All tracks"},
     "bot_btn_limit_n":      {"ru": "Первые {n}",                       "en": "First {n}"},

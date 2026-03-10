@@ -149,7 +149,7 @@ class MatchResult:
     sc_title: str
     score: float
     matched: bool           # score >= threshold
-    uncertain: bool         # score в зоне 60-75 (стоит проверить вручную)
+    uncertain: bool         # score в зоне [match_uncertain_floor, match_threshold) — стоит проверить вручную
 
 
 @dataclass
@@ -205,7 +205,7 @@ def find_best_match(
         return None
 
     effective_threshold = threshold if threshold is not None else settings.match_threshold
-    uncertain_floor = effective_threshold - 15.0
+    uncertain_floor = settings.match_uncertain_floor
 
     best_score = -1.0
     best_candidate: SCCandidate | None = None

@@ -42,6 +42,8 @@ class Migration(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
+    from_service: Mapped[str | None] = mapped_column(String, nullable=True)
+    to_service: Mapped[str | None] = mapped_column(String, nullable=True)
     soundcloud_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="pending")

@@ -19,8 +19,10 @@ from loguru import logger
 from core.db import (
     create_migration,
     update_migration,
+    get_migration,
     bulk_insert_tracks,
     get_pending_tracks,
+    get_previously_migrated_ym_ids,
     update_track,
     get_track_stats,
 )
@@ -37,15 +39,19 @@ class MigrationStats:
     not_found: int = 0
     errors: int = 0
     uncertain: int = 0  # найдены, но score ниже порога — сохранены в not_found
+    skipped: int = 0   # уже перенесены в предыдущих запусках — пропущены
 
     def __str__(self) -> str:
-        return (
+        parts = (
             f"Всего: {self.total} | "
             f"Перенесено: {self.liked} | "
             f"Не найдено: {self.not_found} | "
             f"Сомнительных: {self.uncertain} | "
             f"Ошибок: {self.errors}"
         )
+        if self.skipped:
+            parts += f" | Пропущено (уже перенесено): {self.skipped}"
+        return parts
 
 
 async def migrate_tracks(
@@ -55,6 +61,7 @@ async def migrate_tracks(
     progress_callback=None,
     playlist_mode: bool = False,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> MigrationStats:
     """
     Основной пайплайн миграции треков.
@@ -77,9 +84,19 @@ async def migrate_tracks(
         await update_migration(migration_id, status="done")
         return MigrationStats()
 
-    # --- Шаг 2: сохраняем в БД ---
+    # --- Шаг 2: сохраняем в БД (с дедупликацией предыдущих переносов) ---
     logger.info(f"Шаг 2/3: сохраняю {len(ym_tracks)} треков в БД...")
-    await bulk_insert_tracks(
+    migration_record = await get_migration(migration_id) or {}
+    user_id = migration_record.get("user_id", "")
+    to_service = migration_record.get("to_service") or "soundcloud"
+
+    already_migrated: set[str] = set()
+    if skip_already_migrated:
+        already_migrated = await get_previously_migrated_ym_ids(user_id, to_service)
+        if already_migrated:
+            logger.info(f"Найдено {len(already_migrated)} треков из предыдущих переносов — будут пропущены")
+
+    skipped = await bulk_insert_tracks(
         migration_id,
         [
             {
@@ -90,11 +107,13 @@ async def migrate_tracks(
             }
             for t in ym_tracks
         ],
+        already_migrated=already_migrated,
     )
 
     # --- Шаг 3: обрабатываем pending-треки ---
     logger.info("Шаг 3/3: обрабатываю треки...")
     stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode)
+    stats.skipped = skipped
 
     await update_migration(migration_id, status="done")
     logger.info(f"Миграция завершена. {stats}")
@@ -249,16 +268,16 @@ async def _process_one_track(
     match = find_best_match(ym_artist, ym_title, candidates)
 
     if match is None:
-        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → not_found (candidates={len(candidates)})")
+        logger.info(f"[match] {ym_artist} — {ym_title} → not_found (candidates={len(candidates)})")
         await update_track(track_id, status="not_found")
         return "not_found", None
 
     if match.matched:
-        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → sc_id={match.sc_id} score={match.score:.0f}")
+        logger.info(f"[match] {ym_artist} — {ym_title} → {match.sc_artist} — {match.sc_title} (score={match.score:.0f})")
     elif match.uncertain:
-        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → uncertain sc_id={match.sc_id} score={match.score:.0f}")
+        logger.info(f"[match] {ym_artist} — {ym_title} → uncertain: {match.sc_artist} — {match.sc_title} (score={match.score:.0f})")
     else:
-        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → not_found score={match.score:.0f}")
+        logger.info(f"[match] {ym_artist} — {ym_title} → not_found (score={match.score:.0f})")
 
     # Сомнительное совпадение — не лайкаем, сохраняем для ручной проверки
     if match.uncertain:
@@ -314,6 +333,7 @@ async def run_migration(
     migration_id: int | None = None,
     playlist_mode: bool = False,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> tuple[int, "FullMigrationStats"]:
     """
     Точка входа для CLI и бота.
@@ -344,6 +364,7 @@ async def run_migration(
         track_stats = await migrate_tracks(
             ym_client, sc_client, migration_id, progress_callback,
             playlist_mode=playlist_mode, track_limit=track_limit,
+            skip_already_migrated=skip_already_migrated,
         )
 
         pl_stats = None

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from loguru import logger
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, null, or_, select, update
 from core.crypto import decrypt_token, encrypt_token
 from core.db.models import Artist, Migration, Playlist, PlaylistTrack, Track, UserSession
 from core.db.session import AsyncSessionLocal, engine
@@ -24,9 +24,13 @@ def _dialect_insert(model):
 # Migrations
 # ---------------------------------------------------------------------------
 
-async def create_migration(user_id: str) -> int:
+async def create_migration(
+    user_id: str,
+    from_service: str | None = None,
+    to_service: str | None = None,
+) -> int:
     async with AsyncSessionLocal() as session:
-        migration = Migration(user_id=user_id)
+        migration = Migration(user_id=user_id, from_service=from_service, to_service=to_service)
         session.add(migration)
         await session.commit()
         await session.refresh(migration)
@@ -51,6 +55,8 @@ async def get_migration(migration_id: int) -> dict | None:
         return {
             "id": row.id,
             "user_id": row.user_id,
+            "from_service": row.from_service,
+            "to_service": row.to_service,
             "soundcloud_user_id": row.soundcloud_user_id,
             "created_at": row.created_at,
             "status": row.status,
@@ -61,22 +67,56 @@ async def get_migration(migration_id: int) -> dict | None:
 # Tracks
 # ---------------------------------------------------------------------------
 
-async def bulk_insert_tracks(migration_id: int, tracks: list[dict]) -> None:
-    """Вставляет треки пачкой. Пропускает уже существующие (idempotent)."""
+async def get_previously_migrated_ym_ids(user_id: str, to_service: str) -> set[str]:
+    """Возвращает ym_id треков, уже успешно перенесённых этим пользователем в to_service.
+    Для soundcloud также включает старые миграции, где to_service IS NULL (до MM-55)."""
+    async with AsyncSessionLocal() as session:
+        to_service_filter = Migration.to_service == to_service
+        # Обратная совместимость: старые SC-миграции хранили NULL в to_service
+        if to_service == "soundcloud":
+            to_service_filter = or_(Migration.to_service == to_service, Migration.to_service == null())
+        result = await session.execute(
+            select(Track.ym_id)
+            .join(Migration, Track.migration_id == Migration.id)
+            .where(
+                Migration.user_id == user_id,
+                to_service_filter,
+                Track.status == "liked",
+            )
+        )
+        return {row for row in result.scalars()}
+
+
+async def bulk_insert_tracks(
+    migration_id: int,
+    tracks: list[dict],
+    already_migrated: set[str] | None = None,
+) -> int:
+    """Вставляет треки пачкой. Пропускает уже существующие (idempotent).
+    Треки из already_migrated сразу помечаются status='liked' (пропуск поиска).
+    Возвращает количество пропущенных (уже перенесённых) треков."""
     if not tracks:
-        return
+        return 0
+    skip = already_migrated or set()
+    skipped = 0
     async with AsyncSessionLocal() as session:
         for t in tracks:
+            ym_id = t["ym_id"]
+            status = "liked" if ym_id in skip else "pending"
+            if status == "liked":
+                skipped += 1
             stmt = _dialect_insert(Track).values(
                 migration_id=migration_id,
-                ym_id=t["ym_id"],
+                ym_id=ym_id,
                 ym_artist=t["ym_artist"],
                 ym_title=t["ym_title"],
                 ym_album=t.get("ym_album", ""),
+                status=status,
             ).on_conflict_do_nothing()
             await session.execute(stmt)
         await session.commit()
-    logger.debug(f"Inserted {len(tracks)} tracks for migration {migration_id}")
+    logger.debug(f"Inserted {len(tracks)} tracks for migration {migration_id} ({skipped} skipped as already migrated)")
+    return skipped
 
 
 async def get_pending_tracks(migration_id: int) -> list[dict]:

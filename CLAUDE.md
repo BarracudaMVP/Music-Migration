@@ -85,7 +85,8 @@ WEB_ENABLED=true           # false = disable web UI and admin (API/bot still wor
 WEB_ALLOWED_IPS=           # comma-separated IPs allowed to access web UI; empty = allow all
 
 # Misc
-MATCH_THRESHOLD=75.0       # Minimum fuzzy match score (0–100)
+MATCH_THRESHOLD=95.0       # Minimum fuzzy match score for "matched" (0–100)
+MATCH_UNCERTAIN_FLOOR=60.0 # Lower bound for "uncertain" zone (below = not_found)
 LOG_LEVEL=INFO
 LOG_FORMAT=pretty           # "pretty" = colored stderr (dev), "json" = JSON stdout (Docker/Promtail)
 ```

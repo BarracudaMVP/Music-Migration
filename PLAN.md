@@ -974,6 +974,60 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 ---
 
+### 🔲 MM-54 — SC API фиксы (официальный endpoint + правильный auth)
+
+> Переход с неофициального `api-v2.soundcloud.com` на официальный `api.soundcloud.com` по документации SC.
+
+**Что сделано (в main, не в отдельной ветке):**
+- [x] Base URL: `api-v2.soundcloud.com` → `api.soundcloud.com`
+- [x] Search: `/search/tracks` → `/tracks`, `/search/users` → `/users`
+- [x] Auth header: `Bearer` → `OAuth` (по SC docs: "OAuth ACCESS_TOKEN")
+- [x] Убран `client_id` из search-params (не нужен при OAuth)
+- [x] Убрана `_fetch_client_id_from_web()` и кэш `_web_client_id_cache`
+- [x] Response parsing: обработка и `list`, и `{"collection": [...]}` форматов
+- [x] `create_playlist` tracks: `{"id": N}` → `{"urn": "soundcloud:tracks:N"}`
+- [x] Лог матча поднят с DEBUG до INFO, добавлен `sc_artist` + `sc_title`
+
+---
+
+### ✅ MM-55 — Инкрементальная миграция (дедупликация повторных переносов)
+
+> Если пользователь уже переносил треки в SC (или другой сервис), повторный запуск
+> не должен заново искать и добавлять уже перенесённые треки.
+
+**Проблема:** сейчас каждый запуск миграции обрабатывает все треки с нуля.
+Если перенесли 50 треков, потом запустили снова (ещё 150) — первые 50 будут продублированы в новом плейлисте.
+
+**Решение (Вариант A — по БД):**
+При старте новой миграции для того же `user_id` + `to_service`:
+1. Найти все `ym_id` треков со статусом `liked` из предыдущих миграций того же пользователя и того же `to_service`
+2. При `bulk_insert_tracks` помечать эти треки сразу `liked` (пропускать поиск)
+3. В статистике считать их как "уже перенесено" (не в `liked`, а отдельно — `skipped`)
+
+**Что менять:**
+- [x] `core/db/crud.py` — `get_previously_migrated_ym_ids(user_id, to_service) -> set[str]`; для SC включает старые миграции с `to_service IS NULL` (обратная совместимость)
+- [x] `core/db/crud.py` — `bulk_insert_tracks` принимает `already_migrated: set[str]`, треки из него вставляются с `status='liked'`; возвращает `int` (кол-во пропущенных)
+- [x] `migration/tracks.py` — `MigrationStats.skipped` — новое поле; `migrate_tracks` читает `to_service` из записи миграции, вызывает `get_previously_migrated_ym_ids`, передаёт в `bulk_insert_tracks`
+- [x] `core/db/models.py` — добавлены `from_service`, `to_service` в `Migration`
+- [x] `core/db/crud.py` — `get_migration` возвращает `from_service`, `to_service`
+- [x] `alembic/versions/g7h8i9j0k1l2_add_from_to_service_to_migrations.py` — миграция БД
+- [x] `api/routes/web.py` — `create_migration` передаёт `from_service`/`to_service`; маршрутизация исправлена (была захардкожена SC); ETA использует реальный `to_service`
+- [x] `api/routes/migrations.py` — `create_migration` передаёт `from_service`/`to_service`
+
+- [x] `api/routes/migrations.py` — `StartMigrationRequest.skip_already_migrated: bool = True`; передаётся в каждый enqueue_job
+- [x] `api/routes/web.py` — `skip_already_migrated: bool = Form(False)` (HTML checkbox); передаётся в enqueue_job
+- [x] `api/templates/index.html` — чекбокс "Пропустить уже перенесённые треки" (checked по умолчанию)
+- [x] `core/i18n.py` — ключи `index_skip_migrated`, `index_skip_migrated_hint`, `bot_skip_migrated_on/off`
+- [x] `worker/tasks.py` — все 4 джоба принимают `skip_already_migrated: bool = True`
+- [x] `migration/spotify_tracks.py` — аналогичная дедупликация для Spotify→SC
+- [x] `bot/handlers/auth.py` — тогл "♻️ Пропускать уже перенесённые" в экране подтверждения
+- [x] `bot/handlers/migration.py` — передаёт `skip_already_migrated` из state в api_client
+- [x] `bot/api_client.py` — поле `skip_already_migrated` в теле запроса
+
+**Ремарка (для MM-48):** в `playlist_mode` трек помечается `liked` до реального добавления в плейлист. При реализации MM-48 разделить `status='in_playlist'` (добавлено в плейлист) и `status='liked'` (прямой лайк).
+
+---
+
 ## Риски и митигации
 
 | Риск | Митигация |

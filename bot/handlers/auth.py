@@ -128,11 +128,17 @@ async def on_new_tokens(callback: CallbackQuery, state: FSMContext) -> None:
     await _ask_yandex_token(callback.message, state)
 
 
-@router.callback_query(F.data == "auth:new_tokens")
-async def on_new_tokens(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(AuthFlow.confirming, F.data == "toggle_skip_migrated")
+async def on_toggle_skip_migrated(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await _ask_yandex_token(callback.message, state)
+    data = await state.get_data()
+    skip = not data.get("skip_already_migrated", True)
+    await state.update_data(skip_already_migrated=skip)
+    lang = await _get_lang(state)
+    from_service = data.get("from_service", "yandex_music")
+    await callback.message.edit_reply_markup(
+        reply_markup=_confirmation_kb(from_service, skip, lang)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -304,37 +310,38 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
 # Confirmation screens
 # ---------------------------------------------------------------------------
 
+def _confirmation_kb(from_service: str, skip: bool, lang: str) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения с тоглом пропуска уже перенесённых."""
+    skip_label = t("bot_skip_migrated_on" if skip else "bot_skip_migrated_off", lang)
+    rows = []
+    if from_service != "spotify":
+        rows.append([InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")])
+        rows.append([InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="select_mode:full")])
+    else:
+        rows.append([InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")])
+    rows.append([InlineKeyboardButton(text=skip_label, callback_data="toggle_skip_migrated")])
+    rows.append([InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _show_confirmation(message: Message, state: FSMContext) -> None:
     """Show mode selection — no API calls, user picks what to transfer first."""
     lang = await _get_lang(state)
     data = await state.get_data()
     from_service = data.get("from_service", "yandex_music")
+    skip = data.get("skip_already_migrated", True)
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")],
-        [InlineKeyboardButton(text=t("bot_btn_full", lang), callback_data="select_mode:full")],
-        [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
-    ])
     service_name = t(f"bot_service_{from_service}", lang) if from_service != "yandex_music" \
         else t("bot_service_yandex", lang)
     await message.answer(
         t("bot_confirm_ready", lang).format(service=service_name),
         parse_mode="HTML",
-        reply_markup=kb,
+        reply_markup=_confirmation_kb(from_service, skip, lang),
     )
     await state.set_state(AuthFlow.confirming)
 
 
 async def _show_confirmation_spotify(message: Message, state: FSMContext) -> None:
-    """Show mode selection for Spotify source — no API calls."""
-    lang = await _get_lang(state)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")],
-        [InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")],
-    ])
-    await message.answer(
-        t("bot_confirm_ready", lang).format(service=t("bot_service_spotify", lang)),
-        parse_mode="HTML",
-        reply_markup=kb,
-    )
-    await state.set_state(AuthFlow.confirming)
+    """Backward compat — delegates to _show_confirmation."""
+    await state.update_data(from_service="spotify")
+    await _show_confirmation(message, state)

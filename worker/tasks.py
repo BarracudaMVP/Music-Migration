@@ -35,6 +35,7 @@ async def run_yandex_migration_job(
     ym_token: str,
     user_id: str,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> None:
     """ARQ job: migrate liked tracks from any source service → Yandex Music."""
     from migration.yandex_tracks import migrate_to_yandex
@@ -89,13 +90,14 @@ async def run_spotify_migration_job(
     mode: str,
     user_id: str,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> None:
     """ARQ job: migrate tracks from Spotify to SoundCloud."""
     from migration.spotify_tracks import run_spotify_migration
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
-    logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}")
+    logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
@@ -110,6 +112,7 @@ async def run_spotify_migration_job(
                 progress_callback=progress_cb,
                 playlist_mode=True,
                 track_limit=track_limit,
+                skip_already_migrated=skip_already_migrated,
             )
             logger.info(f"[job] Spotify migration #{migration_id} finished")
 
@@ -132,6 +135,7 @@ async def run_spotify_write_job(
     spotify_refresh_token: str | None,
     user_id: str,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
     from migration.spotify_write import migrate_to_spotify
@@ -228,13 +232,14 @@ async def run_migration_job(
     mode: str,
     user_id: str,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> None:
     """ARQ job: runs the migration pipeline for a pre-created migration record."""
     from migration.tracks import run_migration
     from core.db import update_migration, get_track_stats, get_artist_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
-    logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}")
+    logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
@@ -251,6 +256,7 @@ async def run_migration_job(
                 progress_callback=progress_cb,
                 playlist_mode=True,
                 track_limit=track_limit,
+                skip_already_migrated=skip_already_migrated,
             )
             logger.info(f"[job] Migration #{migration_id} finished")
 

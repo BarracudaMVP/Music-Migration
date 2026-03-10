@@ -443,6 +443,7 @@ async def start_migrate(
     to_service: str = Form(...),
     mode: str = Form("full"),
     track_limit: int = Form(0),
+    skip_already_migrated: bool = Form(False),
 ):
     from api.main import get_arq_pool
 
@@ -470,28 +471,59 @@ async def start_migrate(
             status_code=303,
         )
 
-    migration_id = await create_migration(user_id)
+    migration_id = await create_migration(user_id, from_service=from_service, to_service=to_service)
     arq = get_arq_pool()
     job_mode = "full" if mode == "full" else "tracks"
     limit = track_limit if track_limit and track_limit > 0 else None
 
-    if from_service == "spotify":
-        spotify_token = db_session.get("spotify_token") or ""
-        if not spotify_token:
-            return RedirectResponse(
-                f"/auth?error={quote('Сначала подключи Spotify')}",
-                status_code=303,
-            )
+    ym_token = db_session.get("yandex_token") or ""
+    sc_token = db_session.get("soundcloud_token") or ""
+    spotify_token = db_session.get("spotify_token") or ""
+    spotify_refresh_token = db_session.get("spotify_refresh_token")
+
+    # Проверяем наличие нужных токенов
+    def _missing_token(service: str) -> str | None:
+        if service == "yandex_music" and not ym_token:
+            return "Сначала подключи Яндекс Музыку"
+        if service == "soundcloud" and not sc_token:
+            return "Сначала подключи SoundCloud"
+        if service == "spotify" and not spotify_token:
+            return "Сначала подключи Spotify"
+        return None
+
+    for svc in (from_service, to_service):
+        err = _missing_token(svc)
+        if err:
+            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+
+    skip = skip_already_migrated
+
+    if to_service == "yandex_music":
+        source_token = spotify_token if from_service == "spotify" else sc_token
+        job = await arq.enqueue_job(
+            "run_yandex_migration_job",
+            migration_id, source_token, from_service, ym_token, user_id,
+            track_limit=limit, skip_already_migrated=skip,
+        )
+    elif to_service == "spotify":
+        source_token = sc_token if from_service == "soundcloud" else ym_token
+        job = await arq.enqueue_job(
+            "run_spotify_write_job",
+            migration_id, source_token, from_service,
+            spotify_token, spotify_refresh_token, user_id,
+            track_limit=limit, skip_already_migrated=skip,
+        )
+    elif from_service == "spotify":
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
-            migration_id, spotify_token, db_session["soundcloud_token"], job_mode, user_id,
-            track_limit=limit,
+            migration_id, spotify_token, sc_token, job_mode, user_id,
+            track_limit=limit, skip_already_migrated=skip,
         )
     else:
         job = await arq.enqueue_job(
             "run_migration_job",
-            migration_id, db_session["yandex_token"], db_session["soundcloud_token"], job_mode, user_id,
-            track_limit=limit,
+            migration_id, ym_token, sc_token, job_mode, user_id,
+            track_limit=limit, skip_already_migrated=skip,
         )
 
     if job:
@@ -535,8 +567,7 @@ async def migration_status_fragment(request: Request, migration_id: int):
             pending = stats.get("pending", 0)
             if pending > 0:
                 from core.i18n import format_eta
-                # to_service not stored in DB yet; defaulting to soundcloud
-                eta = format_eta(pending, "soundcloud", lang)
+                eta = format_eta(pending, migration.get("to_service") or "soundcloud", lang)
 
     return _render("fragments/status.html", request, {
         "migration_id": migration_id,

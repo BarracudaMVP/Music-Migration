@@ -12,6 +12,8 @@ from loguru import logger
 
 from core.db import (
     bulk_insert_tracks,
+    get_migration,
+    get_previously_migrated_ym_ids,
     update_migration,
     get_track_stats,
 )
@@ -27,6 +29,7 @@ async def migrate_spotify_tracks(
     progress_callback=None,
     playlist_mode: bool = False,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> MigrationStats:
     """Переносит лайкнутые треки Spotify → SoundCloud."""
     await update_migration(migration_id, status="running")
@@ -43,7 +46,17 @@ async def migrate_spotify_tracks(
         sp_tracks = sp_tracks[:track_limit]
         logger.info(f"Лимит треков: {track_limit}, будет обработано {len(sp_tracks)}")
     logger.info(f"Шаг 2/3: сохраняю {len(sp_tracks)} треков в БД...")
-    await bulk_insert_tracks(
+    migration_record = await get_migration(migration_id) or {}
+    user_id = migration_record.get("user_id", "")
+    to_service = migration_record.get("to_service") or "soundcloud"
+
+    already_migrated: set[str] = set()
+    if skip_already_migrated:
+        already_migrated = await get_previously_migrated_ym_ids(user_id, to_service)
+        if already_migrated:
+            logger.info(f"Найдено {len(already_migrated)} треков из предыдущих переносов — будут пропущены")
+
+    skipped = await bulk_insert_tracks(
         migration_id,
         [
             {
@@ -54,10 +67,12 @@ async def migrate_spotify_tracks(
             }
             for t in sp_tracks
         ],
+        already_migrated=already_migrated,
     )
 
     logger.info("Шаг 3/3: обрабатываю треки...")
     stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode)
+    stats.skipped = skipped
 
     await update_migration(migration_id, status="done")
     logger.info(f"Spotify миграция треков завершена. {stats}")
@@ -73,6 +88,7 @@ async def run_spotify_migration(
     progress_callback=None,
     playlist_mode: bool = False,
     track_limit: int | None = None,
+    skip_already_migrated: bool = True,
 ) -> MigrationStats:
     """
     Точка входа для ARQ worker.
@@ -82,7 +98,11 @@ async def run_spotify_migration(
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
     try:
-        stats = await migrate_spotify_tracks(spotify_client, sc_client, migration_id, progress_callback, playlist_mode=playlist_mode, track_limit=track_limit)
+        stats = await migrate_spotify_tracks(
+            spotify_client, sc_client, migration_id, progress_callback,
+            playlist_mode=playlist_mode, track_limit=track_limit,
+            skip_already_migrated=skip_already_migrated,
+        )
     finally:
         await spotify_client.close()
         await sc_client.close()
