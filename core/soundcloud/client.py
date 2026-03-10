@@ -216,7 +216,7 @@ class SoundCloudClient:
             "playlist": {
                 "title": title,
                 "sharing": "public",
-                "tracks": [{"id": tid} for tid in track_ids],
+                "tracks": [{"urn": f"soundcloud:tracks:{tid}"} for tid in track_ids],
             }
         }
         try:
