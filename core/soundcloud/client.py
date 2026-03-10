@@ -62,16 +62,15 @@ class SoundCloudClient:
         # но передаём токен чтобы получать персонализированные результаты)
         self._sc = sc_lib.SoundCloud(auth_token=self._raw_token)
 
-        # Проверяем токен через /me
+        # Получаем user_id через /me (опционально — 403 от неодобренных приложений игнорируем)
         try:
             me = await self._get("/me")
-            self._user_id = me["id"]
-        except (KeyError, TypeError):
-            raise ValueError(
-                "Не удалось получить данные аккаунта SoundCloud. "
-                "Токен истёк или неверен — авторизуйся через веб-интерфейс заново."
-            )
-        self._username = me.get("username", "unknown")
+            self._user_id = me.get("id")
+            self._username = me.get("username", "unknown")
+        except Exception as e:
+            # 403 = SC app not yet verified; write endpoints (/me/track_likes, /me/followings,
+            # /playlists) work via /me/ URL prefix and don't require user_id locally.
+            logger.warning(f"SoundCloud /me failed ({e}) — proceeding without user metadata")
         logger.info(f"SoundCloud: авторизован как {self._username!r} (id={self._user_id})")
         return self
 
