@@ -237,9 +237,11 @@ async def auth_yandex_callback(request: Request, code: str = "", state: str = ""
         response.delete_cookie("_ym_state")
         return response
 
-    # Web flow: save to session, redirect to /auth
+    # Web flow: save to session AND DB, redirect to /auth
     user_id = _ensure_user_id(request)
     request.session["ym_token"] = token
+    from core.db import save_yandex_token
+    await save_yandex_token(user_id, token)
     response = RedirectResponse("/auth", status_code=303)
     response.delete_cookie("_ym_state")
     return response

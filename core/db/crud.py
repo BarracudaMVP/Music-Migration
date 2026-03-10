@@ -261,6 +261,21 @@ async def save_user_session(user_id: str, yandex_token: str, soundcloud_token: s
         await session.commit()
 
 
+async def save_yandex_token(user_id: str, token: str) -> None:
+    """Сохраняет или обновляет yandex_token для пользователя, не трогая остальные поля."""
+    async with AsyncSessionLocal() as session:
+        stmt = _dialect_insert(UserSession).values(
+            user_id=user_id,
+            yandex_token=encrypt_token(token),
+            soundcloud_token="",
+        ).on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={"yandex_token": encrypt_token(token)},
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
 async def save_soundcloud_token(
     user_id: str,
     token: str,
