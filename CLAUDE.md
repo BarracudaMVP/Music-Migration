@@ -240,6 +240,10 @@ Rule: **no task is considered done until docs are updated.**
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
 - `soundcloud_refresh_token` saved in DB (encrypted) during SC OAuth (MM-52); `_refresh_sc_token_if_needed()` in `worker/tasks.py` auto-refreshes in all SC-destination jobs
 - SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to web `/auth/soundcloud` instead of asking for cookie token
+- SC search uses direct `api-v2.soundcloud.com/search/tracks` with `Authorization: OAuth` header + `client_id=SC_CLIENT_ID` query param; `soundcloud-v2` library removed (used invalid hardcoded client_id → 403)
+- SC `/me` returns 403 for unverified apps — expected; `_ensure_init()` checks only `self._session is None`
+- `save_yandex_token(user_id, token)` in `core/db/crud.py` — upsert only YM field (doesn't touch SC/Spotify); called from `auth_yandex_callback` web flow to persist token to DB
+- YM `init()` raises `ValueError` if uid cannot be obtained (expired token); `_fetch_uid_from_yandex_id` logs HTTP status+body on failure
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)

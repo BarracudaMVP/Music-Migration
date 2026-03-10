@@ -221,27 +221,33 @@ class YandexMusicClient:
     async def search_tracks(self, query: str, limit: int = 10) -> list[YMTrack]:
         """Поиск треков на Яндекс Музыке по строке запроса."""
         self._ensure_init()
+        logger.debug(f"[ym] search query={query!r} limit={limit}")
         try:
             result = await self._client.search(query, type_="track", nocorrect=False)
             if result is None or result.tracks is None:
+                logger.debug(f"[ym] search query={query!r} → 0 results")
                 return []
             tracks = result.tracks.results or []
-            return [self._convert_track(t) for t in tracks[:limit]]
+            out = [self._convert_track(t) for t in tracks[:limit]]
+            logger.debug(f"[ym] search query={query!r} → {len(out)} results")
+            return out
         except Exception as e:
-            logger.warning(f"Ошибка поиска на YM {query!r}: {e}")
+            logger.warning(f"[ym] search query={query!r} → {e}")
             return []
 
     async def like_track(self, track_id: str) -> bool:
         """Добавляет трек в лайкнутые. track_id — строковый ID трека YM."""
         self._ensure_init()
+        logger.debug(f"[ym] like track_id={track_id}")
         try:
             await self._client.users_likes_tracks_add(
                 [track_id],
                 **({} if self._uid is None else {"user_id": self._uid}),
             )
+            logger.debug(f"[ym] like track_id={track_id} → ok")
             return True
         except Exception as e:
-            logger.error(f"Ошибка лайка трека {track_id} на YM: {e}")
+            logger.error(f"[ym] like track_id={track_id} → {e}")
             return False
 
     # ------------------------------------------------------------------

@@ -923,6 +923,58 @@ SC   → Spotify  : soundcloud_token + spotify_token  (требует веб-OAu
 
 ---
 
+### 🔲 MM-53 — Улучшение логирования (единый стандарт для всех клиентов)
+
+> Сейчас логи при ошибках нечитаемы: видно только query-строку, но не URL, не params, не migration_id.
+> Нужен единый формат логов поиска/записи для YM, SC и Spotify.
+
+**Проблема (пример сейчас):**
+```
+WARNING | SC search_tracks('Дора Loverboy'): HTTP 403: {}
+```
+Не видно: какой URL, какие params (client_id?), в рамках какой миграции.
+
+**Целевой формат (одинаковый для всех трёх клиентов):**
+```
+DEBUG | [sc] search query='Дора Loverboy' → GET /search/tracks?q=Дора+Loverboy&limit=10&client_id=xxx
+DEBUG | [sc] search query='Дора Loverboy' → 200, 8 results
+WARNING | [sc] search query='Дора Loverboy' → 403 {} (url=https://api-v2.soundcloud.com/search/tracks?...)
+
+DEBUG | [ym] search query='Дора Loverboy' → 5 results
+DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=track&limit=10 → 200, 6 results
+```
+
+**Что сделать — единый паттерн для search во всех клиентах:**
+
+- [ ] `core/soundcloud/client.py` — `search_tracks`, `search_users`:
+  - `DEBUG` перед запросом: `[sc] search query={query!r} → GET {url}?{params}`
+  - `DEBUG` после успеха: `[sc] search query={query!r} → {status}, {n} results`
+  - `WARNING` при ошибке: `[sc] search query={query!r} → {status} {body} (url={full_url})`
+  - `like_track`: `DEBUG [sc] like track_id={id}`, при ошибке `WARNING [sc] like {id} → {status}`
+  - `create_playlist`: `DEBUG [sc] create_playlist title={title!r}, {n} tracks`
+  - `follow_user`: `DEBUG [sc] follow user_id={id}`
+
+- [ ] `core/yandex/client.py` — `search_tracks`, `like_track`:
+  - `DEBUG` перед запросом: `[ym] search query={query!r}`
+  - `DEBUG` после: `[ym] search query={query!r} → {n} results`
+  - `DEBUG`: `[ym] like track_id={id} → ok/fail`
+
+- [ ] `core/spotify/client.py` — `search_tracks`, `search_artists`, `like_track`, `follow_artist`:
+  - `DEBUG` перед: `[spotify] search query={query!r} type={type}`
+  - `DEBUG` после: `[spotify] search query={query!r} → {n} results`
+  - `DEBUG`: `[spotify] like track_id={id}`, `[spotify] follow artist_id={id}`
+  - `WARNING` при ошибке с полным URL и статусом
+
+- [ ] `worker/tasks.py`:
+  - Добавить `logger.bind(migration_id=migration_id, user_id=user_id)` контекст на старте джоба
+  - Логи внутри автоматически содержат эти поля
+
+- [ ] `migration/tracks.py` — `_process_one_track`:
+  - После матчинга: `DEBUG [match] '{ym_artist} — {ym_title}' → '{sc_artist} — {sc_title}' score={score} sc_id={id}`
+  - Нет матча: `DEBUG [match] '{ym_artist} — {ym_title}' → not found (best score={score})`
+
+---
+
 ## Риски и митигации
 
 | Риск | Митигация |

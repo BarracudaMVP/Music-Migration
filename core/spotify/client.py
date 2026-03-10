@@ -143,49 +143,61 @@ class SpotifyClient:
     async def search_tracks(self, query: str, limit: int = 10) -> list[SpotifyTrack]:
         """Search tracks by query string."""
         self._ensure_init()
+        logger.debug(f"[spotify] search query={query!r} type=track limit={limit}")
         async with self._session.get(  # type: ignore[union-attr]
             f"{_BASE}/search",
             params={"q": query, "type": "track", "limit": limit},
         ) as resp:
             data = await resp.json()
-        return [
+        result = [
             self._convert_track(item)
             for item in data.get("tracks", {}).get("items", [])
             if item and item.get("id")
         ]
+        logger.debug(f"[spotify] search query={query!r} type=track → {len(result)} results")
+        return result
 
     async def like_track(self, track_id: str) -> bool:
         """Save track to user's Liked Songs (PUT /me/tracks)."""
         self._ensure_init()
+        logger.debug(f"[spotify] like track_id={track_id} → PUT /me/tracks")
         async with self._session.put(  # type: ignore[union-attr]
             f"{_BASE}/me/tracks",
             json={"ids": [track_id]},
         ) as resp:
-            return resp.status in (200, 201)
+            ok = resp.status in (200, 201)
+            logger.debug(f"[spotify] like track_id={track_id} → {resp.status} ({'ok' if ok else 'fail'})")
+            return ok
 
     async def search_artists(self, query: str, limit: int = 10) -> list[SpotifyArtist]:
         """Search artists by query string."""
         self._ensure_init()
+        logger.debug(f"[spotify] search query={query!r} type=artist limit={limit}")
         async with self._session.get(  # type: ignore[union-attr]
             f"{_BASE}/search",
             params={"q": query, "type": "artist", "limit": limit},
         ) as resp:
             data = await resp.json()
-        return [
+        result = [
             SpotifyArtist(id=item["id"], name=item["name"])
             for item in data.get("artists", {}).get("items", [])
             if item and item.get("id")
         ]
+        logger.debug(f"[spotify] search query={query!r} type=artist → {len(result)} results")
+        return result
 
     async def follow_artist(self, artist_id: str) -> bool:
         """Follow an artist (PUT /me/following?type=artist)."""
         self._ensure_init()
+        logger.debug(f"[spotify] follow artist_id={artist_id} → PUT /me/following")
         async with self._session.put(  # type: ignore[union-attr]
             f"{_BASE}/me/following",
             params={"type": "artist"},
             json={"ids": [artist_id]},
         ) as resp:
-            return resp.status in (200, 204)
+            ok = resp.status in (200, 204)
+            logger.debug(f"[spotify] follow artist_id={artist_id} → {resp.status} ({'ok' if ok else 'fail'})")
+            return ok
 
     # ------------------------------------------------------------------
     # Вспомогательные методы

@@ -9,6 +9,7 @@ Write  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-т
 """
 import asyncio
 import time
+from urllib.parse import urlencode
 from loguru import logger
 
 import aiohttp
@@ -119,6 +120,7 @@ class SoundCloudClient:
             params: dict = {"q": query, "limit": _SEARCH_LIMIT}
             if settings.sc_client_id:
                 params["client_id"] = settings.sc_client_id
+            logger.debug(f"[sc] search query={query!r} → GET /search/tracks?{urlencode(params)}")
             data = await self._get("/search/tracks", params=params)
             tracks = []
             for item in data.get("collection", []):
@@ -132,9 +134,12 @@ class SoundCloudClient:
                     url=item.get("permalink_url", "") or "",
                     duration_ms=item.get("duration", 0) or 0,
                 ))
+            logger.debug(f"[sc] search query={query!r} → {len(tracks)} results")
             return tracks
         except Exception as e:
-            logger.warning(f"SC search_tracks({query!r}): {e}")
+            from config import settings
+            params_repr = urlencode({"q": query, "limit": _SEARCH_LIMIT, **({"client_id": settings.sc_client_id} if settings.sc_client_id else {})})
+            logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{params_repr})")
             return []
 
     async def search_users(self, query: str) -> list[SCUser]:
@@ -145,6 +150,7 @@ class SoundCloudClient:
             params: dict = {"q": query, "limit": 3}
             if settings.sc_client_id:
                 params["client_id"] = settings.sc_client_id
+            logger.debug(f"[sc] search_users query={query!r} → GET /search/users?{urlencode(params)}")
             data = await self._get("/search/users", params=params)
             users = []
             for item in data.get("collection", []):
@@ -155,9 +161,10 @@ class SoundCloudClient:
                     username=item.get("username", "") or "",
                     url=item.get("permalink_url", "") or "",
                 ))
+            logger.debug(f"[sc] search_users query={query!r} → {len(users)} results")
             return users
         except Exception as e:
-            logger.warning(f"SC search_users({query!r}): {e}")
+            logger.warning(f"[sc] search_users query={query!r} → {e}")
             return []
 
     # ------------------------------------------------------------------
@@ -168,43 +175,50 @@ class SoundCloudClient:
         """Лайкает трек. Возвращает True при успехе. Ждёт при 429."""
         self._ensure_init()
         url = f"/me/track_likes/{track_id}"
+        logger.debug(f"[sc] like track_id={track_id} → PUT {url}")
         try:
             await self._put(url)
+            logger.debug(f"[sc] like track_id={track_id} → ok")
             return True
         except RateLimitError as e:
             await self._wait_rate_limit(e.reset_time)
             try:
                 await self._put(url)
+                logger.debug(f"[sc] like track_id={track_id} → ok (retry)")
                 return True
             except Exception as retry_err:
-                logger.error(f"like_track {track_id}: retry failed — {retry_err}")
+                logger.error(f"[sc] like track_id={track_id} → retry failed: {retry_err}")
                 return False
         except Exception as e:
-            logger.error(f"like_track {track_id}: {e}")
+            logger.error(f"[sc] like track_id={track_id} → {e}")
             return False
 
     async def follow_user(self, user_id: int) -> bool:
         """Подписывается на артиста. Ждёт при 429."""
         self._ensure_init()
         url = f"/me/followings/{user_id}"
+        logger.debug(f"[sc] follow user_id={user_id} → PUT {url}")
         try:
             await self._put(url)
+            logger.debug(f"[sc] follow user_id={user_id} → ok")
             return True
         except RateLimitError as e:
             await self._wait_rate_limit(e.reset_time)
             try:
                 await self._put(url)
+                logger.debug(f"[sc] follow user_id={user_id} → ok (retry)")
                 return True
             except Exception as retry_err:
-                logger.error(f"follow_user {user_id}: retry failed — {retry_err}")
+                logger.error(f"[sc] follow user_id={user_id} → retry failed: {retry_err}")
                 return False
         except Exception as e:
-            logger.error(f"follow_user {user_id}: {e}")
+            logger.error(f"[sc] follow user_id={user_id} → {e}")
             return False
 
     async def create_playlist(self, title: str, track_ids: list[int]) -> SCPlaylist | None:
         """Создаёт публичный плейлист с заданными треками."""
         self._ensure_init()
+        logger.debug(f"[sc] create_playlist title={title!r}, {len(track_ids)} tracks → POST /playlists")
         payload = {
             "playlist": {
                 "title": title,
@@ -214,8 +228,10 @@ class SoundCloudClient:
         }
         try:
             data = await self._post("/playlists", json=payload)
+            pl_id = data.get("id")
+            logger.debug(f"[sc] create_playlist title={title!r} → ok id={pl_id}")
             return SCPlaylist(
-                id=data["id"],
+                id=pl_id,
                 title=data.get("title", title),
                 url=data.get("permalink_url", ""),
                 track_count=len(track_ids),
@@ -224,7 +240,7 @@ class SoundCloudClient:
             await self._wait_rate_limit(e.reset_time)
             return None
         except Exception as e:
-            logger.error(f"create_playlist {title!r}: {e}")
+            logger.error(f"[sc] create_playlist title={title!r} → {e}")
             return None
 
     # ------------------------------------------------------------------

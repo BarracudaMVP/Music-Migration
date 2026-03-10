@@ -249,8 +249,16 @@ async def _process_one_track(
     match = find_best_match(ym_artist, ym_title, candidates)
 
     if match is None:
+        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → not_found (candidates={len(candidates)})")
         await update_track(track_id, status="not_found")
         return "not_found", None
+
+    if match.matched:
+        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → sc_id={match.sc_id} score={match.score:.0f}")
+    elif match.uncertain:
+        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → uncertain sc_id={match.sc_id} score={match.score:.0f}")
+    else:
+        logger.debug(f"[match] {ym_artist!r} — {ym_title!r} → not_found score={match.score:.0f}")
 
     # Сомнительное совпадение — не лайкаем, сохраняем для ручной проверки
     if match.uncertain:
