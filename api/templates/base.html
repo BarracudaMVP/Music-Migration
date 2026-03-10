@@ -52,9 +52,6 @@
       <div class="hidden sm:flex items-center gap-1 text-sm">
         <a href="/"       class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_home') }}</a>
         <a href="/history" class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_history') }}</a>
-        <a href="/import"  class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_import') }}</a>
-        <a href="/export"  class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_export') }}</a>
-        <a href="/auth"    class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_account') }}</a>
         <!-- Language switcher -->
         {% if lang == 'en' %}
         <a href="/set-lang?lang=ru&next={{ request.url.path }}"
@@ -63,12 +60,6 @@
         <a href="/set-lang?lang=en&next={{ request.url.path }}"
            class="px-2 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-100 transition font-medium">EN</a>
         {% endif %}
-        <form method="post" action="/auth/logout" class="inline ml-1">
-          <button type="submit"
-            class="px-3 py-1.5 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-700 transition text-sm">
-            {{ t('nav_logout') }}
-          </button>
-        </form>
       </div>
 
       <!-- Hamburger -->
@@ -84,19 +75,11 @@
     <div id="mobile-menu" class="sm:hidden border-t border-gray-100 bg-white px-4 py-2 space-y-1 text-sm">
       <a href="/"        class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_home') }}</a>
       <a href="/history" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_history') }}</a>
-      <a href="/import"  class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_import') }}</a>
-      <a href="/export"  class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_export') }}</a>
-      <a href="/auth"    class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_account') }}</a>
       {% if lang == 'en' %}
       <a href="/set-lang?lang=ru&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">RU</a>
       {% else %}
       <a href="/set-lang?lang=en&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">EN</a>
       {% endif %}
-      <form method="post" action="/auth/logout">
-        <button type="submit" class="w-full text-left px-3 py-2 rounded-lg text-red-500 hover:bg-red-50">
-          {{ t('nav_logout') }}
-        </button>
-      </form>
     </div>
   </nav>
 
