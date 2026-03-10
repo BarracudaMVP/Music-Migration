@@ -163,11 +163,14 @@ SoundCloud    |     –      |    ✓      |       ✓       |    ✓
 
 ---
 
-### 🔲 MM-9 — SSL / HTTPS
-- [ ] Домен → A-запись на EU сервер
-- [ ] certbot + Let's Encrypt через docker
-- [ ] Раскомментировать SSL-секцию в nginx/nginx.conf
-- [ ] Редирект HTTP → HTTPS
+### ✅ MM-9 — SSL / HTTPS
+- [x] Домен musicmigration.site куплен
+- [x] Домен → A-запись на EU сервер (сделать вручную)
+- [x] certbot certonly --standalone через docker (scripts/setup-ssl.sh)
+- [x] nginx/nginx.conf — HTTP→HTTPS редирект + HTTPS server block (TLSv1.2/1.3, HSTS)
+- [x] Авторенью: scripts/renew-ssl.sh (webroot, cron)
+- [ ] WEB_BASE_URL=https://musicmigration.site в .env на сервере (после деплоя)
+- [ ] Spotify redirect URI обновить в developer.spotify.com
 
 ---
 
