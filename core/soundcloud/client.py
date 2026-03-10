@@ -1,14 +1,11 @@
 """
 SoundCloud клиент.
 
-Поиск  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-токеном + SC_CLIENT_ID.
-Write  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-токеном.
-
+Поиск и Write — прямые HTTP-запросы к api.soundcloud.com (официальный).
 Токен получается через официальный OAuth Authorization Code Flow (MM-52).
-Формат заголовка: "Authorization: OAuth {access_token}"
+Формат заголовка: "Authorization: OAuth {access_token}" (по документации SC).
 """
 import asyncio
-import re
 import time
 from urllib.parse import urlencode
 from loguru import logger
@@ -17,40 +14,9 @@ import aiohttp
 
 from core.soundcloud.models import SCTrack, SCUser, SCPlaylist
 
-_BASE_URL = "https://api-v2.soundcloud.com"
+_BASE_URL = "https://api.soundcloud.com"
 # Кол-во результатов поиска для выбора кандидатов
 _SEARCH_LIMIT = 10
-
-# Кэш client_id, полученного со страниц soundcloud.com
-_web_client_id_cache: str | None = None
-
-
-async def _fetch_client_id_from_web() -> str | None:
-    """Извлекает рабочий client_id из JS-бандлов soundcloud.com."""
-    global _web_client_id_cache
-    if _web_client_id_cache:
-        return _web_client_id_cache
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://soundcloud.com/", timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                html = await resp.text()
-            script_urls = re.findall(
-                r'<script[^>]+src="(https://a-v2\.sndcdn\.com/assets/[^"]+\.js)"', html
-            )
-            for url in reversed(script_urls):  # последние бандлы содержат app-код
-                try:
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                        js = await resp.text()
-                    m = re.search(r'client_id[=:]["\'`]([a-zA-Z0-9]{20,40})["\' `]', js)
-                    if m:
-                        _web_client_id_cache = m.group(1)
-                        logger.info(f"[sc] fetched client_id from web: {_web_client_id_cache[:8]}...")
-                        return _web_client_id_cache
-                except Exception:
-                    continue
-    except Exception as e:
-        logger.warning(f"[sc] failed to fetch client_id from soundcloud.com: {e}")
-    return None
 
 
 class RateLimitError(Exception):
@@ -62,7 +28,7 @@ class RateLimitError(Exception):
 
 class SoundCloudClient:
     def __init__(self, token: str) -> None:
-        # Принимаем токен как с префиксом "OAuth ...", так и без
+        # SC docs: "Authorization: OAuth <token>" (не Bearer)
         self._raw_token = token.strip()
         self._auth_header = (
             self._raw_token
@@ -144,41 +110,16 @@ class SoundCloudClient:
     # Поиск (read-only, soundcloud-v2)
     # ------------------------------------------------------------------
 
-    async def _get_client_id(self) -> str | None:
-        """Возвращает рабочий client_id: из настроек или с soundcloud.com."""
-        from config import settings
-        return settings.sc_client_id or await _fetch_client_id_from_web()
-
     async def search_tracks(self, query: str) -> list[SCTrack]:
-        """Ищет треки по запросу через API v2 с OAuth токеном."""
+        """Ищет треки по запросу через официальный SC API (GET /tracks)."""
         self._ensure_init()
-        client_id = await self._get_client_id()
         params: dict = {"q": query, "limit": _SEARCH_LIMIT}
-        if client_id:
-            params["client_id"] = client_id
-        logger.debug(f"[sc] search query={query!r} → GET /search/tracks?{urlencode(params)}")
+        logger.debug(f"[sc] search query={query!r} → GET /tracks?{urlencode(params)}")
         try:
-            data = await self._get("/search/tracks", params=params)
+            data = await self._get("/tracks", params=params)
         except Exception as e:
-            if "403" in str(e) and client_id:
-                # client_id не работает — пробуем получить свежий с сайта
-                global _web_client_id_cache
-                _web_client_id_cache = None
-                fresh_id = await _fetch_client_id_from_web()
-                if fresh_id and fresh_id != client_id:
-                    params["client_id"] = fresh_id
-                    logger.debug(f"[sc] retrying search with fresh client_id")
-                    try:
-                        data = await self._get("/search/tracks", params=params)
-                    except Exception as e2:
-                        logger.warning(f"[sc] search query={query!r} → {e2} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
-                        return []
-                else:
-                    logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
-                    return []
-            else:
-                logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
-                return []
+            logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/tracks?{urlencode(params)})")
+            return []
         tracks = []
         for item in data.get("collection", []):
             if not item or not isinstance(item, dict):
@@ -195,15 +136,12 @@ class SoundCloudClient:
         return tracks
 
     async def search_users(self, query: str) -> list[SCUser]:
-        """Ищет пользователей/артистов по имени через API v2 с OAuth токеном."""
+        """Ищет пользователей/артистов по имени через официальный SC API (GET /users)."""
         self._ensure_init()
-        client_id = await self._get_client_id()
         params: dict = {"q": query, "limit": 3}
-        if client_id:
-            params["client_id"] = client_id
-        logger.debug(f"[sc] search_users query={query!r} → GET /search/users?{urlencode(params)}")
+        logger.debug(f"[sc] search_users query={query!r} → GET /users?{urlencode(params)}")
         try:
-            data = await self._get("/search/users", params=params)
+            data = await self._get("/users", params=params)
         except Exception as e:
             logger.warning(f"[sc] search_users query={query!r} → {e}")
             return []
