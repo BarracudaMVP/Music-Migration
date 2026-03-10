@@ -1,10 +1,10 @@
 #!/bin/bash
 # MM-9: Let's Encrypt certificate renewal + nginx reload
 #
-# Runs via crontab monthly (added automatically by setup-ssl.sh):
-#   0 3 1 * * bash /root/Music-Migration/scripts/renew-ssl.sh >> /var/log/certbot-renew.log 2>&1
+# Runs via crontab every 10 days (added automatically by setup-ssl.sh):
+#   0 3 */10 * * bash /root/Music-Migration/scripts/renew-ssl.sh >> /var/log/certbot-renew.log 2>&1
 #
-# certbot renew is a no-op if cert has > 30 days left, so monthly is safe.
+# certbot renew is a no-op if cert has > 30 days left, so running every 10 days is safe.
 
 set -euo pipefail
 

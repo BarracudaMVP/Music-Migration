@@ -62,12 +62,12 @@ docker compose up -d nginx
 
 # Add monthly renewal to crontab
 echo "[4/4] Adding monthly renewal cron..."
-CRON_LINE="0 3 1 * * bash ${PROJECT_DIR}/scripts/renew-ssl.sh >> /var/log/certbot-renew.log 2>&1"
+CRON_LINE="0 3 */10 * * bash ${PROJECT_DIR}/scripts/renew-ssl.sh >> /var/log/certbot-renew.log 2>&1"
 if crontab -l 2>/dev/null | grep -qF "renew-ssl.sh"; then
     echo "         (already in crontab, skipping)"
 else
     (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-    echo "         Added: runs 1st of each month at 03:00."
+    echo "         Added: runs every 10 days at 03:00."
 fi
 
 echo ""
