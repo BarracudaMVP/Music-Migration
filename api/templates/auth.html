@@ -62,6 +62,16 @@
   </div>
   {% if not ym_done %}
   <div class="px-5 py-4">
+    {% if ym_redirect_configured %}
+    <p class="text-sm text-gray-500 mb-3">{{ t('auth_yandex_hint') }}</p>
+    <a href="/auth/yandex"
+      class="inline-flex items-center gap-2 bg-amber-400 text-gray-900 px-4 py-2 rounded-xl hover:bg-amber-500 text-sm font-semibold transition">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M13.5 2h-3C6.36 2 3 5.36 3 9.5S6.36 17 10.5 17H11v3l4-4-4-4v3h-.5C7.47 15 5 12.53 5 9.5S7.47 4 10.5 4h3C16.53 4 19 6.47 19 9.5c0 1.8-.87 3.4-2.21 4.39l1.42 1.42C20.01 13.84 21 11.78 21 9.5 21 5.36 17.64 2 13.5 2z"/>
+      </svg>
+      {{ t('auth_yandex_btn') }}
+    </a>
+    {% else %}
     <p class="text-sm text-gray-500 mb-3">{{ t('auth_step1_desc') }}</p>
     <a href="{{ ym_auth_url }}" target="_blank"
       class="inline-block bg-amber-400 text-gray-900 px-4 py-2 rounded-xl hover:bg-amber-500 text-sm font-semibold mb-3 transition">
@@ -74,6 +84,7 @@
         {{ t('auth_confirm_btn') }}
       </button>
     </form>
+    {% endif %}
   </div>
   {% endif %}
 </div>

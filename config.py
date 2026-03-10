@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     spotify_client_secret: str = Field(default="")
     spotify_redirect_uri: str = Field(default="http://localhost:8000/auth/spotify/callback")
 
+    # Yandex OAuth callback (oauth.yandex.ru app)
+    # If set — uses redirect flow (button, no code copy-paste). Must be registered in the app.
+    # Example: https://musicmigration.site/auth/yandex/callback
+    yandex_redirect_uri: str = Field(default="")
+
     # SoundCloud OAuth (soundcloud.com/you/apps)
     sc_client_id: str = Field(default="")
     sc_client_secret: str = Field(default="")

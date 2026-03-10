@@ -53,6 +53,8 @@ _S: dict[str, dict[str, str]] = {
     "auth_open_yandex":    {"ru": "Открыть страницу Яндекса",              "en": "Open Yandex"},
     "auth_code_hint":      {"ru": "Код авторизации",                       "en": "Authorization code"},
     "auth_confirm_btn":    {"ru": "Подтвердить",                           "en": "Confirm"},
+    "auth_yandex_hint":    {"ru": "Нажми кнопку ниже, чтобы войти через Яндекс и разрешить доступ к Яндекс Музыке.", "en": "Click the button below to sign in with Yandex and grant access to Yandex Music."},
+    "auth_yandex_btn":     {"ru": "Подключить Яндекс Музыку",              "en": "Connect Yandex Music"},
     "auth_step2_desc1":    {"ru": "Откройте",                              "en": "Open"},
     "auth_step2_desc2":    {"ru": ", войдите в аккаунт.",                  "en": ", sign in to your account."},
     "auth_step2_devtools": {"ru": "DevTools → Application → Cookies → значение", "en": "DevTools → Application → Cookies → value of"},
@@ -238,10 +240,24 @@ _S: dict[str, dict[str, str]] = {
         ),
     },
     "bot_ym_login_btn":      {"ru": "Войти через Яндекс",  "en": "Sign in with Yandex"},
+    "bot_ym_done_btn":       {"ru": "✓ Я авторизовался",  "en": "✓ I've authorized"},
+    "bot_ym_not_yet":        {"ru": "Авторизация не найдена. Сначала нажми «Войти через Яндекс» и заверши вход.", "en": "Authorization not found. Please tap «Sign in with Yandex» first and complete sign-in."},
     "bot_code_empty":        {"ru": "Код не должен быть пустым. Попробуй ещё раз:", "en": "Code cannot be empty. Try again:"},
     "bot_checking":          {"ru": "Проверяю...",         "en": "Checking..."},
     "bot_ym_ok":             {"ru": "Яндекс Музыка подключена!",  "en": "Yandex Music connected!"},
     "bot_ym_error":          {"ru": "Ошибка: {detail}\n\nПопробуй войти через кнопку снова:", "en": "Error: {detail}\n\nTry signing in again:"},
+    "bot_ym_step1_web": {
+        "ru": (
+            "<b>Шаг 1 из 2 — Яндекс Музыка</b>\n\n"
+            "Нажми кнопку ниже, войди в аккаунт Яндекса и разреши доступ.\n"
+            "После этого нажми «✓ Я авторизовался»."
+        ),
+        "en": (
+            "<b>Step 1 of 2 — Yandex Music</b>\n\n"
+            "Tap the button below, sign in to your Yandex account and grant access.\n"
+            "Then tap «✓ I've authorized»."
+        ),
+    },
 
     "bot_sc_step2": {
         "ru": "<b>Шаг 2 из 2 — SoundCloud</b>\n\n{instructions}",
