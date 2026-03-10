@@ -1,4 +1,5 @@
 import re
+import uuid
 
 import httpx
 from loguru import logger
@@ -140,17 +141,59 @@ async def on_new_tokens(callback: CallbackQuery, state: FSMContext) -> None:
 
 async def _ask_yandex_token(message: Message, state: FSMContext) -> None:
     lang = await _get_lang(state)
-    from bot.oauth.yandex import get_auth_url
-    auth_url = get_auth_url()
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=t("bot_ym_login_btn", lang), url=auth_url)
-    ]])
-    await message.answer(t("bot_ym_step1", lang), parse_mode="HTML", reply_markup=kb)
+    from config import settings
+
+    if settings.yandex_redirect_uri:
+        # MM-44: web OAuth flow — button + "I've authorized" check button
+        state_id = uuid.uuid4().hex
+        await state.update_data(ym_auth_state=state_id)
+        auth_url = f"{settings.public_url}/auth/yandex/bot?state=bot_{state_id}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t("bot_ym_login_btn", lang), url=auth_url)],
+            [InlineKeyboardButton(text=t("bot_ym_done_btn", lang), callback_data=f"auth:ym_check:{state_id}")],
+        ])
+        await message.answer(t("bot_ym_step1_web", lang), parse_mode="HTML", reply_markup=kb)
+    else:
+        # Legacy flow: paste code
+        from bot.oauth.yandex import get_auth_url
+        auth_url = get_auth_url()
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=t("bot_ym_login_btn", lang), url=auth_url)
+        ]])
+        await message.answer(t("bot_ym_step1", lang), parse_mode="HTML", reply_markup=kb)
+
     await state.set_state(AuthFlow.waiting_yandex_token)
+
+
+@router.callback_query(AuthFlow.waiting_yandex_token, F.data.startswith("auth:ym_check:"))
+async def on_ym_auth_check(callback: CallbackQuery, state: FSMContext) -> None:
+    """User tapped '✓ I've authorized' — poll Redis for the token (MM-44)."""
+    lang = await _get_lang(state)
+    state_id = callback.data.split(":", 2)[2]
+
+    try:
+        result = await api_client.poll_yandex_token(state_id)
+        token = result["token"]
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            await callback.answer(t("bot_ym_not_yet", lang), show_alert=True)
+            return
+        await callback.answer()
+        await callback.message.edit_text(t("bot_ym_error", lang).format(detail=str(e)))
+        return
+    except Exception:
+        await callback.answer(t("bot_ym_not_yet", lang), show_alert=True)
+        return
+
+    await callback.answer()
+    await state.update_data(yandex_token=token)
+    await callback.message.edit_text(t("bot_ym_ok", lang))
+    await _ask_soundcloud_token(callback.message, state)
 
 
 @router.message(AuthFlow.waiting_yandex_token)
 async def receive_yandex_token(message: Message, state: FSMContext) -> None:
+    """Legacy flow: user pastes the verification code."""
     code = message.text.strip() if message.text else ""
     lang = await _get_lang(state)
 

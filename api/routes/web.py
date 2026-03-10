@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
@@ -141,12 +141,131 @@ async def auth_page(request: Request, error: str = ""):
     return _render("auth.html", request, {
         "ym_auth_url": get_auth_url(),
         "ym_done": ym_done,
+        "ym_redirect_configured": bool(cfg.yandex_redirect_uri),
         "spotify_done": spotify_done,
         "spotify_enabled": bool(cfg.spotify_client_id),
         "sc_done": sc_done,
         "sc_enabled": bool(cfg.sc_client_id),
         "error": error,
     })
+
+
+@router.get("/auth/yandex")
+async def auth_yandex_start(request: Request):
+    """Yandex OAuth web flow — redirect to Yandex (MM-43)."""
+    import secrets
+    from config import settings
+    from bot.oauth.yandex import get_callback_auth_url
+
+    if not settings.yandex_redirect_uri:
+        return RedirectResponse(
+            f"/auth?error={quote('YANDEX_REDIRECT_URI не настроен')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = "web_" + secrets.token_urlsafe(16)
+    response = RedirectResponse(get_callback_auth_url(state), status_code=303)
+    response.set_cookie("_ym_state", state, httponly=True, samesite="lax", max_age=600)
+    return response
+
+
+@router.get("/auth/yandex/bot")
+async def auth_yandex_bot_start(request: Request, state: str = ""):
+    """Yandex OAuth bot flow — initiated from Telegram bot link (MM-44)."""
+    from config import settings
+    from bot.oauth.yandex import get_callback_auth_url
+
+    if not settings.yandex_redirect_uri or not state.startswith("bot_"):
+        return RedirectResponse(
+            f"/auth?error={quote('Некорректный запрос авторизации')}",
+            status_code=303,
+        )
+    response = RedirectResponse(get_callback_auth_url(state), status_code=303)
+    response.set_cookie("_ym_state", state, httponly=True, samesite="lax", max_age=600)
+    return response
+
+
+@router.get("/auth/yandex/callback")
+async def auth_yandex_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Callback from Yandex OAuth. Handles web (state=web_*) and bot (state=bot_*) flows."""
+    from config import settings
+    from bot.oauth.yandex import exchange_code_callback
+    from core.yandex.client import YandexMusicClient
+
+    if error:
+        return RedirectResponse(
+            f"/auth?error={quote(f'Яндекс отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+
+    expected_state = request.cookies.get("_ym_state", "")
+    if not state or state != expected_state:
+        return RedirectResponse(
+            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+
+    try:
+        token = await exchange_code_callback(code)
+        await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
+    except Exception as e:
+        response = RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+        response.delete_cookie("_ym_state")
+        return response
+
+    if state.startswith("bot_"):
+        # Save token to Redis for bot polling (TTL 5 min)
+        state_id = state[4:]  # strip "bot_" prefix
+        from api.main import get_arq_pool
+        arq = get_arq_pool()
+        if arq:
+            await arq.setex(f"ym_auth:{state_id}", 300, token)
+        response = HTMLResponse(
+            content=(
+                "<!doctype html><html><head><meta charset=utf-8>"
+                "<title>Авторизация завершена</title>"
+                "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                "<style>body{font-family:sans-serif;text-align:center;padding:3rem;color:#1f2937}"
+                ".ok{font-size:3rem}.msg{margin:1rem 0 2rem;color:#374151}"
+                "a{display:inline-block;background:#6366f1;color:#fff;padding:.75rem 1.5rem;"
+                "border-radius:.75rem;text-decoration:none;font-weight:600}</style></head>"
+                "<body><div class=ok>✓</div>"
+                "<p class=msg>Яндекс Музыка подключена!<br>Вернитесь в Telegram и нажмите <b>✓ Я авторизовался</b>.</p>"
+                "<a href='https://t.me'>Открыть Telegram</a></body></html>"
+            )
+        )
+        response.delete_cookie("_ym_state")
+        return response
+
+    # Web flow: save to session, redirect to /auth
+    user_id = _ensure_user_id(request)
+    request.session["ym_token"] = token
+    response = RedirectResponse("/auth", status_code=303)
+    response.delete_cookie("_ym_state")
+    return response
+
+
+@router.get("/api/auth/yandex/poll/{state_id}")
+async def poll_yandex_bot_token(state_id: str, request: Request):
+    """Internal: bot polls this to get Yandex token after web OAuth (MM-44)."""
+    from api.deps import verify_internal_token
+    from fastapi import Header
+    from api.main import get_arq_pool
+
+    x_internal_token = request.headers.get("x-internal-token", "")
+    await verify_internal_token(x_internal_token)
+
+    arq = get_arq_pool()
+    if not arq:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
+
+    raw = await arq.get(f"ym_auth:{state_id}")
+    if not raw:
+        raise HTTPException(status_code=404, detail="Token not found")
+
+    await arq.delete(f"ym_auth:{state_id}")
+    token = raw.decode() if isinstance(raw, bytes) else raw
+    return {"token": token}
 
 
 @router.post("/auth/yandex", response_class=HTMLResponse)

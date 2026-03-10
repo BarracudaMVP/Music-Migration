@@ -31,6 +31,16 @@ class MigrationApiClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def poll_yandex_token(self, state_id: str) -> dict:
+        """Проверяет, завершена ли Yandex OAuth через веб. Возвращает {token} или raises 404."""
+        async with httpx.AsyncClient(headers=self._headers) as client:
+            resp = await client.get(
+                f"{self._base_url}/api/auth/yandex/poll/{state_id}",
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
     async def validate_soundcloud_token(self, token: str) -> dict:
         """Проверяет SC-токен. Возвращает {user_id, username}."""
         async with httpx.AsyncClient(headers=self._headers) as client:
