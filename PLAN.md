@@ -692,30 +692,24 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-43 — Яндекс OAuth автоматический callback (веб)
+### ✅ MM-43 — Яндекс OAuth автоматический callback (веб)
 
-> Сейчас веб-пользователь видит код на странице Яндекса и копирует его вручную.
-> Цель: использовать собственный redirect_uri — код приходит на наш сервер автоматически.
-> **Требует MM-9 (домен + HTTPS)** — Яндекс не принимает http:// для кастомного redirect_uri.
-
-- [ ] Зарегистрировать новый redirect_uri в приложении oauth.yandex.ru: `https://ourdomain.com/auth/yandex/callback`
-- [ ] `bot/oauth/yandex.py` — `_REDIRECT_URI` и `get_auth_url()` обновить на кастомный URI (параметризовать через `config.py`)
-- [ ] `api/routes/web.py` — добавить `GET /auth/yandex/callback`: принять `?code=`, вызвать `exchange_code()`, сохранить токен в сессию, редирект на `/auth`
-- [ ] `config.py` — `yandex_redirect_uri: str` (аналогично `spotify_redirect_uri`)
-- [ ] `api/templates/auth.html` — убрать поле ввода кода Яндекса (шаг становится полностью автоматическим)
+- [x] `config.py` — `yandex_redirect_uri: str`
+- [x] `bot/oauth/yandex.py` — `get_callback_auth_url(state)`, `exchange_code_callback(code)`
+- [x] `api/routes/web.py` — `GET /auth/yandex` (web start), `GET /auth/yandex/callback` (unified)
+- [x] `api/templates/auth.html` — кнопка если `yandex_redirect_uri` задан, форма-fallback если нет
+- [ ] Зарегистрировать `https://musicmigration.site/auth/yandex/callback` в oauth.yandex.ru
+- [ ] `YANDEX_REDIRECT_URI=https://musicmigration.site/auth/yandex/callback` в .env на сервере
 
 ---
 
-### 🔲 MM-44 — Яндекс OAuth через веб-посредник для Telegram-бота
+### ✅ MM-44 — Яндекс OAuth через веб-посредник для Telegram-бота
 
-> Бот не имеет web-callback. Решение: пользователь нажимает кнопку в боте → открывается наш сайт → OAuth → токен сохраняется → возврат в Telegram через deeplink.
-> **Требует MM-43.**
-
-- [ ] `bot/handlers/auth.py` — при запросе Яндекс-токена генерировать уникальный `state` (UUID), сохранять в FSM, отправлять кнопку с ссылкой `https://ourdomain.com/auth/yandex/bot?state=UUID`
-- [ ] `api/routes/web.py` — `GET /auth/yandex/bot` → сохраняет `state` в сессии, редиректит на Яндекс OAuth (с `redirect_uri=/auth/yandex/bot/callback`)
-- [ ] `api/routes/web.py` — `GET /auth/yandex/bot/callback` → принимает `?code=&state=`, обменивает код, сохраняет токен в Redis с ключом `ym_auth:{state}` (TTL 300с), редиректит в Telegram `tg://resolve?domain=botname`
-- [ ] `bot/handlers/auth.py` — после отправки ссылки бот поллит Redis-ключ `ym_auth:{state}` (30 попыток × 5с), при получении токена — сохраняет и переходит к следующему шагу авторизации
-- [ ] Fallback: если поллинг истёк — предложить ввести код вручную (старый путь)
+- [x] `bot/handlers/auth.py` — UUID state в FSM, кнопки [Войти] + [✓ Я авторизовался]
+- [x] `api/routes/web.py` — `GET /auth/yandex/bot?state=bot_{uuid}` (bot start), сохраняет токен в Redis TTL 300s
+- [x] `api/routes/web.py` — `GET /api/auth/yandex/poll/{state_id}` (internal, бот поллит)
+- [x] `bot/api_client.py` — `poll_yandex_token(state_id)`
+- [x] Fallback: если `yandex_redirect_uri` не задан — старый flow с вводом кода
 
 ---
 
