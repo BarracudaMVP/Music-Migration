@@ -923,7 +923,7 @@ SC   → Spotify  : soundcloud_token + spotify_token  (требует веб-OAu
 
 ---
 
-### 🔲 MM-53 — Улучшение логирования (единый стандарт для всех клиентов)
+### ✅ MM-53 — Улучшение логирования (единый стандарт для всех клиентов)
 
 > Сейчас логи при ошибках нечитаемы: видно только query-строку, но не URL, не params, не migration_id.
 > Нужен единый формат логов поиска/записи для YM, SC и Spotify.
@@ -946,7 +946,7 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 **Что сделать — единый паттерн для search во всех клиентах:**
 
-- [ ] `core/soundcloud/client.py` — `search_tracks`, `search_users`:
+- [x] `core/soundcloud/client.py` — `search_tracks`, `search_users`:
   - `DEBUG` перед запросом: `[sc] search query={query!r} → GET {url}?{params}`
   - `DEBUG` после успеха: `[sc] search query={query!r} → {status}, {n} results`
   - `WARNING` при ошибке: `[sc] search query={query!r} → {status} {body} (url={full_url})`
@@ -954,22 +954,21 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
   - `create_playlist`: `DEBUG [sc] create_playlist title={title!r}, {n} tracks`
   - `follow_user`: `DEBUG [sc] follow user_id={id}`
 
-- [ ] `core/yandex/client.py` — `search_tracks`, `like_track`:
+- [x] `core/yandex/client.py` — `search_tracks`, `like_track`:
   - `DEBUG` перед запросом: `[ym] search query={query!r}`
   - `DEBUG` после: `[ym] search query={query!r} → {n} results`
   - `DEBUG`: `[ym] like track_id={id} → ok/fail`
 
-- [ ] `core/spotify/client.py` — `search_tracks`, `search_artists`, `like_track`, `follow_artist`:
+- [x] `core/spotify/client.py` — `search_tracks`, `search_artists`, `like_track`, `follow_artist`:
   - `DEBUG` перед: `[spotify] search query={query!r} type={type}`
   - `DEBUG` после: `[spotify] search query={query!r} → {n} results`
   - `DEBUG`: `[spotify] like track_id={id}`, `[spotify] follow artist_id={id}`
   - `WARNING` при ошибке с полным URL и статусом
 
-- [ ] `worker/tasks.py`:
-  - Добавить `logger.bind(migration_id=migration_id, user_id=user_id)` контекст на старте джоба
-  - Логи внутри автоматически содержат эти поля
+- [x] `worker/tasks.py`:
+  - `logger.contextualize(migration_id=..., user_id=...)` во всех 5 джобах
 
-- [ ] `migration/tracks.py` — `_process_one_track`:
+- [x] `migration/tracks.py` — `_process_one_track`:
   - После матчинга: `DEBUG [match] '{ym_artist} — {ym_title}' → '{sc_artist} — {sc_title}' score={score} sc_id={id}`
   - Нет матча: `DEBUG [match] '{ym_artist} — {ym_title}' → not found (best score={score})`
 
