@@ -96,7 +96,6 @@ def _score_pair(source: str, candidate: str) -> float:
         return 0.0
     return max(
         fuzz.WRatio(source, candidate),
-        fuzz.token_set_ratio(source, candidate),
         fuzz.token_sort_ratio(source, candidate),
     )
 
