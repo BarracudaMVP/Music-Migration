@@ -354,8 +354,8 @@ async def auth_soundcloud_callback(request: Request, code: str = "", state: str 
     try:
         token_data = await exchange_code(code, code_verifier)
         access_token = token_data["access_token"]
-        sc_client = await SoundCloudClient(access_token).init()
-        await sc_client.close()
+        # Skip /me validation — SC API returns 403 for unverified apps.
+        # Token validity confirmed by successful code exchange.
         await save_soundcloud_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
         request.session["sc_connected"] = True
     except Exception as e:
