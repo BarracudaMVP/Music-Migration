@@ -1171,6 +1171,26 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 ---
 
+### ✅ MM-61 — Фикс ложных матчей в fuzzy-поиске (token_set_ratio)
+
+> `token_set_ratio` давал score=100 когда название трека является подстрокой кандидата
+> (например "заря" vs "Алая Заря"), что приводило к ложным матчам с неправильным артистом.
+
+**Проблема:**
+- `token_set_ratio("заря", "алая заря")` = 100 — subset-матч
+- `WRatio("lizer", "liderzhnec")` ≈ 80 — partial matching
+- Итог: `0.4*80 + 0.6*100 = 92` → "Lizer — Заря" матчился с "LiderZHNEC — Алая Заря"
+
+**Что сделано:**
+- [x] Убран `fuzz.token_set_ratio` из `_score_pair` в `core/matcher.py`
+- [x] Оставлены: `fuzz.WRatio` + `fuzz.token_sort_ratio`
+- [x] `MATCH_UNCERTAIN_FLOOR` добавлен в `.env.example`
+- [x] Исправлен дефолт `match_threshold`: 95.0 → 75.0 в `config.py`
+
+**Файлы:** `core/matcher.py`, `config.py`, `.env.example`
+
+---
+
 ## Риски и митигации
 
 | Риск | Митигация |
