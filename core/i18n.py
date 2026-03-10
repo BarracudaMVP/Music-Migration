@@ -38,6 +38,8 @@ _S: dict[str, dict[str, str]] = {
     "index_limit_first": {"ru": "Первые {n}",          "en": "First {n}"},
     "index_skip_migrated":      {"ru": "Пропустить уже перенесённые треки", "en": "Skip already transferred tracks"},
     "index_skip_migrated_hint": {"ru": "Треки из предыдущих переносов в этот сервис не будут обработаны повторно", "en": "Tracks from previous transfers to this service will not be processed again"},
+    "index_like_tracks":        {"ru": "Проставить лайки на треки", "en": "Like tracks directly"},
+    "index_like_tracks_hint":   {"ru": "Попробует лайкнуть каждый трек напрямую; при отказе сервиса автоматически добавит в плейлист", "en": "Tries to like each track directly; if not supported, automatically falls back to playlist"},
 
     # ------------------------------------------------------------------ #
     # Auth
@@ -75,13 +77,13 @@ _S: dict[str, dict[str, str]] = {
     # Status fragment
     # ------------------------------------------------------------------ #
     "status_waiting":     {"ru": "Ожидаем данные...",   "en": "Waiting for data..."},
-    "status_transferred": {"ru": "Перенесено",          "en": "Transferred"},
+    "status_transferred": {"ru": "Добавлено",            "en": "Added"},
     "status_not_found":   {"ru": "Не найдено",          "en": "Not found"},
     "status_errors":      {"ru": "Ошибок",              "en": "Errors"},
     "status_in_queue":    {"ru": "В очереди",           "en": "In queue"},
     "status_report_btn":  {"ru": "Подробный отчёт",     "en": "Detailed report"},
     "status_csv_btn":     {"ru": "Скачать CSV",         "en": "Download CSV"},
-    "status_progress":      {"ru": "Перенесено",  "en": "Transferred"},
+    "status_progress":      {"ru": "Добавлено",   "en": "Added"},
     "status_current_track": {"ru": "Сейчас",      "en": "Now"},
 
     # Status labels (migration status)
@@ -92,7 +94,7 @@ _S: dict[str, dict[str, str]] = {
     "mstatus_cancelled": {"ru": "Отменён",      "en": "Cancelled"},
 
     # Track status labels
-    "tstatus_liked":     {"ru": "Перенесено",   "en": "Transferred"},
+    "tstatus_liked":     {"ru": "Добавлено",    "en": "Added"},
     "tstatus_not_found": {"ru": "Не найдено",   "en": "Not found"},
     "tstatus_error":     {"ru": "Ошибка",       "en": "Error"},
     "tstatus_pending":   {"ru": "В очереди",    "en": "Queued"},
@@ -101,8 +103,8 @@ _S: dict[str, dict[str, str]] = {
     # Result
     # ------------------------------------------------------------------ #
     "result_back":         {"ru": "← История",       "en": "← History"},
-    "result_progress":     {"ru": "Успешно перенесено", "en": "Successfully transferred"},
-    "result_liked":        {"ru": "Перенесено",       "en": "Transferred"},
+    "result_progress":     {"ru": "Успешно добавлено",  "en": "Successfully added"},
+    "result_liked":        {"ru": "Добавлено",         "en": "Added"},
     "result_not_found":    {"ru": "Не найдено",       "en": "Not found"},
     "result_errors":       {"ru": "Ошибок",           "en": "Errors"},
     "result_total":        {"ru": "Всего",            "en": "Total"},
@@ -123,7 +125,7 @@ _S: dict[str, dict[str, str]] = {
     # ------------------------------------------------------------------ #
     "tracks_back":        {"ru": "← Результат",   "en": "← Result"},
     "tracks_filter_all":  {"ru": "Все",            "en": "All"},
-    "tracks_liked":       {"ru": "Перенесены",     "en": "Transferred"},
+    "tracks_liked":       {"ru": "Добавлены",      "en": "Added"},
     "tracks_not_found":   {"ru": "Не найдены",     "en": "Not found"},
     "tracks_errors":      {"ru": "Ошибки",         "en": "Errors"},
     "tracks_pending":     {"ru": "В очереди",      "en": "Queued"},
@@ -314,8 +316,17 @@ _S: dict[str, dict[str, str]] = {
         "ru": "Выбери источник переноса:",
         "en": "Select transfer source:",
     },
-    "bot_service_yandex":  {"ru": "Яндекс Музыка 🎵", "en": "Yandex Music 🎵"},
-    "bot_service_spotify": {"ru": "Spotify 🟢",        "en": "Spotify 🟢"},
+    "bot_service_yandex":      {"ru": "Яндекс Музыка 🎵", "en": "Yandex Music 🎵"},
+    "bot_service_spotify":     {"ru": "Spotify 🟢",        "en": "Spotify 🟢"},
+    "bot_service_soundcloud":  {"ru": "SoundCloud",         "en": "SoundCloud"},
+    "bot_select_to": {
+        "ru": "Куда переносим?",
+        "en": "Where to transfer?",
+    },
+    "bot_sc_coming_soon": {
+        "ru": "Перенос из SoundCloud в боте пока недоступен. Используйте веб-интерфейс.",
+        "en": "Transfer from SoundCloud is not yet available in the bot. Use the web interface.",
+    },
     "bot_spotify_no_token": {
         "ru": (
             "Для Spotify нужна авторизация через веб-интерфейс.\n\n"
@@ -365,6 +376,8 @@ _S: dict[str, dict[str, str]] = {
     "bot_btn_cancel":       {"ru": "Отмена",                          "en": "Cancel"},
     "bot_skip_migrated_on":  {"ru": "♻️ Пропускать уже перенесённые: Вкл", "en": "♻️ Skip transferred: On"},
     "bot_skip_migrated_off": {"ru": "♻️ Пропускать уже перенесённые: Выкл", "en": "♻️ Skip transferred: Off"},
+    "bot_like_tracks_on":    {"ru": "❤️ Лайкать треки: Вкл", "en": "❤️ Like tracks: On"},
+    "bot_like_tracks_off":   {"ru": "❤️ Лайкать треки: Выкл", "en": "❤️ Like tracks: Off"},
     "bot_select_limit":     {"ru": "Сколько треков перенести?",        "en": "How many tracks to transfer?"},
     "bot_btn_limit_all":    {"ru": "Все треки",                        "en": "All tracks"},
     "bot_btn_limit_n":      {"ru": "Первые {n}",                       "en": "First {n}"},
@@ -381,11 +394,11 @@ _S: dict[str, dict[str, str]] = {
     "bot_detach_no_active":         {"ru": "Активного переноса нет.", "en": "No active transfer."},
     "bot_already_in_progress":      {"ru": "Перенос уже идёт. Используй /status для проверки прогресса.", "en": "Transfer is in progress. Use /status to check."},
     "bot_progress_loading":         {"ru": "Идёт перенос... Загружаю треки.",  "en": "Transfer in progress... Loading tracks."},
-    "bot_progress_bar":             {"ru": "Идёт перенос...\n\n{bar} {pct}%\n{done} / {total} треков\n\nПеренесено: {liked} | Не найдено: {nf} | Ошибок: {err}", "en": "Transferring...\n\n{bar} {pct}%\n{done} / {total} tracks\n\nTransferred: {liked} | Not found: {nf} | Errors: {err}"},
+    "bot_progress_bar":             {"ru": "Идёт перенос...\n\n{bar} {pct}%\n{done} / {total} треков\n\nДобавлено: {liked} | Не найдено: {nf} | Ошибок: {err}", "en": "Transferring...\n\n{bar} {pct}%\n{done} / {total} tracks\n\nAdded: {liked} | Not found: {nf} | Errors: {err}"},
 
     "bot_done_tracks": {
-        "ru": "Перенос завершён!\n\n<b>Треки:</b>\n  Перенесено:  <b>{liked}</b>\n  Не найдено:  <b>{nf}</b>\n  Ошибок:      <b>{err}</b>\n  Всего:       <b>{total}</b>\n",
-        "en": "Transfer complete!\n\n<b>Tracks:</b>\n  Transferred: <b>{liked}</b>\n  Not found:   <b>{nf}</b>\n  Errors:      <b>{err}</b>\n  Total:       <b>{total}</b>\n",
+        "ru": "Перенос завершён!\n\n<b>Треки:</b>\n  Добавлено:   <b>{liked}</b>\n  Не найдено:  <b>{nf}</b>\n  Ошибок:      <b>{err}</b>\n  Всего:       <b>{total}</b>\n",
+        "en": "Transfer complete!\n\n<b>Tracks:</b>\n  Added:       <b>{liked}</b>\n  Not found:   <b>{nf}</b>\n  Errors:      <b>{err}</b>\n  Total:       <b>{total}</b>\n",
     },
     "bot_done_artists": {
         "ru": "\n<b>Артисты:</b>\n  Подписок:   <b>{followed}</b>\n  Не найдено: <b>{nf}</b>\n",
@@ -406,8 +419,8 @@ _S: dict[str, dict[str, str]] = {
     # Worker notifications
     # ------------------------------------------------------------------ #
     "notif_done": {
-        "ru": "Перенос #{id} завершён!\n\nПеренесено:  <b>{liked}</b>\nНе найдено:  <b>{nf}</b>\nОшибок:      <b>{err}</b>\nВсего:       <b>{total}</b>",
-        "en": "Transfer #{id} complete!\n\nTransferred: <b>{liked}</b>\nNot found:   <b>{nf}</b>\nErrors:      <b>{err}</b>\nTotal:       <b>{total}</b>",
+        "ru": "Перенос #{id} завершён!\n\nДобавлено:   <b>{liked}</b>\nНе найдено:  <b>{nf}</b>\nОшибок:      <b>{err}</b>\nВсего:       <b>{total}</b>",
+        "en": "Transfer #{id} complete!\n\nAdded:       <b>{liked}</b>\nNot found:   <b>{nf}</b>\nErrors:      <b>{err}</b>\nTotal:       <b>{total}</b>",
     },
     "notif_done_artists": {
         "ru": "\nАртистов подписок: <b>{followed}</b>, не найдено: <b>{nf}</b>",

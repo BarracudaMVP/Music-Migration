@@ -444,6 +444,7 @@ async def start_migrate(
     mode: str = Form("full"),
     track_limit: int = Form(0),
     skip_already_migrated: bool = Form(False),
+    like_tracks: bool = Form(False),
 ):
     from api.main import get_arq_pool
 
@@ -497,6 +498,7 @@ async def start_migrate(
             return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
 
     skip = skip_already_migrated
+    like = like_tracks
 
     if to_service == "yandex_music":
         source_token = spotify_token if from_service == "spotify" else sc_token
@@ -517,13 +519,13 @@ async def start_migrate(
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
             migration_id, spotify_token, sc_token, job_mode, user_id,
-            track_limit=limit, skip_already_migrated=skip,
+            track_limit=limit, skip_already_migrated=skip, like_tracks=like,
         )
     else:
         job = await arq.enqueue_job(
             "run_migration_job",
             migration_id, ym_token, sc_token, job_mode, user_id,
-            track_limit=limit, skip_already_migrated=skip,
+            track_limit=limit, skip_already_migrated=skip, like_tracks=like,
         )
 
     if job:
@@ -598,13 +600,13 @@ async def migration_result(request: Request, migration_id: int):
 
 _PER_PAGE = 50
 _TRACK_STATUS_LABEL_RU = {
-    "liked": "Перенесён",
+    "liked": "Добавлен",
     "not_found": "Не найден",
     "error": "Ошибка",
     "pending": "В очереди",
 }
 _TRACK_STATUS_LABEL_EN = {
-    "liked": "Transferred",
+    "liked": "Added",
     "not_found": "Not found",
     "error": "Error",
     "pending": "Queued",

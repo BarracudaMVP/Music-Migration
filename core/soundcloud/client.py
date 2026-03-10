@@ -26,6 +26,10 @@ class RateLimitError(Exception):
         super().__init__(f"Rate limited, reset at {reset_time}")
 
 
+class LikeNotSupportedError(Exception):
+    """SoundCloud вернул 404 на like_track — прямые лайки недоступны для этого токена."""
+
+
 class SoundCloudClient:
     def __init__(self, token: str) -> None:
         # SC docs: "Authorization: OAuth <token>" (не Bearer)
@@ -165,7 +169,8 @@ class SoundCloudClient:
     # ------------------------------------------------------------------
 
     async def like_track(self, track_id: int) -> bool:
-        """Лайкает трек. Возвращает True при успехе. Ждёт при 429."""
+        """Лайкает трек. Возвращает True при успехе. Ждёт при 429.
+        Поднимает LikeNotSupportedError при 404 (токен не поддерживает прямые лайки)."""
         self._ensure_init()
         url = f"/me/track_likes/{track_id}"
         logger.debug(f"[sc] like track_id={track_id} → PUT {url}")
@@ -179,10 +184,19 @@ class SoundCloudClient:
                 await self._put(url)
                 logger.debug(f"[sc] like track_id={track_id} → ok (retry)")
                 return True
+            except LikeNotSupportedError:
+                raise
             except Exception as retry_err:
+                if "HTTP 404" in str(retry_err):
+                    raise LikeNotSupportedError(f"like_track 404 for track_id={track_id}")
                 logger.error(f"[sc] like track_id={track_id} → retry failed: {retry_err}")
                 return False
+        except LikeNotSupportedError:
+            raise
         except Exception as e:
+            if "HTTP 404" in str(e):
+                logger.warning(f"[sc] like track_id={track_id} → 404 (LikeNotSupported)")
+                raise LikeNotSupportedError(f"like_track 404 for track_id={track_id}")
             logger.error(f"[sc] like track_id={track_id} → {e}")
             return False
 

@@ -801,59 +801,38 @@ SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
 
 ---
 
-### 🔲 MM-51 — Выбор целевого сервиса (to_service) в боте
+### ✅ MM-51 — Выбор целевого сервиса (to_service) в боте
 
 > Сейчас бот намертво переносит только в SoundCloud. Нужно добавить выбор куда переносим —
 > SoundCloud, Яндекс Музыку или Spotify — симметрично тому как уже работает веб (дропдауны из матрицы).
 
-**Текущее состояние:**
-- Веб — ✅ уже имеет `from_service`/`to_service` дропдауны из `ServiceRegistry.get_matrix()`; небольшой баг: ETA считается hardcode-`"soundcloud"` → нужно передавать реальный `to_service`
-- Бот — `_show_confirmation` = YM→SC, `_show_confirmation_spotify` = Spotify→SC; `to_service` в `api_client.start_migration` не передаётся (дефолт `soundcloud`)
-
-**FSM: добавить стейт `selecting_to`**
-
-Новый флоу бота:
+**Новый флоу бота:**
 ```
 /migrate
-  → selecting_from   (YM | Spotify)     — уже есть
-  → selecting_to     (SC | YM | Spotify — отфильтровано по матрице)  ← NEW
-  → waiting_*_token  (собираем токены для FROM + TO)
-  → confirming       (статистика + кнопки старт / тест 100)
+  → selecting_from   (YM | Spotify)
+  → selecting_to     (SC | YM | Spotify — динамически из матрицы)
+  → waiting_*_token  (сбор токенов для FROM + TO)
+  → confirming
 ```
 
-**Матрица токенов по выбору FROM→TO:**
-```
-YM   → SC       : yandex_token + soundcloud_token   (уже работает)
-YM   → Spotify  : yandex_token + spotify_token      (требует веб-OAuth для Spotify)
-Spotify → SC    : spotify_token + soundcloud_token  (уже работает)
-Spotify → YM    : spotify_token + yandex_token      (нужен YM OAuth в боте)
-SC   → YM       : soundcloud_token + yandex_token   (нужен SC-ввод + YM OAuth)
-SC   → Spotify  : soundcloud_token + spotify_token  (требует веб-OAuth для Spotify)
-```
-Примечание: SC как FROM — пока нет кнопки в боте (нет SC FROM в `_show_from_selection`); оставить на потом.
-
-**Что менять:**
-
-- [ ] `bot/states.py` — добавить `selecting_to = State()` в `AuthFlow`
-- [ ] `bot/handlers/auth.py`:
-  - После выбора FROM — показывать `_show_to_selection(message, state)` вместо сразу идти к токенам
-  - `_show_to_selection` — получает список доступных TO из `ServiceRegistry.get_matrix()` для выбранного FROM, рисует кнопки
-  - `on_select_to_*` — сохраняет `to_service` в state, переходит к сбору токенов (логика зависит от FROM+TO)
-  - `_show_confirmation` — стать универсальным: принимать `from_service`/`to_service`, показывать правильную ETA и текст
-  - Удалить `_show_confirmation_spotify` — заменить на единый `_show_confirmation`
-  - Если TO=Spotify и `spotify_token` нет в сессии → показывать web-ссылку (как сейчас для FROM=Spotify)
-- [ ] `bot/api_client.py` — `start_migration()` уже принимает `to_service` — проверить что передаётся
-- [ ] `bot/handlers/migration.py` — передавать `to_service` из state в `api_client.start_migration`
-- [ ] `core/i18n.py` — ключи: `bot_select_to`, `bot_service_soundcloud`, ETA-текст под каждый сервис
-- [ ] `api/routes/web.py` — убрать `# to_service not stored in DB yet; defaulting to soundcloud`; передавать реальный `to_service` из формы в `format_eta`
-
-**Что НЕ делать в этой задаче:**
-- SC как FROM в боте — отдельная задача (MM-45 исследует SC auth)
-- Добавлять новые сервисы — только wiremap существующих
+- [x] `bot/states.py` — добавлен `selecting_to = State()`
+- [x] `bot/handlers/auth.py`:
+  - `on_select_from_ym` / `on_select_from_spotify` — теперь вызывают `_show_to_selection` вместо прямого перехода к токенам
+  - `_show_to_selection` — динамически строит клавиатуру из `ServiceRegistry.get_matrix()` для выбранного FROM
+  - `on_select_to` — единый обработчик; маршрутизирует к нужным шагам авторизации по FROM+TO
+  - `_route_to_sc` — валидация/запрос SC-токена
+  - `_route_to_spotify` — проверка наличия spotify_token, ссылка на веб если нет
+  - `_continue_after_ym_token` — после получения YM-токена роутит к SC или Spotify или сразу к подтверждению
+  - `_show_confirmation` — универсальный, использует `_SERVICE_LABEL` для любого FROM
+  - `_show_confirmation_spotify` — делегирует в `_show_confirmation` (обратная совместимость)
+  - SC как FROM — `bot_sc_coming_soon`, state.clear()
+- [x] `core/i18n.py` — ключи `bot_service_soundcloud`, `bot_select_to`, `bot_sc_coming_soon`
+- [x] `bot/handlers/migration.py` — `to_service` читается из state, передаётся в `api_client.start_migration`
+- [x] `api/routes/web.py` — ETA использует реальный `to_service` из migration record (сделано в MM-55)
 
 ---
 
-### 🔲 MM-48 — Выбор режима лайков при переносе
+### ✅ MM-48 — Выбор режима лайков при переносе
 
 > Сейчас `playlist_mode` жёстко захардкожен в воркере. Пользователь не влияет на то, лайкать ли треки.
 > Нужно спрашивать при каждом переносе (кроме File): "Проставить лайки?" и действовать по ответу.
@@ -866,60 +845,125 @@ SC   → Spotify  : soundcloud_token + spotify_token  (требует веб-OAu
   └── [ ] Только плейлист   →  playlist_mode=True, like_track не вызывается
 ```
 
-**Статусы:**
-- Переименовать отображение `liked` → **"Добавлено"** везде (БД-статус `liked` не меняется)
-- MigrationStats.liked → отображается как "Добавлено" в вебе, боте, уведомлениях
+**Статусы и модель лайков:**
+- `liked` = "успешно обработано": трек либо добавлен в плейлист, либо лайкнут напрямую (статус один, не разделяем)
+- Лайк — дополнительное действие: при `like_tracks=True` пробуем прямой лайк; при 404 → fallback в плейлист (тоже `liked`)
+- Лайкнутый напрямую трек НЕ добавляется в плейлист дополнительно — одно или другое
+- Отображение `liked` → **"Добавлено"** везде (БД-статус `liked` не меняется)
 
 **Веб:**
-- [ ] `api/templates/index.html` или `auth.html` — чекбокс "Проставить лайки" (по умолчанию выключен для SC, включён для Spotify/YM)
-- [ ] `api/routes/web.py` — принимать `like_tracks: bool = Form(False)`, передавать в ARQ job
-- [ ] `api/templates/fragments/status.html`, `result.html`, `tracks.html` — "Добавлено" вместо "Перенесено/Лайкнуто"
-- [ ] `core/i18n.py` — ключ `status_liked` → "Добавлено" / "Added"
+- [x] `api/templates/index.html` — чекбокс "Проставить лайки на треки" (по умолчанию выключен)
+- [x] `api/routes/web.py` — `like_tracks: bool = Form(False)`, передаётся в SC ARQ jobs
+- [x] `core/i18n.py` — `status_transferred`, `status_progress`, `tstatus_liked`, `result_liked`, `result_progress`, `tracks_liked` → "Добавлено"/"Added"; `_TRACK_STATUS_LABEL_RU["liked"]` → "Добавлен"
 
 **Бот:**
-- [ ] `bot/handlers/auth.py` — в экране подтверждения добавить inline-кнопку "Лайкать треки ✓/✗" как toggle перед стартом
-- [ ] `bot/handlers/migration.py` — передавать `like_tracks` в API
-- [ ] `core/i18n.py` — ключи `bot_like_tracks_yes`, `bot_like_tracks_no`, `bot_liked_count` → "Добавлено"
+- [x] `bot/handlers/auth.py` — `_confirmation_kb` принимает `to_service`, `like_tracks`; новая кнопка-тогл "❤️ Лайкать треки: Вкл/Выкл" (только для SC destination); `on_toggle_like_tracks` handler
+- [x] `bot/handlers/migration.py` — читает `like_tracks` из state, передаёт в `api_client.start_migration`
+- [x] `bot/api_client.py` — поле `like_tracks` в теле запроса
+- [x] `core/i18n.py` — `bot_like_tracks_on`, `bot_like_tracks_off`; `bot_progress_bar`, `bot_done_tracks`, `notif_done` → "Добавлено"
 
 **Пайплайн:**
-- [ ] `api/routes/migrations.py` — `StartMigrationRequest` добавить поле `like_tracks: bool = False`
-- [ ] `worker/tasks.py` — все SC-джобы: `playlist_mode = not like_tracks`; при `like_tracks=True` — пробуем `like_track`, при HTTP 404 автоматически переключаемся в `playlist_mode`
-- [ ] `migration/tracks.py` — `_process_one_track`: при `like_tracks=True` вызывать `like_track`, при 404 → собрать в `collected_ids` (fallback); итоговый `_create_liked_playlists` только если есть `collected_ids`
-- [ ] `core/soundcloud/client.py` — `like_track` при 404 поднимать специфичный `LikeNotSupportedError` вместо generic Exception (чтобы отличить от других ошибок)
-
-**Уведомления:**
-- [ ] `worker/notifications.py` — `migration_done_text`: "Добавлено" вместо "Перенесено"
+- [x] `api/routes/migrations.py` — `StartMigrationRequest.like_tracks: bool = False`; SC jobs получают `like_tracks=like`
+- [x] `worker/tasks.py` — `run_migration_job`, `run_spotify_migration_job`, `run_file_migration_job`: `playlist_mode = not like_tracks`; `like_tracks` пробрасывается в migration functions
+- [x] `migration/tracks.py` — `_process_one_track(like_tracks=False)`: при `like_tracks=True` — пробуем `like_track()`, при `LikeNotSupportedError` → возвращаем sc_id для плейлиста; `_run_pending_loop` собирает sc_id без привязки к `playlist_mode` (создаёт плейлисты если есть collected_ids)
+- [x] `migration/spotify_tracks.py` — аналогично; `like_tracks` пробрасывается в `_run_pending_loop`
+- [x] `core/soundcloud/client.py` — `LikeNotSupportedError` при HTTP 404 в `like_track`
 
 ---
 
-### 🔲 MM-49 — Редизайн флоу веб-интерфейса
+### 🔲 MM-49 — Редизайн веб-интерфейса
 
-> Текущий флоу неинтуитивен: пользователь сначала выбирает сервисы на главной, потом идёт авторизовываться — и непонятно как связаны шаги. Нет явной "воронки".
+> Полный редизайн UX веб-приложения: пошаговый выбор сервисов, авторизация встроена в флоу, импорт/экспорт как сервисы, чистая навигация.
 
-**Проблемы текущего флоу:**
-- `/` — выбор источника/назначения смешан с режимом (треки/полный), нет контекста "что будет дальше"
-- `/auth` — авторизация выглядит как отдельная страница, не как шаг воронки
-- Нет экрана подтверждения перед стартом (сразу POST /migrate)
-- Чекбокс режима (треки/полный) неочевиден для новых пользователей
-- После авторизации не возвращает к тому шагу откуда пришёл
-
-**Предлагаемый флоу:**
+**Флоу главного экрана (пошаговый выбор):**
 ```
-Шаг 1: /         — "Откуда" + "Куда" (крупные карточки сервисов)
-Шаг 2: /auth     — авторизация нужных сервисов (только те что выбраны)
-Шаг 3: /confirm  — подтверждение: кол-во треков, режим, чекбокс лайков, ETA → [Начать]
-Шаг 4: /migrate/{id} — прогресс
-Шаг 5: /result/{id} — итог
+Шаг 1: Выбор FROM — карточки сервисов (YM | Spotify | SC | 📁 Из файла)
+         → после клика карточка "FROM" фиксируется, появляются карточки TO
+Шаг 2: Выбор TO — только те сервисы, куда возможен перенос из выбранного FROM (из матрицы)
+         → если TO = "В файл" → выбор формата (CSV / JSON)
+Шаг 3: Авторизация — встроена прямо в флоу (не отдельная страница /auth)
+         → показываются только нужные блоки авторизации (FROM + TO)
+         → если токен уже сохранён и валиден — шаг пропускается автоматически
+Шаг 4: Настройки переноса (режим, лимит, пропуск ранее перенесённых)
+Шаг 5: /migrate/{id} — прогресс
+Шаг 6: /migrate/{id}/tracks — итог с "Мои переносы"
 ```
+
+**Импорт/Экспорт как сервисы:**
+- "Из файла" (FROM) — пользователь загружает файл; формат определяется автоматически (CSV/JSON); показать уведомление "Поддерживаемые форматы: CSV, JSON"
+- "В файл" (TO) — пользователь выбирает формат (CSV / JSON) после выбора TO
+- Вкладки `/import` и `/export` скрыть из навигации (функциональность доступна через флоу)
+
+**Навигация:**
+- [ ] Скрыть кнопку "Аккаунт" — авторизация встроена в флоу выбора сервиса
+- [ ] Скрыть кнопку "Выход" — выход только через сброс cookies в браузере, кнопки нет
+- [ ] Скрыть вкладки "Импорт" и "Экспорт" из шапки
+- [ ] "История" → "Мои переносы": видна только если у пользователя есть хотя бы один перенос; при входе если есть хотя бы один — автоматически редирект туда (или показ баннера)
+- [ ] Смена языка — иконка флага (🇷🇺 / 🇬🇧) вместо текстовой кнопки, интуитивно понятна
+
+**Безопасность миграций:**
+- [ ] Пользователь видит только свои миграции (`/migrate/{id}/tracks`, `/history` — фильтр по `user_id` из сессии)
+- [ ] Попытка открыть чужую миграцию → 403 или редирект на главную
+- [ ] Админ через `/admin/migrations` видит все (без изменений)
+- [ ] `api/routes/web.py` — в `migration_progress`, `migration_status_fragment`, `get_migration_tracks` добавить проверку `migration["user_id"] == session_user_id`
 
 **Что менять:**
-- [ ] `api/templates/index.html` — крупные карточки-кнопки для выбора FROM/TO, прогресс-индикатор шагов (1→2→3)
-- [ ] `api/routes/web.py` — `GET /confirm` + `POST /confirm/start` — экран подтверждения с треками, ETA, режимом, чекбоксом лайков
-- [ ] `api/templates/confirm.html` — новый шаблон: статистика аккаунта, режим (треки/полный), чекбокс лайков, ETA, кнопка старт
-- [ ] `api/templates/auth.html` — показывать только блоки авторизации для выбранных сервисов, step-indicator (шаг 2 из 3)
-- [ ] `api/templates/result.html` — переименовать в `result.html`, добавить CTA "Перенести ещё"
-- [ ] `core/i18n.py` — новые ключи для шагов и подтверждения
-- [ ] Сохранять выбор FROM/TO/режим в сессии между шагами
+
+*Главная / выбор сервисов:*
+- [ ] `api/templates/index.html` — двухшаговый выбор: сначала FROM (карточки), потом TO (карточки, зависит от матрицы); JS/HTMX для динамического показа шага 2
+- [ ] `api/routes/web.py` — `GET /api/services/to?from={service}` (или HTMX fragment) — возвращает доступные TO для выбранного FROM
+- [ ] При выборе TO="file" — inline-выбор формата (radio: CSV / JSON)
+- [ ] При выборе FROM="file" — inline-загрузка файла с авто-определением формата
+
+*Авторизация встроена:*
+- [ ] Блоки авторизации показываются прямо на главной или через HTMX-overlay, не отдельный `/auth`
+- [ ] Если токен сохранён и валиден — авторизационный блок скрыт, показываем "✓ Подключено"
+
+*Навигация:*
+- [ ] `api/templates/base.html` — убрать кнопки "Аккаунт", "Выход"; иконка флага для смены языка; "Мои переносы" скрыть если нет переносов (передавать `has_migrations` в контекст)
+- [ ] `api/routes/web.py` — `GET /` проверяет наличие миграций пользователя, передаёт флаг в шаблон
+
+*Мои переносы:*
+- [ ] `api/routes/web.py` — `/history` переименовать в `/transfers` (или оставить alias); фильтровать по `user_id` сессии
+- [ ] При наличии хотя бы одного переноса у пользователя — баннер/кнопка "Мои переносы" в шапке
+- [ ] Авто-редирект на `/transfers` при открытии `/` если есть активный перенос (`status="running"`)
+
+*Защита миграций:*
+- [ ] `api/routes/web.py` — во всех маршрутах `/migrate/{id}*` проверять `migration["user_id"] == _session_user_id(request)`; если не совпадает — 403
+
+*i18n:*
+- [ ] Новые ключи: `nav_my_transfers`, `nav_lang_ru`, `nav_lang_en`, `step_select_from`, `step_select_to`, `step_format`, `import_formats_hint`, `auth_connected`
+
+---
+
+### 🔲 MM-56 — Редизайн интерфейса бота (синхронизация с MM-49)
+
+> Синхронизировать UX Telegram-бота с новым веб-флоу из MM-49: пошаговый выбор, карточки сервисов,
+> та же логика авторизации, единый пользовательский опыт на обоих клиентах.
+
+**Флоу бота (целевой):**
+```
+/migrate
+  → Шаг 1: Выбор FROM — кнопки сервисов (YM 🎵 | Spotify 🟢 | SC*)
+  → Шаг 2: Выбор TO  — кнопки из матрицы для выбранного FROM
+  → Шаг 3: Авторизация — только нужные шаги (FROM + TO); если токен валиден — пропускается
+  → Шаг 4: Настройки — лимит треков, пропуск перенесённых, лайки (тогли на одном экране)
+  → Старт → прогресс-бар → итог
+```
+
+**Изменения:**
+- [ ] Единый экран настроек перед стартом (сейчас лимит выбирается отдельным шагом, остальные — тоглы на confirmation)
+- [ ] Убрать разделение "tracks" / "full" как отдельных кнопок → объединить в настройки
+- [ ] Экран подтверждения с краткой сводкой: FROM → TO, кол-во треков (ETA), все тогли на одном экране
+- [ ] SC как FROM (пока недоступен) — заглушка, не падение
+- [ ] `bot/states.py` — пересмотреть FSM-состояния под новый флоу
+- [ ] `bot/handlers/auth.py` — рефактор под новый флоу (единый экран настроек)
+- [ ] `core/i18n.py` — новые ключи для bot-редизайна
+
+**Принципы синхронизации с MM-49:**
+- Та же матрица сервисов (из `ServiceRegistry`)
+- Те же флаги: `skip_already_migrated`, `like_tracks`, `track_limit`
+- SC как FROM — кнопка присутствует, но показывает "скоро" или ведёт на веб
 
 ---
 
@@ -1024,7 +1068,93 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 - [x] `bot/handlers/migration.py` — передаёт `skip_already_migrated` из state в api_client
 - [x] `bot/api_client.py` — поле `skip_already_migrated` в теле запроса
 
-**Ремарка (для MM-48):** в `playlist_mode` трек помечается `liked` до реального добавления в плейлист. При реализации MM-48 разделить `status='in_playlist'` (добавлено в плейлист) и `status='liked'` (прямой лайк).
+**Итоговая модель статусов (принято в MM-48):** `status='liked'` означает "успешно обработано" — трек либо добавлен в плейлист, либо лайкнут напрямую. Разделения статусов нет. Лайк — дополнительное действие, не меняет статус. Если `like_tracks=True` и SC вернул 404 → трек попадает в плейлист (тоже `liked`). Таким образом: `liked` = "в плейлисте" ИЛИ "напрямую лайкнуто". Лайкнутый напрямую трек в плейлист не добавляется. Модель принята как окончательная — разделять `in_playlist`/`liked` не планируется.
+
+---
+
+### 🔲 MM-57 — Тесты для каждой задачи (правило + покрытие)
+
+> Правило: после реализации каждой MM-задачи обязательно писать/запускать тесты.
+> Текущее покрытие: 133 теста (в основном API + matcher). Нужно покрыть воркер, пайплайн миграции, bot handlers.
+
+**Правило (действует с MM-57):**
+- После каждой задачи: написать тесты на новую функциональность → убедиться что `pytest tests/` проходит
+- Тесты размещать в `tests/` рядом с остальными
+- Если задача не добавляет новую бизнес-логику — минимум: smoke-тест что новый параметр передаётся
+
+**Что покрыть (ретроактивно):**
+- [ ] `migration/tracks.py` — `_process_one_track` с `like_tracks=True` (success + LikeNotSupportedError fallback)
+- [ ] `migration/tracks.py` — `_process_one_track` с `playlist_mode=True`
+- [ ] `core/soundcloud/client.py` — `like_track` поднимает `LikeNotSupportedError` при 404
+- [ ] `core/db/crud.py` — `get_previously_migrated_ym_ids`, `bulk_insert_tracks` с `already_migrated`
+- [ ] `api/routes/migrations.py` — `StartMigrationRequest` принимает `like_tracks`, `skip_already_migrated`
+- [ ] `worker/tasks.py` — `run_migration_job` вычисляет `playlist_mode = not like_tracks`
+- [ ] `bot/handlers/auth.py` — `_confirmation_kb` строит клавиатуру с тоглом лайков для SC destination
+
+---
+
+### 🔲 MM-58 — Ревью архитектуры
+
+> Проверка текущей архитектуры на масштабируемость, устранение технического долга,
+> выработка рекомендаций перед переходом на Go (MM-59).
+
+**Что ревьюить:**
+- [ ] **Модели данных** — `Migration`, `Track`: достаточно ли полей? нужен ли `liked_flag` как отдельное поле?
+- [ ] **Worker** — ARQ vs Celery vs собственный планировщик; масштабирование воркеров
+- [ ] **API vs Bot** — дублирование логики; стоит ли Bot общаться напрямую с DB минуя API?
+- [ ] **ServiceRegistry** — текущий паттерн адаптеров; что изменить при переходе на gRPC/REST-сервисы?
+- [ ] **Миграции БД** — alembic-версии без коллизий; стратегия для production downtime-free
+- [ ] **Мониторинг** — Loki/Promtail/Grafana; что добавить для алертинга?
+- [ ] **Rate limiting** — per-user в Redis; достаточно ли для 20-30 пользователей?
+- [ ] **Безопасность** — зашифрованные токены в БД; rotation strategy; SSRF-риски в SC/YM клиентах
+- [ ] **Тесты** — 133 теста, но нет интеграционных; стоит ли добавить docker-based integration tests?
+
+**Выход:** документ `docs/architecture-review.md` с рекомендациями и приоритизированным backlog'ом.
+
+---
+
+### 🔲 MM-59 — Перенос сервиса на Go
+
+> Стратегический: реализация ядра (миграционный пайплайн + API) на Go для
+> повышения производительности, типобезопасности и упрощения деплоя.
+
+**Обоснование:**
+- Python async работает, но GIL ограничивает CPU-bound matching при больших библиотеках
+- Go: статическая линковка → один бинарник без зависимостей; goroutines → дешёвый параллелизм
+- Telegram bot на Go: telebot/telego — зрелые библиотеки
+
+**Стратегия (поэтапная, не big-bang rewrite):**
+```
+Этап 1: Go-воркер параллельно с Python
+  - Новый go-worker читает те же ARQ jobs из Redis (JSON-сериализация совместима)
+  - Пишет в ту же PostgreSQL через pgx/sqlc
+  - Python API остаётся, Python bot остаётся
+  - A/B: часть джобов → Go, часть → Python
+
+Этап 2: Go API (FastAPI → Gin/Chi/Fiber)
+  - Перенос /api/migrations, /api/sessions на Go
+  - Python остаётся только для веб-UI (Jinja2) пока нет Go-шаблонизатора
+
+Этап 3: Go Bot (aiogram → telego)
+  - Перенос FSM-логики бота на Go
+  - Удаление Python полностью
+
+Этап 4: Веб-UI
+  - Возможна замена Jinja2+HTMX на Go html/template + htmx (тот же HTMX)
+  - Или: React SPA + Go REST API
+```
+
+**Что делать в первую очередь:**
+- [ ] Изучить: `pgx` (PostgreSQL), `asynq` (очередь, совместима с Redis), `go-redis`, `rapidfuzz-go`
+- [ ] Прото-воркер: `run_migration_job` на Go — поиск SC треков + создание плейлиста
+- [ ] Benchmark: Python vs Go на 1000 треков (throughput, memory)
+- [ ] Решить: `sqlc` vs `gorm` vs `ent` для работы с БД
+- [ ] Структура репозитория: monorepo (Python + Go в одном repo) или split
+
+**Риски:**
+- Fuzzy matching: `rapidfuzz` на Python → нужен аналог на Go (нет прямого порта; можно через CGO или переписать алгоритм)
+- iuliia транслитерация: Python-библиотека → нужен Go-порт
+- SC/YM клиенты: переписать HTTP-клиенты (несложно, Go net/http)
 
 ---
 

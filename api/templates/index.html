@@ -99,6 +99,15 @@
     </label>
   </div>
 
+  <div class="flex items-start gap-2.5">
+    <input type="checkbox" name="like_tracks" id="like_tracks" value="true"
+      class="mt-0.5 accent-indigo-600 w-4 h-4 shrink-0">
+    <label for="like_tracks" class="text-sm cursor-pointer">
+      {{ t('index_like_tracks') }}
+      <span class="block text-xs text-gray-400 mt-0.5">{{ t('index_like_tracks_hint') }}</span>
+    </label>
+  </div>
+
   <button type="submit"
     class="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 font-semibold transition text-sm">
     {{ t('index_start_btn') }}

@@ -15,6 +15,16 @@ router = Router()
 
 _SC_TOKEN_RE = re.compile(r"^\d-[A-Za-z0-9\-]+$")
 
+# Service IDs that the bot supports as FROM sources
+_FROM_SERVICES = {"yandex_music", "spotify"}
+
+# Human-readable label keys for each service
+_SERVICE_LABEL = {
+    "soundcloud":  "bot_service_soundcloud",
+    "yandex_music": "bot_service_yandex",
+    "spotify":     "bot_service_spotify",
+}
+
 
 async def _get_lang(state: FSMContext) -> str:
     data = await state.get_data()
@@ -58,44 +68,35 @@ async def _show_from_selection(message: Message, state: FSMContext) -> None:
     await state.set_state(AuthFlow.selecting_from)
 
 
+async def _show_to_selection(message: Message, state: FSMContext) -> None:
+    """Build TO keyboard from ServiceRegistry matrix for the chosen FROM service."""
+    from core.services.registry import ServiceRegistry
+    data = await state.get_data()
+    lang = await _get_lang(state)
+    from_service = data.get("from_service", "yandex_music")
+
+    matrix = ServiceRegistry.get_matrix()
+    to_ids = [entry["to"] for entry in matrix if entry["from"] == from_service]
+
+    buttons = []
+    for svc_id in to_ids:
+        label_key = _SERVICE_LABEL.get(svc_id, f"bot_service_{svc_id}")
+        buttons.append([InlineKeyboardButton(
+            text=t(label_key, lang),
+            callback_data=f"service:to:{svc_id}",
+        )])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer(t("bot_select_to", lang), reply_markup=kb)
+    await state.set_state(AuthFlow.selecting_to)
+
+
 @router.callback_query(AuthFlow.selecting_from, F.data == "service:from:yandex_music")
 async def on_select_from_ym(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
     await state.update_data(from_service="yandex_music")
-
-    data = await state.get_data()
-    user_id = str(callback.from_user.id)
-    lang = await _get_lang(state)
-
-    # If we have a saved YM token, validate it
-    if data.get("yandex_token"):
-        try:
-            from core.yandex.client import YandexMusicClient
-            from config import settings
-            await YandexMusicClient(data["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
-            logger.info(f"Saved YM token valid for user_id={user_id}")
-            # Also validate SC token
-            if data.get("soundcloud_token"):
-                try:
-                    from core.soundcloud.client import SoundCloudClient
-                    sc = await SoundCloudClient(data["soundcloud_token"]).init()
-                    await sc.close()
-                    logger.info(f"Saved SC token valid for user_id={user_id}")
-                    await _show_confirmation(callback.message, state)
-                    return
-                except Exception:
-                    await api_client.delete_session(user_id)
-                    logger.warning(f"SC token expired for user_id={user_id}")
-                    await callback.message.answer(t("bot_sc_expired", lang))
-            await _ask_soundcloud_token(callback.message, state)
-        except Exception:
-            await api_client.delete_session(user_id)
-            logger.warning(f"YM token expired for user_id={user_id}")
-            await callback.message.answer(t("bot_ym_expired", lang))
-            await _ask_yandex_token(callback.message, state)
-    else:
-        await _ask_yandex_token(callback.message, state)
+    await _show_to_selection(callback.message, state)
 
 
 @router.callback_query(AuthFlow.selecting_from, F.data == "service:from:spotify")
@@ -103,22 +104,126 @@ async def on_select_from_spotify(callback: CallbackQuery, state: FSMContext) -> 
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
     await state.update_data(from_service="spotify")
+    await _show_to_selection(callback.message, state)
+
+
+@router.callback_query(AuthFlow.selecting_to, F.data.startswith("service:to:"))
+async def on_select_to(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    to_service = callback.data.split(":", 2)[2]
+    await state.update_data(to_service=to_service)
 
     data = await state.get_data()
+    from_service = data.get("from_service", "yandex_music")
     lang = await _get_lang(state)
+    user_id = str(callback.from_user.id)
 
+    # --- FROM = yandex_music ---
+    if from_service == "yandex_music":
+        # Validate (or obtain) YM token first
+        if data.get("yandex_token"):
+            try:
+                from core.yandex.client import YandexMusicClient
+                from config import settings
+                await YandexMusicClient(data["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
+                logger.info(f"Saved YM token valid for user_id={user_id}")
+                ym_ok = True
+            except Exception:
+                await api_client.delete_session(user_id)
+                logger.warning(f"YM token expired for user_id={user_id}")
+                await callback.message.answer(t("bot_ym_expired", lang))
+                ym_ok = False
+        else:
+            ym_ok = False
+
+        if not ym_ok:
+            await _ask_yandex_token(callback.message, state)
+            return
+
+        # YM token is valid — now handle the TO side
+        if to_service == "soundcloud":
+            await _route_to_sc(callback.message, state, user_id, lang, data)
+        elif to_service == "spotify":
+            await _route_to_spotify(callback.message, state, lang)
+        else:
+            await _show_confirmation(callback.message, state)
+
+    # --- FROM = spotify ---
+    elif from_service == "spotify":
+        if not data.get("spotify_token"):
+            from config import settings
+            web_url = settings.public_url
+            await callback.message.answer(
+                t("bot_spotify_no_token", lang).format(url=web_url),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            await state.clear()
+            return
+
+        # Spotify token present — handle the TO side
+        if to_service == "soundcloud":
+            await _route_to_sc(callback.message, state, user_id, lang, data)
+        elif to_service == "yandex_music":
+            # Need a YM token as destination credential
+            if data.get("yandex_token"):
+                try:
+                    from core.yandex.client import YandexMusicClient
+                    from config import settings
+                    await YandexMusicClient(data["yandex_token"], proxy_url=settings.ym_proxy_url or None).init()
+                    logger.info(f"Saved YM token valid for user_id={user_id}")
+                    await _show_confirmation(callback.message, state)
+                except Exception:
+                    await api_client.delete_session(user_id)
+                    logger.warning(f"YM token expired for user_id={user_id}")
+                    await callback.message.answer(t("bot_ym_expired", lang))
+                    await _ask_yandex_token(callback.message, state)
+            else:
+                await _ask_yandex_token(callback.message, state)
+        else:
+            await _show_confirmation(callback.message, state)
+
+    # --- FROM = soundcloud (not yet supported in bot) ---
+    else:
+        await callback.message.answer(t("bot_sc_coming_soon", lang))
+        await state.clear()
+
+
+async def _route_to_sc(
+    message: Message, state: FSMContext, user_id: str, lang: str, data: dict
+) -> None:
+    """Handle SC as destination: validate saved SC token or ask for one."""
+    if data.get("soundcloud_token"):
+        try:
+            from core.soundcloud.client import SoundCloudClient
+            sc = await SoundCloudClient(data["soundcloud_token"]).init()
+            await sc.close()
+            logger.info(f"Saved SC token valid for user_id={user_id}")
+            await _show_confirmation(message, state)
+            return
+        except Exception:
+            await api_client.delete_session(user_id)
+            logger.warning(f"SC token expired for user_id={user_id}")
+            await message.answer(t("bot_sc_expired", lang))
+    await _ask_soundcloud_token(message, state)
+
+
+async def _route_to_spotify(message: Message, state: FSMContext, lang: str) -> None:
+    """Handle Spotify as destination: require existing spotify_token (set via web)."""
+    data = await state.get_data()
     if not data.get("spotify_token"):
         from config import settings
         web_url = settings.public_url
-        await callback.message.answer(
+        await message.answer(
             t("bot_spotify_no_token", lang).format(url=web_url),
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
         await state.clear()
         return
-
-    await _show_confirmation_spotify(callback.message, state)
+    await _show_confirmation(message, state)
 
 
 @router.callback_query(F.data == "auth:new_tokens")
@@ -136,8 +241,25 @@ async def on_toggle_skip_migrated(callback: CallbackQuery, state: FSMContext) ->
     await state.update_data(skip_already_migrated=skip)
     lang = await _get_lang(state)
     from_service = data.get("from_service", "yandex_music")
+    to_service = data.get("to_service", "soundcloud")
+    like = data.get("like_tracks", False)
     await callback.message.edit_reply_markup(
-        reply_markup=_confirmation_kb(from_service, skip, lang)
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang)
+    )
+
+
+@router.callback_query(AuthFlow.confirming, F.data == "toggle_like_tracks")
+async def on_toggle_like_tracks(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    like = not data.get("like_tracks", False)
+    await state.update_data(like_tracks=like)
+    lang = await _get_lang(state)
+    from_service = data.get("from_service", "yandex_music")
+    to_service = data.get("to_service", "soundcloud")
+    skip = data.get("skip_already_migrated", True)
+    await callback.message.edit_reply_markup(
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang)
     )
 
 
@@ -194,7 +316,7 @@ async def on_ym_auth_check(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.update_data(yandex_token=token)
     await callback.message.edit_text(t("bot_ym_ok", lang))
-    await _ask_soundcloud_token(callback.message, state)
+    await _continue_after_ym_token(callback.message, state)
 
 
 @router.message(AuthFlow.waiting_yandex_token)
@@ -227,11 +349,30 @@ async def receive_yandex_token(message: Message, state: FSMContext) -> None:
         return
 
     await status_msg.edit_text(t("bot_ym_ok", lang))
-    await _ask_soundcloud_token(message, state)
+    await _continue_after_ym_token(message, state)
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — SoundCloud
+# Step 2 — route after YM token is known
+# ---------------------------------------------------------------------------
+
+async def _continue_after_ym_token(message: Message, state: FSMContext) -> None:
+    """Called after a YM token is obtained/validated. Routes to the TO-service step."""
+    data = await state.get_data()
+    lang = await _get_lang(state)
+    to_service = data.get("to_service", "soundcloud")
+
+    if to_service == "soundcloud":
+        await _ask_soundcloud_token(message, state)
+    elif to_service == "spotify":
+        await _route_to_spotify(message, state, lang)
+    else:
+        # Generic fallback (e.g. yandex_music destination doesn't need extra creds)
+        await _show_confirmation(message, state)
+
+
+# ---------------------------------------------------------------------------
+# Step 2b — SoundCloud
 # ---------------------------------------------------------------------------
 
 async def _ask_soundcloud_token(message: Message, state: FSMContext, ym_token: str = None) -> None:
@@ -310,8 +451,8 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
 # Confirmation screens
 # ---------------------------------------------------------------------------
 
-def _confirmation_kb(from_service: str, skip: bool, lang: str) -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения с тоглом пропуска уже перенесённых."""
+def _confirmation_kb(from_service: str, to_service: str, skip: bool, like_tracks: bool, lang: str) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения с тоглами опций."""
     skip_label = t("bot_skip_migrated_on" if skip else "bot_skip_migrated_off", lang)
     rows = []
     if from_service != "spotify":
@@ -320,6 +461,10 @@ def _confirmation_kb(from_service: str, skip: bool, lang: str) -> InlineKeyboard
     else:
         rows.append([InlineKeyboardButton(text=t("bot_btn_tracks_only", lang), callback_data="select_mode:tracks")])
     rows.append([InlineKeyboardButton(text=skip_label, callback_data="toggle_skip_migrated")])
+    # Like tracks toggle only for SC destination
+    if to_service == "soundcloud":
+        like_label = t("bot_like_tracks_on" if like_tracks else "bot_like_tracks_off", lang)
+        rows.append([InlineKeyboardButton(text=like_label, callback_data="toggle_like_tracks")])
     rows.append([InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -329,14 +474,16 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     lang = await _get_lang(state)
     data = await state.get_data()
     from_service = data.get("from_service", "yandex_music")
+    to_service = data.get("to_service", "soundcloud")
     skip = data.get("skip_already_migrated", True)
+    like = data.get("like_tracks", False)
 
-    service_name = t(f"bot_service_{from_service}", lang) if from_service != "yandex_music" \
-        else t("bot_service_yandex", lang)
+    label_key = _SERVICE_LABEL.get(from_service, f"bot_service_{from_service}")
+    service_name = t(label_key, lang)
     await message.answer(
         t("bot_confirm_ready", lang).format(service=service_name),
         parse_mode="HTML",
-        reply_markup=_confirmation_kb(from_service, skip, lang),
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang),
     )
     await state.set_state(AuthFlow.confirming)
 

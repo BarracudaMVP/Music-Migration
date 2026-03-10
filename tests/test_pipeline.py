@@ -261,3 +261,141 @@ def test_migration_stats_defaults():
     assert stats.not_found == 0
     assert stats.errors == 0
     assert stats.uncertain == 0
+
+
+# ---------------------------------------------------------------------------
+# MM-48: like_tracks mode
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_process_track_playlist_mode():
+    """playlist_mode=True: like_track NOT called; sc_id returned for playlist."""
+    from migration.tracks import _process_one_track
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=42)])
+    sc_client.like_track = AsyncMock(return_value=True)
+
+    row = {"id": 1, "ym_id": "ym1", "ym_artist": "Radiohead", "ym_title": "Creep"}
+
+    with patch("migration.tracks.find_best_match", return_value=_make_match(sc_id=42)), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock):
+        result, sc_id = await _process_one_track(sc_client, row, playlist_mode=True)
+
+    assert result == "liked"
+    assert sc_id == 42
+    sc_client.like_track.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_track_like_tracks_success():
+    """like_tracks=True: like_track called; on success returns None sc_id (no playlist)."""
+    from migration.tracks import _process_one_track
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=55)])
+    sc_client.like_track = AsyncMock(return_value=True)
+
+    row = {"id": 2, "ym_id": "ym2", "ym_artist": "Nirvana", "ym_title": "Smells Like Teen Spirit"}
+
+    with patch("migration.tracks.find_best_match", return_value=_make_match(sc_id=55)), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
+        result, sc_id = await _process_one_track(sc_client, row, like_tracks=True)
+
+    assert result == "liked"
+    assert sc_id is None  # liked directly — no need to add to playlist
+    sc_client.like_track.assert_called_once_with(55)
+    mock_update.assert_called_once_with(
+        2, status="liked", sc_id=55, sc_url="http://sc/55", match_score=90.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_track_like_tracks_404_fallback_to_playlist():
+    """like_tracks=True + LikeNotSupportedError → returns sc_id for playlist fallback."""
+    from migration.tracks import _process_one_track
+    from core.soundcloud.client import LikeNotSupportedError
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=77)])
+    sc_client.like_track = AsyncMock(side_effect=LikeNotSupportedError("404"))
+
+    row = {"id": 3, "ym_id": "ym3", "ym_artist": "Pink Floyd", "ym_title": "Comfortably Numb"}
+
+    with patch("migration.tracks.find_best_match", return_value=_make_match(sc_id=77)), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock) as mock_update:
+        result, sc_id = await _process_one_track(sc_client, row, like_tracks=True)
+
+    assert result == "liked"
+    assert sc_id == 77  # collected for playlist
+    mock_update.assert_called_once_with(
+        3, status="liked", sc_id=77, sc_url="http://sc/77", match_score=90.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_track_like_tracks_false_not_called():
+    """like_tracks=False (default), playlist_mode=False: original like_track path."""
+    from migration.tracks import _process_one_track
+
+    sc_client = MagicMock()
+    sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=11)])
+    sc_client.like_track = AsyncMock(return_value=True)
+
+    row = {"id": 4, "ym_id": "ym4", "ym_artist": "A", "ym_title": "T"}
+
+    with patch("migration.tracks.find_best_match", return_value=_make_match(sc_id=11)), \
+         patch("migration.tracks.update_track", new_callable=AsyncMock):
+        result, sc_id = await _process_one_track(sc_client, row, like_tracks=False, playlist_mode=False)
+
+    assert result == "liked"
+    sc_client.like_track.assert_called_once_with(11)
+
+
+# ---------------------------------------------------------------------------
+# MM-48: LikeNotSupportedError in SoundCloudClient
+# ---------------------------------------------------------------------------
+
+def test_like_not_supported_error_is_exception():
+    from core.soundcloud.client import LikeNotSupportedError
+    err = LikeNotSupportedError("404 for track 42")
+    assert isinstance(err, Exception)
+    assert "404" in str(err)
+
+
+@pytest.mark.asyncio
+async def test_like_track_raises_on_404():
+    """like_track raises LikeNotSupportedError when HTTP 404."""
+    from core.soundcloud.client import SoundCloudClient, LikeNotSupportedError
+    import aiohttp
+
+    client = SoundCloudClient("fake-token")
+    mock_resp = MagicMock()
+    mock_resp.status = 404
+    mock_resp.text = AsyncMock(return_value="Not Found")
+
+    # Patch _put to call _handle_response with a 404
+    async def fake_put(path, **kwargs):
+        return await client._handle_response(mock_resp)
+
+    client._session = MagicMock()
+    client._session.put = AsyncMock(return_value=mock_resp)
+
+    with pytest.raises(LikeNotSupportedError):
+        await client.like_track(12345)
+
+
+# ---------------------------------------------------------------------------
+# MM-48: StartMigrationRequest accepts like_tracks
+# ---------------------------------------------------------------------------
+
+def test_start_migration_request_like_tracks_default():
+    from api.routes.migrations import StartMigrationRequest
+    req = StartMigrationRequest(user_id="u1", yandex_token="yt", soundcloud_token="st")
+    assert req.like_tracks is False
+
+
+def test_start_migration_request_like_tracks_true():
+    from api.routes.migrations import StartMigrationRequest
+    req = StartMigrationRequest(user_id="u1", like_tracks=True)
+    assert req.like_tracks is True

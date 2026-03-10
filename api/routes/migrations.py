@@ -21,6 +21,7 @@ class StartMigrationRequest(BaseModel):
     spotify_refresh_token: str | None = None
     track_limit: int | None = None
     skip_already_migrated: bool = True
+    like_tracks: bool = False
 
 
 class StartMigrationResponse(BaseModel):
@@ -33,6 +34,7 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
     migration_id = await create_migration(body.user_id, from_service=body.from_service, to_service=body.to_service)
 
     skip = body.skip_already_migrated
+    like = body.like_tracks
 
     if body.to_service == "yandex_music":
         source_token = body.spotify_token if body.from_service == "spotify" else body.soundcloud_token
@@ -56,13 +58,13 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
         job = await arq.enqueue_job(
             "run_spotify_migration_job",
             migration_id, body.spotify_token, body.soundcloud_token, body.mode, body.user_id,
-            track_limit=body.track_limit, skip_already_migrated=skip,
+            track_limit=body.track_limit, skip_already_migrated=skip, like_tracks=like,
         )
     else:
         job = await arq.enqueue_job(
             "run_migration_job",
             migration_id, body.yandex_token, body.soundcloud_token, body.mode, body.user_id,
-            track_limit=body.track_limit, skip_already_migrated=skip,
+            track_limit=body.track_limit, skip_already_migrated=skip, like_tracks=like,
         )
 
     if job:

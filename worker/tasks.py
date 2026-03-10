@@ -91,13 +91,14 @@ async def run_spotify_migration_job(
     user_id: str,
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
+    like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from Spotify to SoundCloud."""
     from migration.spotify_tracks import run_spotify_migration
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
-    logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}")
+    logger.info(f"[job] Spotify migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}, like_tracks={like_tracks}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
@@ -110,9 +111,10 @@ async def run_spotify_migration_job(
                 user_id=user_id,
                 mode=mode,
                 progress_callback=progress_cb,
-                playlist_mode=True,
+                playlist_mode=not like_tracks,
                 track_limit=track_limit,
                 skip_already_migrated=skip_already_migrated,
+                like_tracks=like_tracks,
             )
             logger.info(f"[job] Spotify migration #{migration_id} finished")
 
@@ -233,13 +235,14 @@ async def run_migration_job(
     user_id: str,
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
+    like_tracks: bool = False,
 ) -> None:
     """ARQ job: runs the migration pipeline for a pre-created migration record."""
     from migration.tracks import run_migration
     from core.db import update_migration, get_track_stats, get_artist_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
-    logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}")
+    logger.info(f"[job] Starting migration #{migration_id} for user {user_id!r}, mode={mode}, skip_migrated={skip_already_migrated}, like_tracks={like_tracks}")
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
     sc_token = await _refresh_sc_token_if_needed(sc_token, user_id)
@@ -254,9 +257,10 @@ async def run_migration_job(
                 migrate_playlists=migrate_full,
                 migrate_artists=migrate_full,
                 progress_callback=progress_cb,
-                playlist_mode=True,
+                playlist_mode=not like_tracks,
                 track_limit=track_limit,
                 skip_already_migrated=skip_already_migrated,
+                like_tracks=like_tracks,
             )
             logger.info(f"[job] Migration #{migration_id} finished")
 
@@ -278,6 +282,7 @@ async def run_file_migration_job(
     tracks: list[dict],
     user_id: str,
     track_limit: int | None = None,
+    like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from a file to SoundCloud (no Yandex Music)."""
     from migration.tracks import migrate_from_file_tracks
@@ -287,7 +292,7 @@ async def run_file_migration_job(
 
     logger.info(
         f"[job] File migration #{migration_id} for user {user_id!r}, "
-        f"{len(tracks)} tracks"
+        f"{len(tracks)} tracks, like_tracks={like_tracks}"
     )
     lang = await _get_user_lang(user_id)
     progress_cb = _make_progress_callback(ctx["redis"], migration_id)
@@ -296,7 +301,7 @@ async def run_file_migration_job(
         try:
             sc_client = await SoundCloudClient(sc_token).init()
             try:
-                await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb, playlist_mode=True, track_limit=track_limit)
+                await migrate_from_file_tracks(sc_client, migration_id, tracks, progress_cb, playlist_mode=not like_tracks, track_limit=track_limit)
             finally:
                 await sc_client.close()
             logger.info(f"[job] File migration #{migration_id} finished")

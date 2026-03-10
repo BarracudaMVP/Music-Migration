@@ -92,8 +92,10 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     ym_token = data.get("yandex_token", "")
     sc_token = data.get("soundcloud_token", "")
     from_service = data.get("from_service", "yandex_music")
+    to_service = data.get("to_service", "soundcloud")
     spotify_token = data.get("spotify_token")
     skip_already_migrated = data.get("skip_already_migrated", True)
+    like_tracks = data.get("like_tracks", False)
     user_id = str(callback.from_user.id)
 
     if from_service == "spotify":
@@ -111,9 +113,11 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
         migration_id = await api_client.start_migration(
             user_id, ym_token, sc_token, mode,
             from_service=from_service,
+            to_service=to_service,
             spotify_token=spotify_token,
             track_limit=track_limit,
             skip_already_migrated=skip_already_migrated,
+            like_tracks=like_tracks,
         )
     except Exception as e:
         logger.exception(f"Failed to start migration: {e}")

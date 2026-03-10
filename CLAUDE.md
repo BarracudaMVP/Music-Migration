@@ -219,6 +219,16 @@ After completing **every task** (MM-XX or any meaningful change), always update:
 
 Rule: **no task is considered done until docs are updated.**
 
+## Testing Rules
+
+After completing **every task** (MM-XX), write and run tests:
+
+1. Write tests covering new business logic in `tests/`
+2. Run `.venv/Scripts/pytest tests/` — must pass (133+ tests)
+3. If the task adds no new business logic — at minimum a smoke test that the new parameter flows through correctly
+
+Rule: **no task is considered done until `pytest tests/` passes.**
+
 ## Key Patterns
 
 - All I/O is async (SQLAlchemy 2.x async, aiohttp, aiogram)
