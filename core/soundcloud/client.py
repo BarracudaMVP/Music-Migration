@@ -1,7 +1,7 @@
 """
 SoundCloud клиент.
 
-Поиск  — через библиотеку soundcloud-v2 (read-only).
+Поиск  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-токеном + SC_CLIENT_ID.
 Write  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-токеном.
 
 Токен получается через официальный OAuth Authorization Code Flow (MM-52).
@@ -12,7 +12,6 @@ import time
 from loguru import logger
 
 import aiohttp
-import soundcloud as sc_lib
 
 from core.soundcloud.models import SCTrack, SCUser, SCPlaylist
 
@@ -40,8 +39,6 @@ class SoundCloudClient:
         self._user_id: int | None = None
         self._username: str = ""
         self._session: aiohttp.ClientSession | None = None
-        # Read-only клиент для поиска
-        self._sc: sc_lib.SoundCloud | None = None
 
     async def init(self) -> "SoundCloudClient":
         """Создаёт сессию, проверяет токен, получает user_id."""
@@ -118,10 +115,11 @@ class SoundCloudClient:
         """Ищет треки по запросу через API v2 с OAuth токеном."""
         self._ensure_init()
         try:
-            data = await self._get(
-                "/search/tracks",
-                params={"q": query, "limit": _SEARCH_LIMIT},
-            )
+            from config import settings
+            params: dict = {"q": query, "limit": _SEARCH_LIMIT}
+            if settings.sc_client_id:
+                params["client_id"] = settings.sc_client_id
+            data = await self._get("/search/tracks", params=params)
             tracks = []
             for item in data.get("collection", []):
                 if not item or not isinstance(item, dict):
@@ -143,10 +141,11 @@ class SoundCloudClient:
         """Ищет пользователей/артистов по имени через API v2 с OAuth токеном."""
         self._ensure_init()
         try:
-            data = await self._get(
-                "/search/users",
-                params={"q": query, "limit": 3},
-            )
+            from config import settings
+            params: dict = {"q": query, "limit": 3}
+            if settings.sc_client_id:
+                params["client_id"] = settings.sc_client_id
+            data = await self._get("/search/users", params=params)
             users = []
             for item in data.get("collection", []):
                 if not item or not isinstance(item, dict):
