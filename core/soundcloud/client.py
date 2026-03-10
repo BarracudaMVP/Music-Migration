@@ -58,10 +58,6 @@ class SoundCloudClient:
                 "Referer": "https://soundcloud.com/",
             }
         )
-        # Инициализируем read-only клиент (для поиска не нужна авторизация,
-        # но передаём токен чтобы получать персонализированные результаты)
-        self._sc = sc_lib.SoundCloud(auth_token=self._raw_token)
-
         # Получаем user_id через /me (опционально — 403 от неодобренных приложений игнорируем)
         try:
             me = await self._get("/me")
@@ -119,32 +115,48 @@ class SoundCloudClient:
     # ------------------------------------------------------------------
 
     async def search_tracks(self, query: str) -> list[SCTrack]:
-        """
-        Ищет треки по запросу. Возвращает до _SEARCH_LIMIT результатов.
-        Запрос выполняется в thread pool т.к. soundcloud-v2 синхронный.
-        """
+        """Ищет треки по запросу через API v2 с OAuth токеном."""
         self._ensure_init()
         try:
-            loop = asyncio.get_running_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: list(self._sc.search_tracks(query, limit=_SEARCH_LIMIT)),
+            data = await self._get(
+                "/search/tracks",
+                params={"q": query, "limit": _SEARCH_LIMIT},
             )
-            return [self._convert_track(t) for t in results if t]
+            tracks = []
+            for item in data.get("collection", []):
+                if not item or not isinstance(item, dict):
+                    continue
+                user = item.get("user") or {}
+                tracks.append(SCTrack(
+                    id=item.get("id", 0),
+                    title=item.get("title", "") or "",
+                    artist=user.get("username", "") or "",
+                    url=item.get("permalink_url", "") or "",
+                    duration_ms=item.get("duration", 0) or 0,
+                ))
+            return tracks
         except Exception as e:
             logger.warning(f"SC search_tracks({query!r}): {e}")
             return []
 
     async def search_users(self, query: str) -> list[SCUser]:
-        """Ищет пользователей/артистов по имени."""
+        """Ищет пользователей/артистов по имени через API v2 с OAuth токеном."""
         self._ensure_init()
         try:
-            loop = asyncio.get_running_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: list(self._sc.search_users(query, limit=3)),
+            data = await self._get(
+                "/search/users",
+                params={"q": query, "limit": 3},
             )
-            return [self._convert_user(u) for u in results if u]
+            users = []
+            for item in data.get("collection", []):
+                if not item or not isinstance(item, dict):
+                    continue
+                users.append(SCUser(
+                    id=item.get("id", 0),
+                    username=item.get("username", "") or "",
+                    url=item.get("permalink_url", "") or "",
+                ))
+            return users
         except Exception as e:
             logger.warning(f"SC search_users({query!r}): {e}")
             return []
