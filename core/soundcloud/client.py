@@ -107,7 +107,7 @@ class SoundCloudClient:
         return tracks
 
     # ------------------------------------------------------------------
-    # Поиск (read-only, soundcloud-v2)
+    # Поиск (read-only)
     # ------------------------------------------------------------------
 
     async def search_tracks(self, query: str) -> list[SCTrack]:
@@ -120,8 +120,10 @@ class SoundCloudClient:
         except Exception as e:
             logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/tracks?{urlencode(params)})")
             return []
+        # api.soundcloud.com/tracks может вернуть list или {"collection": [...]}
+        items = data if isinstance(data, list) else data.get("collection", [])
         tracks = []
-        for item in data.get("collection", []):
+        for item in items:
             if not item or not isinstance(item, dict):
                 continue
             user = item.get("user") or {}
@@ -143,10 +145,11 @@ class SoundCloudClient:
         try:
             data = await self._get("/users", params=params)
         except Exception as e:
-            logger.warning(f"[sc] search_users query={query!r} → {e}")
+            logger.warning(f"[sc] search_users query={query!r} → {e} (url={_BASE_URL}/users?{urlencode(params)})")
             return []
+        items = data if isinstance(data, list) else data.get("collection", [])
         users = []
-        for item in data.get("collection", []):
+        for item in items:
             if not item or not isinstance(item, dict):
                 continue
             users.append(SCUser(
@@ -237,19 +240,19 @@ class SoundCloudClient:
     # Низкоуровневые HTTP-методы
     # ------------------------------------------------------------------
 
-    async def _get(self, path: str, **kwargs) -> dict:
+    async def _get(self, path: str, **kwargs) -> dict | list:
         resp = await self._session.get(f"{_BASE_URL}{path}", **kwargs)
         return await self._handle_response(resp)
 
-    async def _post(self, path: str, **kwargs) -> dict:
+    async def _post(self, path: str, **kwargs) -> dict | list:
         resp = await self._session.post(f"{_BASE_URL}{path}", **kwargs)
         return await self._handle_response(resp)
 
-    async def _put(self, path: str, **kwargs) -> dict:
+    async def _put(self, path: str, **kwargs) -> dict | list:
         resp = await self._session.put(f"{_BASE_URL}{path}", **kwargs)
         return await self._handle_response(resp)
 
-    async def _handle_response(self, resp: aiohttp.ClientResponse) -> dict:
+    async def _handle_response(self, resp: aiohttp.ClientResponse) -> dict | list:
         if resp.status == 429:
             reset_time = None
             try:
@@ -265,6 +268,8 @@ class SoundCloudClient:
             except Exception:
                 return {}
             # SoundCloud иногда возвращает ошибку в теле с 200 статусом
+            if isinstance(body, dict) and "errors" in body:
+                raise Exception(f"SoundCloud error: {body['errors']}")
             if isinstance(body, dict) and "name" in body and "message" in body:
                 raise Exception(f"SoundCloud error: {body['name']} — {body['message']}")
             return body
