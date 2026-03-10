@@ -292,5 +292,5 @@ class SoundCloudClient:
         )
 
     def _ensure_init(self) -> None:
-        if self._session is None or self._user_id is None:
+        if self._session is None:
             raise RuntimeError("Клиент не инициализирован. Вызови await client.init()")
