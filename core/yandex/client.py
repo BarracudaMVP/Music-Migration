@@ -52,7 +52,10 @@ class YandexMusicClient:
                 if self._uid:
                     logger.info(f"uid получен через Yandex ID API: {self._uid}")
                 else:
-                    logger.warning("uid не удалось получить — запросы могут завершиться ошибкой")
+                    raise ValueError(
+                        "Не удалось получить uid пользователя Яндекс Музыки. "
+                        "Токен может быть устаревшим или недействительным — пройдите авторизацию заново."
+                    )
             logger.info(f"Яндекс Музыка: авторизован как {login!r} (uid={self._uid})")
         except ym_exceptions.UnauthorizedError:
             raise ValueError("Невалидный токен Яндекс Музыки")
@@ -80,7 +83,8 @@ class YandexMusicClient:
                     data = await resp.json()
                     uid = data.get("id") or data.get("uid")
                     return str(uid) if uid else None
-                logger.warning(f"Yandex ID API вернул {resp.status}")
+                body = await resp.text()
+                logger.warning(f"Yandex ID API вернул {resp.status}: {body[:200]}")
         except Exception as e:
             logger.warning(f"Ошибка запроса к Yandex ID API: {e}")
         return None
