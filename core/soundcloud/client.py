@@ -8,6 +8,7 @@ Write  — прямые HTTP-запросы к api-v2.soundcloud.com с OAuth-т
 Формат заголовка: "Authorization: OAuth {access_token}"
 """
 import asyncio
+import re
 import time
 from urllib.parse import urlencode
 from loguru import logger
@@ -19,6 +20,37 @@ from core.soundcloud.models import SCTrack, SCUser, SCPlaylist
 _BASE_URL = "https://api-v2.soundcloud.com"
 # Кол-во результатов поиска для выбора кандидатов
 _SEARCH_LIMIT = 10
+
+# Кэш client_id, полученного со страниц soundcloud.com
+_web_client_id_cache: str | None = None
+
+
+async def _fetch_client_id_from_web() -> str | None:
+    """Извлекает рабочий client_id из JS-бандлов soundcloud.com."""
+    global _web_client_id_cache
+    if _web_client_id_cache:
+        return _web_client_id_cache
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://soundcloud.com/", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                html = await resp.text()
+            script_urls = re.findall(
+                r'<script[^>]+src="(https://a-v2\.sndcdn\.com/assets/[^"]+\.js)"', html
+            )
+            for url in reversed(script_urls):  # последние бандлы содержат app-код
+                try:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        js = await resp.text()
+                    m = re.search(r'client_id[=:]["\'`]([a-zA-Z0-9]{20,40})["\' `]', js)
+                    if m:
+                        _web_client_id_cache = m.group(1)
+                        logger.info(f"[sc] fetched client_id from web: {_web_client_id_cache[:8]}...")
+                        return _web_client_id_cache
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.warning(f"[sc] failed to fetch client_id from soundcloud.com: {e}")
+    return None
 
 
 class RateLimitError(Exception):
@@ -112,60 +144,80 @@ class SoundCloudClient:
     # Поиск (read-only, soundcloud-v2)
     # ------------------------------------------------------------------
 
+    async def _get_client_id(self) -> str | None:
+        """Возвращает рабочий client_id: из настроек или с soundcloud.com."""
+        from config import settings
+        return settings.sc_client_id or await _fetch_client_id_from_web()
+
     async def search_tracks(self, query: str) -> list[SCTrack]:
         """Ищет треки по запросу через API v2 с OAuth токеном."""
         self._ensure_init()
+        client_id = await self._get_client_id()
+        params: dict = {"q": query, "limit": _SEARCH_LIMIT}
+        if client_id:
+            params["client_id"] = client_id
+        logger.debug(f"[sc] search query={query!r} → GET /search/tracks?{urlencode(params)}")
         try:
-            from config import settings
-            params: dict = {"q": query, "limit": _SEARCH_LIMIT}
-            if settings.sc_client_id:
-                params["client_id"] = settings.sc_client_id
-            logger.debug(f"[sc] search query={query!r} → GET /search/tracks?{urlencode(params)}")
             data = await self._get("/search/tracks", params=params)
-            tracks = []
-            for item in data.get("collection", []):
-                if not item or not isinstance(item, dict):
-                    continue
-                user = item.get("user") or {}
-                tracks.append(SCTrack(
-                    id=item.get("id", 0),
-                    title=item.get("title", "") or "",
-                    artist=user.get("username", "") or "",
-                    url=item.get("permalink_url", "") or "",
-                    duration_ms=item.get("duration", 0) or 0,
-                ))
-            logger.debug(f"[sc] search query={query!r} → {len(tracks)} results")
-            return tracks
         except Exception as e:
-            from config import settings
-            params_repr = urlencode({"q": query, "limit": _SEARCH_LIMIT, **({"client_id": settings.sc_client_id} if settings.sc_client_id else {})})
-            logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{params_repr})")
-            return []
+            if "403" in str(e) and client_id:
+                # client_id не работает — пробуем получить свежий с сайта
+                global _web_client_id_cache
+                _web_client_id_cache = None
+                fresh_id = await _fetch_client_id_from_web()
+                if fresh_id and fresh_id != client_id:
+                    params["client_id"] = fresh_id
+                    logger.debug(f"[sc] retrying search with fresh client_id")
+                    try:
+                        data = await self._get("/search/tracks", params=params)
+                    except Exception as e2:
+                        logger.warning(f"[sc] search query={query!r} → {e2} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
+                        return []
+                else:
+                    logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
+                    return []
+            else:
+                logger.warning(f"[sc] search query={query!r} → {e} (url={_BASE_URL}/search/tracks?{urlencode(params)})")
+                return []
+        tracks = []
+        for item in data.get("collection", []):
+            if not item or not isinstance(item, dict):
+                continue
+            user = item.get("user") or {}
+            tracks.append(SCTrack(
+                id=item.get("id", 0),
+                title=item.get("title", "") or "",
+                artist=user.get("username", "") or "",
+                url=item.get("permalink_url", "") or "",
+                duration_ms=item.get("duration", 0) or 0,
+            ))
+        logger.debug(f"[sc] search query={query!r} → {len(tracks)} results")
+        return tracks
 
     async def search_users(self, query: str) -> list[SCUser]:
         """Ищет пользователей/артистов по имени через API v2 с OAuth токеном."""
         self._ensure_init()
+        client_id = await self._get_client_id()
+        params: dict = {"q": query, "limit": 3}
+        if client_id:
+            params["client_id"] = client_id
+        logger.debug(f"[sc] search_users query={query!r} → GET /search/users?{urlencode(params)}")
         try:
-            from config import settings
-            params: dict = {"q": query, "limit": 3}
-            if settings.sc_client_id:
-                params["client_id"] = settings.sc_client_id
-            logger.debug(f"[sc] search_users query={query!r} → GET /search/users?{urlencode(params)}")
             data = await self._get("/search/users", params=params)
-            users = []
-            for item in data.get("collection", []):
-                if not item or not isinstance(item, dict):
-                    continue
-                users.append(SCUser(
-                    id=item.get("id", 0),
-                    username=item.get("username", "") or "",
-                    url=item.get("permalink_url", "") or "",
-                ))
-            logger.debug(f"[sc] search_users query={query!r} → {len(users)} results")
-            return users
         except Exception as e:
             logger.warning(f"[sc] search_users query={query!r} → {e}")
             return []
+        users = []
+        for item in data.get("collection", []):
+            if not item or not isinstance(item, dict):
+                continue
+            users.append(SCUser(
+                id=item.get("id", 0),
+                username=item.get("username", "") or "",
+                url=item.get("permalink_url", "") or "",
+            ))
+        logger.debug(f"[sc] search_users query={query!r} → {len(users)} results")
+        return users
 
     # ------------------------------------------------------------------
     # Write-операции (прямой HTTP)
