@@ -698,8 +698,8 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - [x] `bot/oauth/yandex.py` — `get_callback_auth_url(state)`, `exchange_code_callback(code)`
 - [x] `api/routes/web.py` — `GET /auth/yandex` (web start), `GET /auth/yandex/callback` (unified)
 - [x] `api/templates/auth.html` — кнопка если `yandex_redirect_uri` задан, форма-fallback если нет
-- [ ] Зарегистрировать `https://musicmigration.site/auth/yandex/callback` в oauth.yandex.ru
-- [ ] `YANDEX_REDIRECT_URI=https://musicmigration.site/auth/yandex/callback` в .env на сервере
+- [x] Зарегистрировать `https://musicmigration.site/auth/yandex/callback` в oauth.yandex.ru
+- [x] `YANDEX_REDIRECT_URI=https://musicmigration.site/auth/yandex/callback` в .env на сервере
 
 ---
 
