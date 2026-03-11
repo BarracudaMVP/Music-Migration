@@ -14,8 +14,6 @@ _S: dict[str, dict[str, str]] = {
     "nav_home":         {"ru": "Главная",        "en": "Home"},
     "nav_history":      {"ru": "История",        "en": "History"},
     "nav_my_transfers": {"ru": "Мои переносы",   "en": "My transfers"},
-    "nav_import":       {"ru": "Импорт",         "en": "Import"},
-    "nav_export":       {"ru": "Экспорт",        "en": "Export"},
     "nav_account":      {"ru": "Аккаунт",        "en": "Account"},
     "nav_logout":       {"ru": "Выйти",          "en": "Log out"},
 
@@ -96,6 +94,7 @@ _S: dict[str, dict[str, str]] = {
     "auth_save_btn":       {"ru": "Сохранить",                             "en": "Save"},
     "auth_sc_oauth_hint":  {"ru": "Нажми кнопку ниже, чтобы войти через SoundCloud и разрешить доступ к аккаунту.", "en": "Click the button below to sign in with SoundCloud and grant access to your account."},
     "auth_sc_oauth_btn":   {"ru": "Подключить SoundCloud",                 "en": "Connect SoundCloud"},
+    "auth_required_hint":  {"ru": "Подключи сервисы выше чтобы начать",    "en": "Connect services above to start"},
 
     # ------------------------------------------------------------------ #
     # Progress page
@@ -171,45 +170,10 @@ _S: dict[str, dict[str, str]] = {
     "tracks_next_btn":    {"ru": "Вперёд →",       "en": "Next →"},
 
     # ------------------------------------------------------------------ #
-    # Import
+    # Export (used in flow_rest.html)
     # ------------------------------------------------------------------ #
-    "import_title":       {"ru": "Импорт из файла",          "en": "Import from file"},
-    "import_subtitle":    {"ru": "CSV или JSON со списком треков", "en": "CSV or JSON with your track list"},
-    "import_back":        {"ru": "← Главная",                "en": "← Home"},
-    "import_csv_title":   {"ru": "CSV",                      "en": "CSV"},
-    "import_csv_desc":    {"ru": "Разделитель — запятая. Первая строка — заголовки.", "en": "Comma-separated. First row is headers."},
-    "import_json_title":  {"ru": "JSON",                     "en": "JSON"},
-    "import_json_desc":   {"ru": "Массив объектов.",         "en": "Array of objects."},
-    "import_upload_btn":  {"ru": "Загрузить",                "en": "Upload"},
-    "import_processing":  {"ru": "Обрабатываю...",           "en": "Processing..."},
-
-    # Import preview
-    "preview_first_rows":    {"ru": "первые",             "en": "first"},
-    "preview_rows":          {"ru": "строк",              "en": "rows"},
-    "preview_artist_col":    {"ru": "Исполнитель",        "en": "Artist column"},
-    "preview_title_col":     {"ru": "Название",           "en": "Title column"},
-    "preview_start_btn":     {"ru": "Начать перенос",     "en": "Start transfer"},
-    "preview_empty":         {"ru": "Файл пуст.",         "en": "File is empty."},
-
-    # ------------------------------------------------------------------ #
-    # Export
-    # ------------------------------------------------------------------ #
-    "export_title":        {"ru": "Экспорт библиотеки",                       "en": "Export library"},
-    "export_subtitle":     {"ru": "Скачай список треков из Яндекс Музыки в CSV или JSON.", "en": "Download your track list from Yandex Music as CSV or JSON."},
-    "export_back":         {"ru": "← Главная",                                "en": "← Home"},
-    "export_content":      {"ru": "Что экспортировать",                       "en": "What to export"},
-    "export_liked_tracks": {"ru": "Лайкнутые треки",                          "en": "Liked tracks"},
-    "export_playlists":    {"ru": "Плейлисты (все треки)",                    "en": "Playlists (all tracks)"},
-    "export_format":       {"ru": "Формат файла",                             "en": "File format"},
-    "export_fmt_label":    {"ru": "Формат файла",                             "en": "File format"},
-    "export_btn":          {"ru": "Скачать файл",                             "en": "Download file"},
-    "export_note":         {"ru": "Файл совместим с разделом «Импорт».",      "en": "File is compatible with the Import section."},
-    "export_no_ym_token":  {"ru": "Нет токена Яндекс Музыки. Войди в аккаунт.", "en": "No Yandex Music token. Please sign in."},
-
-    # Export (missing hints/loading)
-    "export_csv_hint":   {"ru": "Совместим с Excel и Google Sheets.", "en": "Compatible with Excel and Google Sheets."},
-    "export_json_hint":  {"ru": "Удобен для разработчиков.",          "en": "Developer-friendly format."},
-    "export_loading":    {"ru": "Готовлю файл...",                     "en": "Preparing file..."},
+    "export_fmt_label":    {"ru": "Формат файла",    "en": "File format"},
+    "export_btn":          {"ru": "Скачать файл",    "en": "Download file"},
 
     # ------------------------------------------------------------------ #
     # Bot — language selection

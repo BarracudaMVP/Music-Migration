@@ -1484,3 +1484,104 @@ media_track_links
 **Осталось (опционально):**
 - [ ] Переименовать параметры `score_track_match(ym_artist, ym_title, ...)` → `(source_artist, source_title, ...)` для ясности
 - [ ] Добавить в `SCCandidate` комментарий что это generic кандидат, не только SC
+
+---
+
+### ✅ MM-70 — Main screen UX: auth-gate + content_type validation
+
+**Задача:** кнопка "Начать перенос" теперь disabled когда нужные сервисы не авторизованы; последний чекбокс типа контента нельзя снять.
+
+**Что сделано:**
+- `api/templates/fragments/flow_rest.html` — вычисление `auth_ok` через Jinja2 (`needs_from_auth`, `needs_to_auth`); кнопка submit `disabled + opacity-50 + cursor-not-allowed` когда `not auth_ok`; подсказка под кнопкой
+- `api/templates/fragments/flow_rest.html` — JS-защита: последний активный чекбокс `content_types` нельзя снять
+- `core/i18n.py` — ключ `auth_required_hint` (ru/en)
+- `api/routes/web.py` — в `POST /migrate` redirectы при missing token: `/auth?error=` → `/?error=` (3 места: case 1 export, case 2 import, case 3 normal)
+
+**Файлы:** `api/templates/fragments/flow_rest.html`, `core/i18n.py`, `api/routes/web.py`
+
+---
+
+### ✅ MM-71 — Удаление мёртвого кода
+
+**Задача:** после MM-67 эндпоинты `/import/preview`, `/import/start`, `/export/start` и их шаблоны недостижимы из UI — удалить.
+
+**Что удалено:**
+- `api/routes/web.py` — `POST /import/preview` (~55 строк), `POST /import/start` (~60 строк), `POST /export/start` (~45 строк)
+- `api/routes/web.py` — `from core.db.crud import get_all_tracks` (не используется после удаления)
+- `api/templates/import.html` — удалён
+- `api/templates/export.html` — удалён
+- `api/templates/fragments/import_preview.html` — удалён
+- `core/i18n.py` — удалены: `nav_import`, `nav_export`; весь блок Import (`import_*`, preview `preview_*`); большинство export ключей (`export_title`, `export_subtitle`, `export_back`, `export_content`, `export_liked_tracks`, `export_playlists`, `export_note`, `export_no_ym_token`, `export_format`, `export_csv_hint`, `export_json_hint`, `export_loading`); оставлены `export_fmt_label` + `export_btn` (используются в flow_rest.html)
+
+**Что сохранено:**
+- `GET /import` и `GET /export` — остались как редиректы на `/`
+- `_MAX_UPLOAD_BYTES` — используется в `POST /migrate`
+
+**Файлы:** `api/routes/web.py`, `api/templates/import.html` (удалён), `api/templates/export.html` (удалён), `api/templates/fragments/import_preview.html` (удалён), `core/i18n.py`
+
+---
+
+### ✅ entrypoint.sh → scripts/
+
+- `scripts/entrypoint.sh` — создан (копия корневого `entrypoint.sh`)
+- `entrypoint.sh` — удалён из корня
+- `Dockerfile.api` — обновлён: `chmod +x scripts/entrypoint.sh`, `CMD ["./scripts/entrypoint.sh"]`
+
+**Файлы:** `scripts/entrypoint.sh` (создан), `entrypoint.sh` (удалён), `Dockerfile.api`
+
+---
+
+### 🔲 MM-69 — Rename file_csv → file
+
+**Задача:** `FileAdapter.id = "file_csv"` — имя отражает только CSV, хотя поддерживается и JSON. Переименовать в `"file"`.
+
+**Все изменения:**
+- `core/services/file/adapter.py` — `id = "file"`, `name = "Файл (CSV/JSON)"`
+- `core/i18n.py` — переименовать ключ `svc_file_csv` → `svc_file`
+- `api/routes/web.py` — все `"file_csv"` литералы → `"file"` (7+ мест); `_SERVICE_ICONS`: `"file"` вместо `"file_csv"`
+- Шаблоны — `data-from="file_csv"` → `data-from="file"`, все проверки `!= 'file_csv'`
+- Тесты — обновить все `"file_csv"` → `"file"`
+- **Alembic миграция** — `UPDATE migrations SET from_service='file' WHERE from_service='file_csv'`; то же для `to_service`
+
+---
+
+### 🔲 MM-72 — Стандартизация migration/
+
+**Задача:** нет единой конвенции именования файлов в `migration/`.
+
+**Текущее состояние:**
+| Файл | Что делает |
+|---|---|
+| `tracks.py` | YM → SC |
+| `artists.py` | YM → SC |
+| `playlists.py` | YM → SC |
+| `spotify_tracks.py` | Spotify → SC |
+| `spotify_write.py` | any → Spotify |
+| `yandex_tracks.py` | any → YM |
+
+**Предлагаемая конвенция (по destination):**
+- `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py` — всё что → SC
+- `to_yandex.py` — any → YM
+- `to_spotify.py` — any → Spotify
+
+**Изменения:**
+- Переименовать 6 файлов, обновить импорты в `worker/tasks.py`
+- Унифицировать docstrings по одному шаблону
+
+---
+
+### 🔲 MM-73 — Обновление monitoring stack
+
+**Задача:** версии мониторингового стека устарели (2023 → 2026).
+
+**Текущие версии vs актуальные:**
+- Loki: `2.9.0` → `3.2.x` (breaking changes в конфиге возможны)
+- Promtail: `2.9.0` → **deprecated** в 3.x, заменён на **Grafana Alloy**
+- Grafana: `10.2.0` → `11.4.x`
+
+**Шаги:**
+- [ ] Обновить `grafana/grafana:10.2.0` → `grafana/grafana:11.4.0`
+- [ ] Решить: оставить Promtail 2.9.0 (last stable) или мигрировать на Grafana Alloy
+- [ ] Обновить Loki `2.9.0` → `3.2.0`, проверить совместимость `monitoring/loki/config.yml`
+- [ ] Обновить `monitoring/promtail/config.yml` если нужно под новую схему
+

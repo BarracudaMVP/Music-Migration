@@ -24,7 +24,6 @@ from core.db import (
     save_user_lang,
     delete_user_session,
 )
-from core.db.crud import get_all_tracks
 from core.services.registry import ServiceRegistry
 from core.soundcloud.client import SoundCloudClient
 from core.i18n import t as _t, detect_lang_web
@@ -657,7 +656,7 @@ async def start_migrate(
     if is_to_file:
         err = _missing_token(from_service)
         if err:
-            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+            return RedirectResponse(f"/?error={quote(err)}", status_code=303)
         try:
             from core.export import export_library
             from fastapi.responses import Response as FastAPIResponse
@@ -691,7 +690,7 @@ async def start_migrate(
     if is_from_file:
         err = _missing_token(to_service)
         if err:
-            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+            return RedirectResponse(f"/?error={quote(err)}", status_code=303)
 
         if file is None or not file.filename:
             return RedirectResponse(f"/?error={quote('Выбери файл для загрузки')}", status_code=303)
@@ -765,7 +764,7 @@ async def start_migrate(
     for svc in (from_service, to_service):
         err = _missing_token(svc)
         if err:
-            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+            return RedirectResponse(f"/?error={quote(err)}", status_code=303)
 
     migration_id = await create_migration(user_id, from_service=from_service, to_service=to_service)
     arq = get_arq_pool()
@@ -957,184 +956,9 @@ async def import_page(request: Request):
     return RedirectResponse("/", status_code=303)
 
 
-@router.post("/import/preview", response_class=HTMLResponse)
-async def import_preview(request: Request, file: UploadFile = File(...)):
-    """HTMX: загружает файл, сохраняет во временное место, возвращает preview-фрагмент."""
-    import tempfile
-
-    from core.services.file.adapter import FileAdapter
-
-    suffix = ".json" if (file.filename or "").lower().endswith(".json") else ".csv"
-
-    content = await file.read()
-    if len(content) > _MAX_UPLOAD_BYTES:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Файл слишком большой (максимум 10 МБ).</p>'
-        )
-
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
-    try:
-        import os
-        os.write(fd, content)
-        os.close(fd)
-
-        adapter = FileAdapter()
-        columns = await adapter.get_columns(tmp_path)
-        if not columns:
-            os.unlink(tmp_path)
-            return HTMLResponse(
-                '<p class="text-red-600 text-sm">Не удалось определить колонки. '
-                "Проверь формат файла.</p>"
-            )
-
-        preview = await adapter.preview_tracks(tmp_path, limit=20)
-        auto_map = adapter.detect_column_mapping(columns)
-
-        # Удаляем старый временный файл
-        old_tmp = request.session.get("import_tmp")
-        if old_tmp:
-            try:
-                os.unlink(old_tmp)
-            except OSError:
-                pass
-
-        request.session["import_tmp"] = tmp_path
-    except Exception as e:
-        try:
-            import os
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        return HTMLResponse(f'<p class="text-red-600 text-sm">Ошибка: {e}</p>')
-
-    return _render("fragments/import_preview.html", request, {
-        "columns": columns,
-        "preview": preview,
-        "filename": file.filename,
-        "auto_map": auto_map,
-    })
-
-
-@router.post("/import/start")
-async def import_start(
-    request: Request,
-    artist_col: str = Form(...),
-    title_col: str = Form(...),
-):
-    import os
-
-    from api.main import get_arq_pool
-    from core.services.file.adapter import FileAdapter
-
-    user_id = _session_user_id(request)
-    if not user_id:
-        return RedirectResponse("/auth", status_code=303)
-    db_session = await load_user_session(user_id)
-    if not db_session:
-        return RedirectResponse("/auth", status_code=303)
-
-    tmp_path = request.session.get("import_tmp")
-    if not tmp_path or not os.path.exists(tmp_path):
-        return RedirectResponse(
-            f"/import?error={quote('Файл не найден — загрузи его снова')}",
-            status_code=303,
-        )
-
-    try:
-        adapter = FileAdapter()
-        tracks = await adapter.import_tracks(tmp_path, artist_col=artist_col, title_col=title_col)
-    except Exception as e:
-        return RedirectResponse(f"/import?error={quote(str(e)[:120])}", status_code=303)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        request.session.pop("import_tmp", None)
-
-    if not tracks:
-        return RedirectResponse(
-            f"/import?error={quote('Файл не содержит треков')}",
-            status_code=303,
-        )
-
-    from api.deps import check_migration_rate_limit
-    if not await check_migration_rate_limit(user_id):
-        return RedirectResponse(
-            f"/import?error={quote('Слишком много переносов. Попробуй через час.')}",
-            status_code=303,
-        )
-
-    migration_id = await create_migration(user_id)
-    arq = get_arq_pool()
-    job = await arq.enqueue_job(
-        "run_file_migration_job",
-        migration_id,
-        db_session["soundcloud_token"],
-        tracks,
-        user_id,
-    )
-    if job:
-        await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
-
-    return RedirectResponse(f"/migrate/{migration_id}", status_code=303)
-
-
-# ---------------------------------------------------------------------------
-# Standalone Export
-# ---------------------------------------------------------------------------
-
 @router.get("/export", response_class=HTMLResponse)
 async def export_page(request: Request):
     return RedirectResponse("/", status_code=303)
-
-
-@router.post("/export/start")
-async def export_start(
-    request: Request,
-    service_id: str = Form(...),
-    fmt: str = Form("csv"),
-):
-    from fastapi.responses import Response as FastAPIResponse
-    from core.export import export_library
-
-    user_id = _session_user_id(request)
-    if not user_id:
-        return RedirectResponse("/auth", status_code=303)
-
-    db_session = await load_user_session(user_id)
-    if not db_session:
-        return RedirectResponse("/auth", status_code=303)
-
-    from core.services.registry import ServiceRegistry
-    try:
-        adapter = ServiceRegistry.get(service_id)
-    except KeyError:
-        return RedirectResponse(
-            f"/export?error={quote('Неизвестный сервис')}", status_code=303
-        )
-
-    token = db_session.get(adapter.session_token_key) if adapter.session_token_key else None
-    if not token:
-        return RedirectResponse(
-            f"/export?error={quote(f'Нет токена для {adapter.name}. Пройди авторизацию.')}",
-            status_code=303,
-        )
-
-    try:
-        data = await export_library(service_id, token, fmt=fmt)
-    except Exception as e:
-        return RedirectResponse(
-            f"/export?error={quote(str(e)[:200])}", status_code=303
-        )
-
-    filename = f"library_{service_id}.{fmt}"
-    media = "text/csv" if fmt == "csv" else "application/json"
-    return FastAPIResponse(
-        content=data,
-        media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 # ---------------------------------------------------------------------------
