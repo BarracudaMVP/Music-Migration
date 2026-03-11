@@ -12,7 +12,7 @@ from core.db import (
 )
 from core.yandex.client import YandexMusicClient
 from core.soundcloud.client import SoundCloudClient
-from core.matcher import find_best_match, SCCandidate
+from core.matcher import find_best_match, TrackCandidate
 
 
 @dataclass
@@ -88,9 +88,9 @@ async def _process_one_artist(sc_client: SoundCloudClient, row: dict) -> str:
         return "not_found"
 
     candidates = [
-        SCCandidate(
-            sc_id=u.id,
-            sc_url=u.url,
+        TrackCandidate(
+            track_id=u.id,
+            track_url=u.url,
             artist=u.username,
             title="",
         )
@@ -103,13 +103,13 @@ async def _process_one_artist(sc_client: SoundCloudClient, row: dict) -> str:
         await update_artist(artist_id, status="not_found")
         return "not_found"
 
-    success = await sc_client.follow_user(match.sc_id)
+    success = await sc_client.follow_user(match.track_id)
     if success:
         await update_artist(
             artist_id,
             status="followed",
-            sc_user_id=match.sc_id,
-            sc_username=match.sc_artist,
+            sc_user_id=match.track_id,
+            sc_username=match.cand_artist,
             match_score=match.score,
         )
         return "followed"

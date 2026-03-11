@@ -1,15 +1,101 @@
 """
 Нечёткое сопоставление треков между стриминговыми платформами.
 
-Стратегия:
-1. Нормализация: lowercase, убираем пунктуацию, feat., ремастеры и т.д.
-2. Транслитерация: генерируем несколько латинских вариантов кириллических строк
-3. Scoring: взвешенная комбинация artist_score (40%) + title_score (60%)
-4. Порог: score >= threshold → match, иначе not_found
+=== АЛГОРИТМ ===
+
+Цель: по метаданным трека-источника (артист + название) найти лучшего кандидата
+на целевой платформе из пула результатов поиска.
+
+──────────────────────────────────────────────────
+Шаг 1. НОРМАЛИЗАЦИЯ (normalize)
+──────────────────────────────────────────────────
+Приводит строку к сравнимому виду:
+  1. Unicode NFKD: "½" → "1⁄2", "é" → "e" (разложение диакритических знаков)
+  2. lowercase
+  3. Удаляет суффиксы feat./ft./featuring и всё после них
+  4. Удаляет маркеры версий: Remaster, Live, Radio Edit, Deluxe, Acoustic и т.д.
+  5. Заменяет пунктуацию пробелами
+  6. Схлопывает пробелы
+
+Примеры:
+  "Daft Punk - Get Lucky (feat. Pharrell Williams)" → "daft punk get lucky"
+  "Bohemian Rhapsody (Remastered 2011)"              → "bohemian rhapsody"
+
+──────────────────────────────────────────────────
+Шаг 2. ТРАНСЛИТЕРАЦИЯ (transliterate_variants)
+──────────────────────────────────────────────────
+Если строка содержит кириллицу — генерируем несколько латинских вариантов:
+  - WIKIPEDIA  (Чайковский → Tchaikovsky)
+  - YANDEX_MAPS (Чайковский → Chaykovskiy)
+  - BGN_PCGN   (официальная US/UK схема)
+
+Цель: компенсировать разные транслитерации одного имени между платформами.
+Строки без кириллицы возвращаются как есть.
+
+──────────────────────────────────────────────────
+Шаг 3. ПОПАРНОЕ СРАВНЕНИЕ (_score_pair)
+──────────────────────────────────────────────────
+Для двух уже нормализованных строк вычисляет score 0–100:
+  max(WRatio, token_sort_ratio)
+
+  WRatio — rapidfuzz, автоматически выбирает лучшую из метрик:
+    - ratio:         посимвольное сравнение двух строк целиком
+    - partial_ratio: ищет одну строку как подстроку другой
+    - token_sort_ratio: сортирует слова перед сравнением
+  Примечание: token_set_ratio намеренно исключён — он давал ложные матчи
+  при коротких подстроках ("заря" vs "алая заря" → 100).
+
+  token_sort_ratio — явно, для случаев с переставленными словами:
+    "Last Flower" vs "Flower Last" → 100
+
+──────────────────────────────────────────────────
+Шаг 4. ИТОГОВЫЙ SCORE (score_track_match)
+──────────────────────────────────────────────────
+Для каждой комбинации [транслитерации источника] × [варианты]:
+  artist_score = _score_pair(norm_src_artist, norm_cand_artist)
+  title_score  = _score_pair(norm_src_title,  norm_cand_title)
+  combined     = 0.4 × artist_score + 0.6 × title_score
+
+  Бонус: если title_score ≥ 95 (почти точное совпадение названия):
+    combined = max(combined, 0.5 × artist_score + 0.5 × title_score)
+    (артист может отличаться — кавер, фит, сборник)
+
+Итог = max по всем вариантам транслитерации, округлён до 2 знаков.
+
+Веса 60% title / 40% artist:
+  - Название уникально идентифицирует трек внутри дискографии
+  - Артист может записываться по-разному: сокращения, feat., псевдонимы
+
+──────────────────────────────────────────────────
+Шаг 5. ЗОНЫ SCORE (find_best_match)
+──────────────────────────────────────────────────
+Из пула кандидатов выбирается один с максимальным score.
+
+  [0,                MATCH_UNCERTAIN_FLOOR) → not_found  (явно чужой трек)
+  [MATCH_UNCERTAIN_FLOOR, MATCH_THRESHOLD) → uncertain   (возможно правильный)
+  [MATCH_THRESHOLD,   100]                 → matched     (принимается автоматически)
+
+  Пороги задаются в .env: MATCH_THRESHOLD (default 75), MATCH_UNCERTAIN_FLOOR (default 60).
+
+──────────────────────────────────────────────────
+ПОЧЕМУ ТРЕК МОЖЕТ НЕ ЗАМАТЧИТЬСЯ
+──────────────────────────────────────────────────
+  1. Трека нет на целевой платформе (наиболее частая причина)
+  2. Артист известен под другим именем/псевдонимом на другой платформе
+  3. Кириллическое имя не совпало ни с одним вариантом транслитерации
+     → решение MM-74: добавить схемы транслитерации / ручной словарь псевдонимов
+  4. Название очень короткое (1–2 слова) → score недостаточно высок при разных артистах
+  5. Коллаборация с разным порядком имён: "A feat. B" vs "B & A"
+     → частично решается split_artists(): ищем по каждому артисту отдельно
+  6. На целевой платформе доступна только другая версия (Remix, Live, Cover)
+  7. Трек находится в поиске, но за пределами SEARCH_LIMIT первых результатов
+     → увеличить _SEARCH_LIMIT в клиенте целевой платформы
 """
+from __future__ import annotations
+
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import iuliia
 from rapidfuzz import fuzz
@@ -21,7 +107,6 @@ from config import settings
 # Нормализация
 # ---------------------------------------------------------------------------
 
-# Паттерны для удаления лишнего из названий
 _FEAT_RE = re.compile(r"\(?\b(feat\.?|ft\.?|featuring)\b.*?(\)|$)", re.IGNORECASE)
 _REMASTER_RE = re.compile(
     r"\(?\b(remaster(ed)?|reissue|anniversary|deluxe|edition|version|live|acoustic|radio edit)\b.*?(\)|$)",
@@ -33,24 +118,16 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 def normalize(text: str) -> str:
     """
-    Приводит строку к нормализованному виду для сравнения:
-    - unicode NFKD
-    - lowercase
-    - убирает feat./ft., ремастеры, скобки
-    - убирает пунктуацию
-    - схлопывает пробелы
+    Приводит строку к нормализованному виду для сравнения.
+    Шаги: unicode NFKD → lowercase → убрать feat./ремастеры → убрать пунктуацию → схлопнуть пробелы.
     """
     if not text:
         return ""
-    # Нормализация unicode
     text = unicodedata.normalize("NFKD", text)
     text = text.lower().strip()
-    # Убираем feat. и ремастеры
     text = _FEAT_RE.sub("", text)
     text = _REMASTER_RE.sub("", text)
-    # Убираем пунктуацию
     text = _PUNCTUATION_RE.sub(" ", text)
-    # Схлопываем пробелы
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
 
@@ -89,8 +166,9 @@ def transliterate_variants(text: str) -> list[str]:
 
 def _score_pair(source: str, candidate: str) -> float:
     """
-    Вычисляет схожесть двух уже нормализованных строк.
-    Использует максимум из нескольких метрик rapidfuzz.
+    Сравнивает две уже нормализованных строки. Возвращает score 0–100.
+    Использует max(WRatio, token_sort_ratio).
+    token_set_ratio исключён намеренно — давал ложные матчи при коротких подстроках.
     """
     if not source or not candidate:
         return 0.0
@@ -107,28 +185,26 @@ def score_track_match(
     cand_title: str,
 ) -> float:
     """
-    Возвращает итоговый score (0-100) совпадения двух треков.
-    Работает для любых пар сервисов (YM, Spotify, SC, File).
+    Возвращает итоговый score (0–100) совпадения двух треков.
+    Платформонезависим: работает для любой пары источник → цель.
 
-    Алгоритм:
-    - Генерируем варианты транслитерации для строк источника
-    - Для каждого варианта считаем artist_score и title_score
-    - Итог = max по всем вариантам (0.4 * artist + 0.6 * title)
+    Алгоритм: транслитерационные варианты × scoring → max.
+    Веса: 40% artist + 60% title. При title ≥ 95 — бонусное выравнивание весов.
     """
-    norm_sc_artist = normalize(cand_artist)
-    norm_sc_title = normalize(cand_title)
+    norm_cand_artist = normalize(cand_artist)
+    norm_cand_title = normalize(cand_title)
 
     best = 0.0
-    for ym_art_variant in transliterate_variants(source_artist):
-        for ym_ttl_variant in transliterate_variants(source_title):
-            norm_art = normalize(ym_art_variant)
-            norm_ttl = normalize(ym_ttl_variant)
+    for src_art_variant in transliterate_variants(source_artist):
+        for src_ttl_variant in transliterate_variants(source_title):
+            norm_art = normalize(src_art_variant)
+            norm_ttl = normalize(src_ttl_variant)
 
-            artist_score = _score_pair(norm_art, norm_sc_artist)
-            title_score = _score_pair(norm_ttl, norm_sc_title)
+            artist_score = _score_pair(norm_art, norm_cand_artist)
+            title_score  = _score_pair(norm_ttl, norm_cand_title)
             combined = 0.4 * artist_score + 0.6 * title_score
 
-            # Бонус: если название совпадает идеально — поднимаем оценку
+            # Бонус: при почти точном совпадении названия артист может отличаться (кавер, фит)
             if title_score >= 95:
                 combined = max(combined, 0.5 * artist_score + 0.5 * title_score)
 
@@ -138,50 +214,59 @@ def score_track_match(
 
 
 # ---------------------------------------------------------------------------
-# Выбор лучшего кандидата
+# Типы данных
 # ---------------------------------------------------------------------------
 
 @dataclass
-class MatchResult:
-    sc_id: int
-    sc_url: str
-    sc_artist: str
-    sc_title: str
-    score: float
-    matched: bool           # score >= threshold
-    uncertain: bool         # score в зоне [match_uncertain_floor, match_threshold) — стоит проверить вручную
+class TrackCandidate:
+    """
+    Кандидат с целевой платформы для сравнения с треком-источником.
+    Платформонезависим: используется для SC, YM, Spotify и любых других.
+
+    track_id:  числовой ID (или хэш строкового ID) — ключ дедупликации
+    track_url: строковый ID/URL для фактического API-вызова (like, follow и т.д.)
+    """
+    track_id: int
+    track_url: str
+    artist: str
+    title: str
 
 
 @dataclass
-class SCCandidate:
-    """
-    Кандидат для сравнения с треком-источником.
-    Используется для всех целевых платформ (SC, YM, Spotify) — название исторически SC-specific,
-    но логика и поля универсальны.
-    """
-    sc_id: int
-    sc_url: str
-    artist: str
-    title: str
+class MatchResult:
+    """Результат матчинга: лучший найденный кандидат + метаданные совпадения."""
+    track_id: int
+    track_url: str
+    cand_artist: str
+    cand_title: str
+    score: float
+    matched: bool    # score >= MATCH_THRESHOLD
+    uncertain: bool  # score в зоне [MATCH_UNCERTAIN_FLOOR, MATCH_THRESHOLD)
 
 
 # ---------------------------------------------------------------------------
 # Разбивка составных артистов
 # ---------------------------------------------------------------------------
 
-_SPLIT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring|при\s+уч\.?|при\s+участии|&|x)\s+", re.IGNORECASE)
+_SPLIT_RE = re.compile(
+    r"\s+(?:feat\.?|ft\.?|featuring|при\s+уч\.?|при\s+участии|&|x)\s+",
+    re.IGNORECASE,
+)
 
 
 def split_artists(artist: str) -> list[str]:
     """
-    Разбивает строку артиста по паттернам: feat., ft., &, x (регистронезависимо).
-    Возвращает список уникальных частей без лишних пробелов.
+    Разбивает строку артиста по разделителям: feat., ft., &, x и др.
+    Возвращает список уникальных частей.
 
     Примеры:
       "Земфира feat. Океан Ельзи"  → ["Земфира", "Океан Ельзи"]
       "Joji & Rex Orange County"   → ["Joji", "Rex Orange County"]
       "A ft. B x C"                → ["A", "B", "C"]
       "Solo Artist"                → ["Solo Artist"]
+
+    Используется перед поиском: запрос по каждому артисту отдельно даёт больший
+    пул кандидатов, повышая шанс найти трек с составным артистом.
     """
     parts = _SPLIT_RE.split(artist)
     seen: list[str] = []
@@ -192,19 +277,23 @@ def split_artists(artist: str) -> list[str]:
     return seen if seen else [artist]
 
 
+# ---------------------------------------------------------------------------
+# Выбор лучшего кандидата
+# ---------------------------------------------------------------------------
+
 def find_best_match(
     source_artist: str,
     source_title: str,
-    candidates: list[SCCandidate],
+    candidates: list[TrackCandidate],
     threshold: float | None = None,
 ) -> MatchResult | None:
     """
-    Выбирает лучшего кандидата из списка.
-    Работает для любых пар платформ (YM→SC, Spotify→YM, File→Spotify и т.д.).
+    Выбирает лучшего кандидата из пула по score_track_match.
+    Платформонезависим: работает для любых пар платформ.
 
     Возвращает MatchResult или None если кандидатов нет.
-    matched=True  если score >= threshold (по умолчанию из конфига)
-    uncertain=True если score в диапазоне [uncertain_floor, threshold)
+      matched=True   если score >= threshold (автоматический матч)
+      uncertain=True если score в [uncertain_floor, threshold) (стоит проверить вручную)
     """
     if not candidates:
         return None
@@ -213,7 +302,7 @@ def find_best_match(
     uncertain_floor = settings.match_uncertain_floor
 
     best_score = -1.0
-    best_candidate: SCCandidate | None = None
+    best_candidate: TrackCandidate | None = None
 
     for cand in candidates:
         score = score_track_match(source_artist, source_title, cand.artist, cand.title)
@@ -225,10 +314,10 @@ def find_best_match(
         return None
 
     return MatchResult(
-        sc_id=best_candidate.sc_id,
-        sc_url=best_candidate.sc_url,
-        sc_artist=best_candidate.artist,
-        sc_title=best_candidate.title,
+        track_id=best_candidate.track_id,
+        track_url=best_candidate.track_url,
+        cand_artist=best_candidate.artist,
+        cand_title=best_candidate.title,
         score=best_score,
         matched=best_score >= effective_threshold,
         uncertain=uncertain_floor <= best_score < effective_threshold,

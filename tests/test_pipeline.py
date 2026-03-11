@@ -21,10 +21,10 @@ def _make_sc_track(sc_id=1, url="http://sc/1", artist="Artist", title="Title"):
 
 def _make_match(sc_id=1, score=90.0, matched=True, uncertain=False):
     return MatchResult(
-        sc_id=sc_id,
-        sc_url=f"http://sc/{sc_id}",
-        sc_artist="Artist",
-        sc_title="Title",
+        track_id=sc_id,
+        track_url=f"http://sc/{sc_id}",
+        cand_artist="Artist",
+        cand_title="Title",
         score=score,
         matched=matched,
         uncertain=uncertain,
@@ -214,7 +214,7 @@ async def test_process_dedup_candidates_by_sc_id():
          patch("migration.tracks.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
-    assert len([c for c in captured["candidates"] if c.sc_id == 77]) == 1
+    assert len([c for c in captured["candidates"] if c.track_id == 77]) == 1
 
 
 @pytest.mark.asyncio

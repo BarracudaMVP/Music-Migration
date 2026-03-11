@@ -29,7 +29,7 @@ from core.db import (
 from config import settings
 from core.yandex.client import YandexMusicClient
 from core.soundcloud.client import SoundCloudClient, LikeNotSupportedError
-from core.matcher import find_best_match, split_artists, SCCandidate
+from core.matcher import find_best_match, split_artists, TrackCandidate
 
 
 @dataclass
@@ -245,14 +245,14 @@ async def _process_one_track(
     else:
         results_list = [await sc_client.search_tracks(queries[0])]
 
-    # Дедупликация кандидатов по sc_id
-    all_candidates: dict[int, SCCandidate] = {}
+    # Дедупликация кандидатов по track_id
+    all_candidates: dict[int, TrackCandidate] = {}
     for sc_results in results_list:
         for t in sc_results:
             if t.id not in all_candidates:
-                all_candidates[t.id] = SCCandidate(
-                    sc_id=t.id,
-                    sc_url=t.url,
+                all_candidates[t.id] = TrackCandidate(
+                    track_id=t.id,
+                    track_url=t.url,
                     artist=t.artist,
                     title=t.title,
                 )
@@ -263,7 +263,7 @@ async def _process_one_track(
     if not candidates:
         fallback_results = await sc_client.search_tracks(ym_title)
         candidates = [
-            SCCandidate(sc_id=t.id, sc_url=t.url, artist=t.artist, title=t.title)
+            TrackCandidate(track_id=t.id, track_url=t.url, artist=t.artist, title=t.title)
             for t in fallback_results
         ]
 
@@ -275,9 +275,9 @@ async def _process_one_track(
         return "not_found", None
 
     if match.matched:
-        logger.info(f"[match] {ym_artist} — {ym_title} → {match.sc_artist} — {match.sc_title} (score={match.score:.0f})")
+        logger.info(f"[match] {ym_artist} — {ym_title} → {match.cand_artist} — {match.cand_title} (score={match.score:.0f})")
     elif match.uncertain:
-        logger.info(f"[match] {ym_artist} — {ym_title} → uncertain: {match.sc_artist} — {match.sc_title} (score={match.score:.0f})")
+        logger.info(f"[match] {ym_artist} — {ym_title} → uncertain: {match.cand_artist} — {match.cand_title} (score={match.score:.0f})")
     else:
         logger.info(f"[match] {ym_artist} — {ym_title} → not_found (score={match.score:.0f})")
 
@@ -286,8 +286,8 @@ async def _process_one_track(
         await update_track(
             track_id,
             status="not_found",
-            sc_id=match.sc_id,
-            sc_url=match.sc_url,
+            sc_id=match.track_id,
+            sc_url=match.track_url,
             match_score=match.score,
         )
         return "uncertain", None
@@ -299,13 +299,13 @@ async def _process_one_track(
     if like_tracks:
         # Режим прямых лайков: пробуем like_track, при 404 fallback в плейлист
         try:
-            success = await sc_client.like_track(match.sc_id)
+            success = await sc_client.like_track(match.track_id)
             if success:
                 await update_track(
                     track_id,
                     status="liked",
-                    sc_id=match.sc_id,
-                    sc_url=match.sc_url,
+                    sc_id=match.track_id,
+                    sc_url=match.track_url,
                     match_score=match.score,
                 )
                 return "liked", None  # лайк поставлен напрямую — в плейлист не нужен
@@ -317,34 +317,34 @@ async def _process_one_track(
             await update_track(
                 track_id,
                 status="liked",
-                sc_id=match.sc_id,
-                sc_url=match.sc_url,
+                sc_id=match.track_id,
+                sc_url=match.track_url,
                 match_score=match.score,
             )
-            return "liked", match.sc_id  # собираем sc_id для плейлиста
+            return "liked", match.track_id  # собираем track_id для плейлиста
 
     if playlist_mode:
-        # Плейлист-режим: сохраняем статус и возвращаем sc_id для создания плейлиста в конце
+        # Плейлист-режим: сохраняем статус и возвращаем track_id для создания плейлиста в конце
         await update_track(
             track_id,
             status="liked",
-            sc_id=match.sc_id,
-            sc_url=match.sc_url,
+            sc_id=match.track_id,
+            sc_url=match.track_url,
             match_score=match.score,
         )
-        return "liked", match.sc_id
+        return "liked", match.track_id
 
     # Обычный режим: лайкаем
-    success = await sc_client.like_track(match.sc_id)
+    success = await sc_client.like_track(match.track_id)
     if success:
         await update_track(
             track_id,
             status="liked",
-            sc_id=match.sc_id,
-            sc_url=match.sc_url,
+            sc_id=match.track_id,
+            sc_url=match.track_url,
             match_score=match.score,
         )
-        return "liked", match.sc_id
+        return "liked", match.track_id
     else:
         await update_track(track_id, status="error")
         return "error", None

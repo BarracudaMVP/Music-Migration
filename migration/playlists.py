@@ -15,7 +15,7 @@ from core.db import (
 )
 from core.yandex.client import YandexMusicClient
 from core.soundcloud.client import SoundCloudClient
-from core.matcher import find_best_match, SCCandidate
+from core.matcher import find_best_match, TrackCandidate
 
 
 @dataclass
@@ -117,13 +117,13 @@ async def _process_one_playlist(
             continue
 
         candidates = [
-            SCCandidate(sc_id=t.id, sc_url=t.url, artist=t.artist, title=t.title)
+            TrackCandidate(track_id=t.id, track_url=t.url, artist=t.artist, title=t.title)
             for t in results
         ]
         match = find_best_match(track.artists_str, track.title, candidates)
         if match and match.matched:
-            sc_track_ids.append(match.sc_id)
-            track_cache[track.id] = match.sc_id  # обновляем локальный кэш
+            sc_track_ids.append(match.track_id)
+            track_cache[track.id] = match.track_id  # обновляем локальный кэш
 
     if not sc_track_ids:
         logger.warning(f"Плейлист {row['ym_title']!r}: ни один трек не найден на SC")

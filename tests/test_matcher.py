@@ -2,7 +2,7 @@
 import pytest
 
 from core.matcher import (
-    SCCandidate,
+    TrackCandidate,
     find_best_match,
     normalize,
     score_track_match,
@@ -207,16 +207,16 @@ class TestFindBestMatch:
 
     def test_best_candidate_selected(self):
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Drake", title="Gods Plan"),
-            SCCandidate(sc_id=2, sc_url="u2", artist="Radiohead", title="Creep"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Drake", title="Gods Plan"),
+            TrackCandidate(track_id=2, track_url="u2", artist="Radiohead", title="Creep"),
         ]
         result = find_best_match("Radiohead", "Creep", candidates, threshold=75.0)
         assert result is not None
-        assert result.sc_id == 2
+        assert result.track_id == 2
 
     def test_matched_true_above_threshold(self):
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Radiohead", title="Creep"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Radiohead", title="Creep"),
         ]
         result = find_best_match("Radiohead", "Creep", candidates, threshold=75.0)
         assert result is not None
@@ -224,7 +224,7 @@ class TestFindBestMatch:
 
     def test_matched_false_below_threshold(self):
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Drake", title="Gods Plan"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Drake", title="Gods Plan"),
         ]
         result = find_best_match("Beatles", "Hey Jude", candidates, threshold=75.0)
         assert result is not None
@@ -234,7 +234,7 @@ class TestFindBestMatch:
         # threshold=75, uncertain zone: [60, 75)
         # Use a candidate with a small name variation to hit ~65-74 range
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Radiohedd", title="Creep"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Radiohedd", title="Creep"),
         ]
         result = find_best_match("Radiohead", "Creep", candidates, threshold=75.0)
         assert result is not None
@@ -246,7 +246,7 @@ class TestFindBestMatch:
 
     def test_matched_and_uncertain_mutually_exclusive(self):
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Artist", title="Title"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Artist", title="Title"),
         ]
         result = find_best_match("Artist", "Title", candidates, threshold=75.0)
         assert result is not None
@@ -255,7 +255,7 @@ class TestFindBestMatch:
 
     def test_custom_threshold(self):
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Radiohead", title="Creep"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Radiohead", title="Creep"),
         ]
         result_strict = find_best_match("Radiohead", "Creep", candidates, threshold=99.0)
         result_loose = find_best_match("Radiohead", "Creep", candidates, threshold=10.0)
@@ -265,14 +265,14 @@ class TestFindBestMatch:
 
     def test_result_fields_populated(self):
         candidates = [
-            SCCandidate(sc_id=42, sc_url="http://sc/42", artist="Radiohead", title="Creep"),
+            TrackCandidate(track_id=42, track_url="http://sc/42", artist="Radiohead", title="Creep"),
         ]
         result = find_best_match("Radiohead", "Creep", candidates, threshold=75.0)
         assert result is not None
-        assert result.sc_id == 42
-        assert result.sc_url == "http://sc/42"
-        assert result.sc_artist == "Radiohead"
-        assert result.sc_title == "Creep"
+        assert result.track_id == 42
+        assert result.track_url == "http://sc/42"
+        assert result.cand_artist == "Radiohead"
+        assert result.cand_title == "Creep"
         assert isinstance(result.score, float)
 
 
@@ -309,23 +309,23 @@ class TestCrossServiceMatching:
     def test_file_source_english_to_sc(self):
         """File import (EN artist/title) matches SC candidates correctly."""
         candidates = [
-            SCCandidate(sc_id=1, sc_url="u1", artist="Nirvana", title="Smells Like Teen Spirit"),
-            SCCandidate(sc_id=2, sc_url="u2", artist="Drake", title="Gods Plan"),
+            TrackCandidate(track_id=1, track_url="u1", artist="Nirvana", title="Smells Like Teen Spirit"),
+            TrackCandidate(track_id=2, track_url="u2", artist="Drake", title="Gods Plan"),
         ]
         result = find_best_match("Nirvana", "Smells Like Teen Spirit", candidates, threshold=75.0)
         assert result is not None
-        assert result.sc_id == 1
+        assert result.track_id == 1
         assert result.matched is True
 
     def test_file_source_english_to_ym(self):
         """File import English tracks can match YM candidates (same scorer)."""
         candidates = [
-            SCCandidate(sc_id=10, sc_url="ym10", artist="Coldplay", title="Yellow"),
-            SCCandidate(sc_id=11, sc_url="ym11", artist="Coldplay", title="The Scientist"),
+            TrackCandidate(track_id=10, track_url="ym10", artist="Coldplay", title="Yellow"),
+            TrackCandidate(track_id=11, track_url="ym11", artist="Coldplay", title="The Scientist"),
         ]
         result = find_best_match("Coldplay", "Yellow", candidates, threshold=75.0)
         assert result is not None
-        assert result.sc_id == 10
+        assert result.track_id == 10
         assert result.matched is True
 
     def test_no_cyrillic_skips_transliteration(self):

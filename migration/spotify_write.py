@@ -26,7 +26,7 @@ from core.db import (
     update_artist,
 )
 from core.spotify.client import SpotifyClient
-from core.matcher import find_best_match, split_artists, SCCandidate
+from core.matcher import find_best_match, split_artists, TrackCandidate
 
 # Pause between Spotify write operations to avoid rate limiting
 _SPOTIFY_WRITE_SLEEP = 0.5
@@ -211,13 +211,13 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
         results_list = [await client.search_tracks(queries[0], limit=_SEARCH_LIMIT)]
 
     # Deduplicate by Spotify track ID
-    all_candidates: dict[str, SCCandidate] = {}
+    all_candidates: dict[str, TrackCandidate] = {}
     for sp_results in results_list:
         for t in sp_results:
             if t.id not in all_candidates:
-                all_candidates[t.id] = SCCandidate(
-                    sc_id=hash(t.id) & 0x7FFFFFFF,  # dedup key (int)
-                    sc_url=t.id,                      # Spotify track ID for liking
+                all_candidates[t.id] = TrackCandidate(
+                    track_id=hash(t.id) & 0x7FFFFFFF,  # dedup key (int)
+                    track_url=t.id,                      # Spotify track ID for liking
                     artist=t.artists_str,
                     title=t.title,
                 )
@@ -228,9 +228,9 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
     if not candidates:
         fallback = await client.search_tracks(src_title, limit=_SEARCH_LIMIT)
         candidates = [
-            SCCandidate(
-                sc_id=hash(t.id) & 0x7FFFFFFF,
-                sc_url=t.id,
+            TrackCandidate(
+                track_id=hash(t.id) & 0x7FFFFFFF,
+                track_url=t.id,
                 artist=t.artists_str,
                 title=t.title,
             )
@@ -243,8 +243,8 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
         await update_track(track_id, status="not_found", match_score=match.score if match else None)
         return "not_found"
 
-    # Like on Spotify — sc_url stores the Spotify track ID string
-    success = await client.like_track(match.sc_url)
+    # Like on Spotify — track_url stores the Spotify track ID string
+    success = await client.like_track(match.track_url)
     if success:
         await update_track(track_id, status="liked", match_score=match.score)
         return "liked"

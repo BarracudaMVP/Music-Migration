@@ -23,7 +23,7 @@ from core.db import (
     update_track,
 )
 from core.yandex.client import YandexMusicClient
-from core.matcher import find_best_match, split_artists, SCCandidate
+from core.matcher import find_best_match, split_artists, TrackCandidate
 
 # Pause between YM like operations to avoid rate limiting
 _YM_WRITE_SLEEP = 1.0
@@ -136,14 +136,14 @@ async def _process_one_track(ym_client: YandexMusicClient, row: dict) -> str:
         results_list = [await ym_client.search_tracks(queries[0], limit=_SEARCH_LIMIT)]
 
     # Deduplicate by YM track ID
-    all_candidates: dict[int, SCCandidate] = {}
+    all_candidates: dict[int, TrackCandidate] = {}
     for ym_results in results_list:
         for t in ym_results:
             ym_int_id = int(t.id)
             if ym_int_id not in all_candidates:
-                all_candidates[ym_int_id] = SCCandidate(
-                    sc_id=ym_int_id,   # used as dedup key
-                    sc_url=t.id,       # string YM track ID for liking
+                all_candidates[ym_int_id] = TrackCandidate(
+                    track_id=ym_int_id,   # used as dedup key
+                    track_url=t.id,       # string YM track ID for liking
                     artist=t.artists_str,
                     title=t.title,
                 )
@@ -154,7 +154,7 @@ async def _process_one_track(ym_client: YandexMusicClient, row: dict) -> str:
     if not candidates:
         fallback = await ym_client.search_tracks(src_title, limit=_SEARCH_LIMIT)
         candidates = [
-            SCCandidate(sc_id=int(t.id), sc_url=t.id, artist=t.artists_str, title=t.title)
+            TrackCandidate(track_id=int(t.id), track_url=t.id, artist=t.artists_str, title=t.title)
             for t in fallback
         ]
 
@@ -172,8 +172,8 @@ async def _process_one_track(ym_client: YandexMusicClient, row: dict) -> str:
         await update_track(track_id, status="not_found", match_score=match.score)
         return "not_found"
 
-    # Like on YM — sc_url stores the YM track ID string
-    success = await ym_client.like_track(match.sc_url)
+    # Like on YM — track_url stores the YM track ID string
+    success = await ym_client.like_track(match.track_url)
     if success:
         await update_track(track_id, status="liked", match_score=match.score)
         return "liked"
