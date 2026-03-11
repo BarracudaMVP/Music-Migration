@@ -11,12 +11,13 @@ _S: dict[str, dict[str, str]] = {
     # ------------------------------------------------------------------ #
     # Navigation / base
     # ------------------------------------------------------------------ #
-    "nav_home":    {"ru": "Главная",  "en": "Home"},
-    "nav_history": {"ru": "История",  "en": "History"},
-    "nav_import":  {"ru": "Импорт",   "en": "Import"},
-    "nav_export":  {"ru": "Экспорт",  "en": "Export"},
-    "nav_account": {"ru": "Аккаунт",  "en": "Account"},
-    "nav_logout":  {"ru": "Выйти",    "en": "Log out"},
+    "nav_home":         {"ru": "Главная",        "en": "Home"},
+    "nav_history":      {"ru": "История",        "en": "History"},
+    "nav_my_transfers": {"ru": "Мои переносы",   "en": "My transfers"},
+    "nav_import":       {"ru": "Импорт",         "en": "Import"},
+    "nav_export":       {"ru": "Экспорт",        "en": "Export"},
+    "nav_account":      {"ru": "Аккаунт",        "en": "Account"},
+    "nav_logout":       {"ru": "Выйти",          "en": "Log out"},
 
     # ------------------------------------------------------------------ #
     # Index
@@ -40,6 +41,23 @@ _S: dict[str, dict[str, str]] = {
     "index_skip_migrated_hint": {"ru": "Треки из предыдущих переносов в этот сервис не будут обработаны повторно", "en": "Tracks from previous transfers to this service will not be processed again"},
     "index_like_tracks":        {"ru": "Проставить лайки на треки", "en": "Like tracks directly"},
     "index_like_tracks_hint":   {"ru": "Попробует лайкнуть каждый трек напрямую; при отказе сервиса автоматически добавит в плейлист", "en": "Tries to like each track directly; if not supported, automatically falls back to playlist"},
+
+    # Stepwise flow (MM-49)
+    "step_from":            {"ru": "Откуда",                   "en": "From"},
+    "step_to":              {"ru": "Куда",                     "en": "To"},
+    "step_content_type":    {"ru": "Что переносить",           "en": "What to transfer"},
+    "step_auth":            {"ru": "Авторизация",              "en": "Authorization"},
+    "step_settings":        {"ru": "Настройки",                "en": "Settings"},
+    "content_tracks":       {"ru": "Треки",                    "en": "Tracks"},
+    "content_playlists":    {"ru": "Плейлисты",                "en": "Playlists"},
+    "content_artists":      {"ru": "Артисты",                  "en": "Artists"},
+    "auth_status_connected": {"ru": "✓ Подключено",            "en": "✓ Connected"},
+    "auth_status_not_connected": {"ru": "Не подключено",       "en": "Not connected"},
+    "from_file_btn":        {"ru": "📁 Из файла",              "en": "📁 From file"},
+    "from_file_hint":       {"ru": "CSV или JSON со списком треков", "en": "CSV or JSON with track list"},
+    "step_loading":         {"ru": "Загрузка...",              "en": "Loading..."},
+    "step_select_from":     {"ru": "Выбери источник",          "en": "Select source"},
+    "step_select_to":       {"ru": "Выбери назначение",        "en": "Select destination"},
 
     # ------------------------------------------------------------------ #
     # Auth

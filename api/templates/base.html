@@ -34,6 +34,11 @@
     /* mobile nav */
     #mobile-menu { display: none; }
     #mobile-menu.open { display: block; }
+
+    /* HTMX loading indicator */
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: block; }
+    .htmx-request.htmx-indicator { display: block; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-800 antialiased">
@@ -50,16 +55,16 @@
 
       <!-- Desktop links -->
       <div class="hidden sm:flex items-center gap-1 text-sm">
-        <a href="/"       class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_home') }}</a>
-        <a href="/history" class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_history') }}</a>
-        <a href="/auth"    class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_account') }}</a>
+        {% if has_migrations %}
+        <a href="/history" class="px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition">{{ t('nav_my_transfers') }}</a>
+        {% endif %}
         <!-- Language switcher -->
         {% if lang == 'en' %}
         <a href="/set-lang?lang=ru&next={{ request.url.path }}"
-           class="px-2 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-100 transition font-medium">RU</a>
+           class="px-2 py-1.5 rounded-lg text-base hover:bg-gray-100 transition" title="Русский">🇷🇺</a>
         {% else %}
         <a href="/set-lang?lang=en&next={{ request.url.path }}"
-           class="px-2 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-100 transition font-medium">EN</a>
+           class="px-2 py-1.5 rounded-lg text-base hover:bg-gray-100 transition" title="English">🇬🇧</a>
         {% endif %}
       </div>
 
@@ -74,13 +79,13 @@
 
     <!-- Mobile menu -->
     <div id="mobile-menu" class="sm:hidden border-t border-gray-100 bg-white px-4 py-2 space-y-1 text-sm">
-      <a href="/"        class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_home') }}</a>
-      <a href="/history" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_history') }}</a>
-      <a href="/auth"    class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_account') }}</a>
+      {% if has_migrations %}
+      <a href="/history" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_my_transfers') }}</a>
+      {% endif %}
       {% if lang == 'en' %}
-      <a href="/set-lang?lang=ru&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">RU</a>
+      <a href="/set-lang?lang=ru&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">🇷🇺 Русский</a>
       {% else %}
-      <a href="/set-lang?lang=en&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">EN</a>
+      <a href="/set-lang?lang=en&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">🇬🇧 English</a>
       {% endif %}
     </div>
   </nav>

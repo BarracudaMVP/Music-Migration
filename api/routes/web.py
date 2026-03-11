@@ -40,11 +40,21 @@ def get_lang(request: Request) -> str:
     return detect_lang_web(request)
 
 
+_SERVICE_ICONS = {
+    "yandex_music": "🎵",
+    "spotify": "🟢",
+    "soundcloud": "☁️",
+    "file_csv": "📁",
+}
+
+
 def _render(template: str, request: Request, ctx: dict) -> templates.TemplateResponse:
     """Shortcut: inject lang + t() into every template context."""
     lang = get_lang(request)
     ctx["lang"] = lang
     ctx["t"] = lambda key: _t(key, lang)
+    ctx.setdefault("has_migrations", False)
+    ctx.setdefault("service_icons", _SERVICE_ICONS)
     return templates.TemplateResponse(template, {"request": request, **ctx})
 
 
@@ -106,15 +116,115 @@ async def set_lang(request: Request, lang: str = "ru", next: str = "/"):
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, error: str = ""):
+    from sqlalchemy import select, func
+    from core.db.models import Migration
+    from core.db.session import AsyncSessionLocal
+
+    user_id = _ensure_user_id(request)
+
+    # Unique FROM services from transfer matrix
+    matrix = ServiceRegistry.get_matrix()
+    seen_from: set[str] = set()
+    from_services: dict[str, str] = {}
+    for pair in matrix:
+        if pair["from"] not in seen_from:
+            seen_from.add(pair["from"])
+            from_services[pair["from"]] = ServiceRegistry.get(pair["from"]).name
+
+    # Check if user has any migrations for nav
+    has_migrations = False
+    try:
+        async with AsyncSessionLocal() as s:
+            count = await s.scalar(
+                select(func.count()).select_from(Migration).where(Migration.user_id == user_id)
+            )
+            has_migrations = bool(count and count > 0)
+    except Exception:
+        pass
+
+    return _render("index.html", request, {
+        "from_services": from_services,
+        "has_migrations": has_migrations,
+        "error": error,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Flow HTMX fragments (MM-49)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/flow/to-step", response_class=HTMLResponse)
+async def flow_to_step(request: Request, from_service: str):
+    """HTMX: returns TO service cards for the selected FROM service."""
+    matrix = ServiceRegistry.get_matrix()
+    to_services: dict[str, str] = {}
+    for pair in matrix:
+        if pair["from"] == from_service and pair["to"] not in to_services:
+            to_services[pair["to"]] = ServiceRegistry.get(pair["to"]).name
+    return _render("fragments/flow_to.html", request, {
+        "from_service": from_service,
+        "to_services": to_services,
+    })
+
+
+@router.get("/api/flow/rest", response_class=HTMLResponse)
+async def flow_rest(request: Request, from_service: str, to_service: str):
+    """HTMX: returns content-types + auth status + settings for a FROM→TO pair."""
+    from core.services.base import Capability
+    from config import settings as cfg
+
     user_id = _ensure_user_id(request)
     db_session = await load_user_session(user_id)
-    matrix = ServiceRegistry.get_matrix()
-    services = {a.id: a.name for a in ServiceRegistry.all()}
-    return _render("index.html", request, {
-        "authed": db_session is not None,
-        "matrix": matrix,
-        "services": services,
-        "error": error,
+
+    try:
+        from_adapter = ServiceRegistry.get(from_service)
+        to_adapter = ServiceRegistry.get(to_service)
+    except KeyError:
+        return HTMLResponse("<p class='text-red-600 text-sm'>Неизвестный сервис.</p>")
+
+    # Content types availability
+    ct_defs = [
+        ("tracks",    Capability.READ_LIKED_TRACKS,   Capability.WRITE_LIKED_TRACKS),
+        ("playlists", Capability.READ_PLAYLISTS,       Capability.WRITE_PLAYLISTS),
+        ("artists",   Capability.READ_LIKED_ARTISTS,   Capability.WRITE_LIKED_ARTISTS),
+    ]
+    content_types = []
+    for ct_id, read_cap, write_cap in ct_defs:
+        available = from_adapter.can(read_cap) and to_adapter.can(write_cap)
+        content_types.append({"id": ct_id, "available": available, "checked": available})
+    # Tracks always checked
+    content_types[0]["checked"] = True
+
+    # Auth status per service
+    def _connected(service_id: str) -> bool:
+        if service_id == "yandex_music":
+            return bool(
+                request.session.get("ym_token")
+                or (db_session and db_session.get("yandex_token"))
+            )
+        if service_id == "soundcloud":
+            return bool(
+                request.session.get("sc_connected")
+                or (db_session and db_session.get("soundcloud_token"))
+            )
+        if service_id == "spotify":
+            return bool(
+                request.session.get("spotify_connected")
+                or (db_session and db_session.get("spotify_token"))
+            )
+        return True  # file_csv needs no auth
+
+    return _render("fragments/flow_rest.html", request, {
+        "from_service": from_service,
+        "to_service": to_service,
+        "from_name": from_adapter.name,
+        "to_name": to_adapter.name,
+        "content_types": content_types,
+        "from_connected": _connected(from_service),
+        "to_connected": _connected(to_service),
+        "ym_redirect_configured": bool(cfg.yandex_redirect_uri),
+        "spotify_enabled": bool(cfg.spotify_client_id),
+        "sc_enabled": bool(cfg.sc_client_id),
     })
 
 
@@ -151,7 +261,7 @@ async def auth_page(request: Request, error: str = ""):
 
 
 @router.get("/auth/yandex")
-async def auth_yandex_start(request: Request):
+async def auth_yandex_start(request: Request, flow_from: str = "", flow_to: str = ""):
     """Yandex OAuth web flow — redirect to Yandex (MM-43)."""
     import secrets
     from config import settings
@@ -163,6 +273,9 @@ async def auth_yandex_start(request: Request):
             status_code=303,
         )
     _ensure_user_id(request)
+    if flow_from:
+        request.session["auth_flow_from"] = flow_from
+        request.session["auth_flow_to"] = flow_to
     state = "web_" + secrets.token_urlsafe(16)
     response = RedirectResponse(get_callback_auth_url(state), status_code=303)
     response.set_cookie("_ym_state", state, httponly=True, samesite="lax", max_age=600)
@@ -237,12 +350,15 @@ async def auth_yandex_callback(request: Request, code: str = "", state: str = ""
         response.delete_cookie("_ym_state")
         return response
 
-    # Web flow: save to session AND DB, redirect to /auth
+    # Web flow: save to session AND DB, redirect back to flow
     user_id = _ensure_user_id(request)
     request.session["ym_token"] = token
     from core.db import save_yandex_token
     await save_yandex_token(user_id, token)
-    response = RedirectResponse("/auth", status_code=303)
+    pf = request.session.pop("auth_flow_from", "")
+    pt = request.session.pop("auth_flow_to", "")
+    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
+    response = RedirectResponse(next_url, status_code=303)
     response.delete_cookie("_ym_state")
     return response
 
@@ -313,7 +429,7 @@ async def auth_soundcloud(request: Request, sc_token: str = Form(...)):
 
 
 @router.get("/auth/soundcloud")
-async def auth_soundcloud_redirect(request: Request):
+async def auth_soundcloud_redirect(request: Request, flow_from: str = "", flow_to: str = ""):
     """Redirect пользователя на страницу авторизации SoundCloud."""
     from core.soundcloud.oauth import generate_pkce_pair, generate_state, get_auth_url
     from config import settings
@@ -324,6 +440,9 @@ async def auth_soundcloud_redirect(request: Request):
             status_code=303,
         )
     _ensure_user_id(request)
+    if flow_from:
+        request.session["auth_flow_from"] = flow_from
+        request.session["auth_flow_to"] = flow_to
     state = generate_state()
     code_verifier, code_challenge = generate_pkce_pair()
     response = RedirectResponse(get_auth_url(state, code_challenge), status_code=303)
@@ -366,14 +485,17 @@ async def auth_soundcloud_callback(request: Request, code: str = "", state: str 
         response.delete_cookie("_sc_verifier")
         return response
 
-    response = RedirectResponse("/auth", status_code=303)
+    pf = request.session.pop("auth_flow_from", "")
+    pt = request.session.pop("auth_flow_to", "")
+    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
+    response = RedirectResponse(next_url, status_code=303)
     response.delete_cookie("_sc_state")
     response.delete_cookie("_sc_verifier")
     return response
 
 
 @router.get("/auth/spotify")
-async def auth_spotify_redirect(request: Request):
+async def auth_spotify_redirect(request: Request, flow_from: str = "", flow_to: str = ""):
     """Redirect пользователя на страницу авторизации Spotify."""
     from core.spotify.oauth import generate_state, get_auth_url
     from config import settings
@@ -384,6 +506,9 @@ async def auth_spotify_redirect(request: Request):
             status_code=303,
         )
     _ensure_user_id(request)
+    if flow_from:
+        request.session["auth_flow_from"] = flow_from
+        request.session["auth_flow_to"] = flow_to
     state = generate_state()
     request.session["spotify_oauth_state"] = state
     return RedirectResponse(get_auth_url(state), status_code=303)
@@ -420,7 +545,10 @@ async def auth_spotify_callback(request: Request, code: str = "", state: str = "
     except Exception as e:
         return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
 
-    return RedirectResponse("/auth", status_code=303)
+    pf = request.session.pop("auth_flow_from", "")
+    pt = request.session.pop("auth_flow_to", "")
+    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
+    return RedirectResponse(next_url, status_code=303)
 
 
 @router.post("/auth/logout")
@@ -441,27 +569,33 @@ async def start_migrate(
     request: Request,
     from_service: str = Form(...),
     to_service: str = Form(...),
-    mode: str = Form("full"),
     track_limit: int = Form(0),
     skip_already_migrated: bool = Form(False),
     like_tracks: bool = Form(False),
 ):
     from api.main import get_arq_pool
 
+    # Parse content_types from raw form (multiple checkbox values)
+    form_data = await request.form()
+    content_types = list(form_data.getlist("content_types"))
+    if not content_types:
+        content_types = ["tracks"]
+    mode = "full" if any(ct in content_types for ct in ("playlists", "artists")) else "tracks"
+
     user_id = _session_user_id(request)
     if not user_id:
-        return RedirectResponse("/auth", status_code=303)
+        return RedirectResponse("/", status_code=303)
 
     db_session = await load_user_session(user_id)
     if not db_session:
-        return RedirectResponse("/auth", status_code=303)
+        return RedirectResponse("/", status_code=303)
 
     # Validate that the selected from→to pair is supported by the service registry
     matrix = ServiceRegistry.get_matrix()
     supported = {(e["from"], e["to"]) for e in matrix}
     if (from_service, to_service) not in supported:
         return RedirectResponse(
-            f"/?error={quote(f'Направление {from_service} → {to_service} не поддерживается')}",
+            f"/?error={quote(f'Направление {from_service} \u2192 {to_service} не поддерживается')}",
             status_code=303,
         )
 
@@ -538,6 +672,9 @@ async def migration_progress(request: Request, migration_id: int):
     migration = await get_migration(migration_id)
     if migration is None:
         return RedirectResponse("/", status_code=303)
+    user_id = _session_user_id(request)
+    if user_id and migration.get("user_id") and migration["user_id"] != user_id:
+        raise HTTPException(status_code=403)
     return _render("progress.html", request, {
         "migration_id": migration_id, "migration": migration,
     })
@@ -549,6 +686,9 @@ async def migration_status_fragment(request: Request, migration_id: int):
     migration = await get_migration(migration_id)
     if migration is None:
         return HTMLResponse("<p>Migration not found.</p>")
+    user_id = _session_user_id(request)
+    if user_id and migration.get("user_id") and migration["user_id"] != user_id:
+        return HTMLResponse("<p>Access denied.</p>", status_code=403)
 
     stats = await get_track_stats(migration_id)
     done = migration["status"] in ("done", "failed", "cancelled")
@@ -623,6 +763,9 @@ async def migration_tracks(
     migration = await get_migration(migration_id)
     if migration is None:
         return RedirectResponse("/", status_code=303)
+    user_id = _session_user_id(request)
+    if user_id and migration.get("user_id") and migration["user_id"] != user_id:
+        raise HTTPException(status_code=403)
 
     page = max(1, page)
     tracks, total = await get_tracks_page(
@@ -899,4 +1042,7 @@ async def history(request: Request):
         }
         for m in rows
     ]
-    return _render("history.html", request, {"migrations": migrations})
+    return _render("history.html", request, {
+        "migrations": migrations,
+        "has_migrations": bool(rows),
+    })

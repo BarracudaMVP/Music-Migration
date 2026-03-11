@@ -2,7 +2,7 @@
 {% block title %}Music Migration — {{ t('index_title') }}{% endblock %}
 
 {% block content %}
-<div class="mb-8">
+<div class="mb-6">
   <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">{{ t('index_title') }}</h1>
   <p class="text-gray-500 mt-1 text-sm">{{ t('index_subtitle') }}</p>
 </div>
@@ -16,114 +16,137 @@
 </div>
 {% endif %}
 
-{% if not authed %}
-<div class="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-sm">
-  <div class="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
-    <svg class="w-7 h-7 text-indigo-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
-    </svg>
-  </div>
-  <p class="text-gray-600 mb-5">{{ t('index_not_authed') }}</p>
-  <a href="/auth"
-    class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 font-medium transition">
-    {{ t('index_login_btn') }}
-  </a>
-</div>
-
-{% else %}
-
-{% if matrix %}
-<form method="post" action="/migrate" class="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-5">
-
-  <div class="grid sm:grid-cols-2 gap-4">
-    <div>
-      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_from') }}</label>
-      <select name="from_service"
-        class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
-        {% set seen_from = [] %}
-        {% for pair in matrix %}
-          {% if pair.from not in seen_from %}
-            {% set _ = seen_from.append(pair.from) %}
-            <option value="{{ pair.from }}">{{ services.get(pair.from, pair.from) }}</option>
-          {% endif %}
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_to') }}</label>
-      <select name="to_service"
-        class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
-        {% set seen_to = [] %}
-        {% for pair in matrix %}
-          {% if pair.to not in seen_to %}
-            {% set _ = seen_to.append(pair.to) %}
-            <option value="{{ pair.to }}">{{ services.get(pair.to, pair.to) }}</option>
-          {% endif %}
-        {% endfor %}
-      </select>
-    </div>
-  </div>
-
-  <div>
-    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_what') }}</label>
-    <div class="grid grid-cols-2 gap-2">
-      <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-400 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
-        <input type="radio" name="mode" value="tracks" class="accent-indigo-600">
-        <span class="text-sm">{{ t('index_mode_tracks') }}</span>
-      </label>
-      <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-indigo-400 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
-        <input type="radio" name="mode" value="full" checked class="accent-indigo-600">
-        <span class="text-sm">{{ t('index_mode_full') }}</span>
-      </label>
-    </div>
-  </div>
-
-  <div>
-    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{{ t('index_track_limit') }}</label>
-    <select name="track_limit"
-      class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
-      <option value="0">{{ t('index_limit_all') }}</option>
-      <option value="50">{{ t('index_limit_first').format(n=50) }}</option>
-      <option value="100">{{ t('index_limit_first').format(n=100) }}</option>
-      <option value="500">{{ t('index_limit_first').format(n=500) }}</option>
-    </select>
-  </div>
-
-  <div class="flex items-start gap-2.5">
-    <input type="checkbox" name="skip_already_migrated" id="skip_already_migrated" value="true" checked
-      class="mt-0.5 accent-indigo-600 w-4 h-4 shrink-0">
-    <label for="skip_already_migrated" class="text-sm cursor-pointer">
-      {{ t('index_skip_migrated') }}
-      <span class="block text-xs text-gray-400 mt-0.5">{{ t('index_skip_migrated_hint') }}</span>
-    </label>
-  </div>
-
-  <div class="flex items-start gap-2.5">
-    <input type="checkbox" name="like_tracks" id="like_tracks" value="true"
-      class="mt-0.5 accent-indigo-600 w-4 h-4 shrink-0">
-    <label for="like_tracks" class="text-sm cursor-pointer">
-      {{ t('index_like_tracks') }}
-      <span class="block text-xs text-gray-400 mt-0.5">{{ t('index_like_tracks_hint') }}</span>
-    </label>
-  </div>
-
-  <button type="submit"
-    class="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 font-semibold transition text-sm">
-    {{ t('index_start_btn') }}
-  </button>
-</form>
-
-<p class="text-center text-xs text-gray-400 mt-4">
-  {{ t('index_import_hint').replace(t('nav_import'), '') }}
-  <a href="/import" class="text-indigo-500 hover:underline">{{ t('nav_import').lower() }}</a>.
-</p>
-
-{% else %}
+{% if not from_services %}
 <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-800 text-sm">
   {{ t('index_no_routes') }}
 </div>
-{% endif %}
+{% else %}
+
+<form method="post" action="/migrate" id="mig-form" class="space-y-5">
+  <input type="hidden" name="from_service" id="inp-from" value="">
+  <input type="hidden" name="to_service" id="inp-to" value="">
+
+  <!-- Step 1: FROM -->
+  <div class="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{{ t('step_from') }}</p>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {% for svc_id, svc_name in from_services.items() %}
+      <button type="button"
+        id="from-btn-{{ svc_id }}"
+        class="from-card flex flex-col items-center gap-2 border-2 border-gray-200 rounded-xl px-4 py-4 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition text-sm font-medium text-gray-700 text-center"
+        data-from="{{ svc_id }}"
+        hx-get="/api/flow/to-step?from={{ svc_id }}"
+        hx-target="#step-to-inner"
+        hx-swap="innerHTML"
+        hx-indicator="#step-to-loader"
+        onclick="selectFrom('{{ svc_id }}')"
+      >
+        <span class="text-2xl">{{ service_icons.get(svc_id, '🎵') }}</span>
+        <span>{{ svc_name }}</span>
+      </button>
+      {% endfor %}
+
+      <!-- Import from file — special card -->
+      <a href="/import"
+        class="flex flex-col items-center gap-2 border-2 border-dashed border-gray-200 rounded-xl px-4 py-4 hover:border-indigo-400 hover:bg-indigo-50 transition text-sm font-medium text-gray-500 text-center">
+        <span class="text-2xl">📁</span>
+        <span>{{ t('from_file_btn') }}</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Step 2: TO (HTMX target) -->
+  <div id="step-to" class="hidden bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+    <div id="step-to-loader" class="htmx-indicator text-sm text-gray-400 py-2">{{ t('step_loading') }}</div>
+    <div id="step-to-inner"></div>
+  </div>
+
+  <!-- Step 3+: content types + auth + settings (HTMX target) -->
+  <div id="step-rest" class="hidden bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+  </div>
+  <div id="step-rest-loader" class="htmx-indicator hidden text-sm text-gray-400 py-2 text-center">{{ t('step_loading') }}</div>
+
+</form>
 
 {% endif %}
+
+<script>
+function selectFrom(serviceId) {
+  document.getElementById('inp-from').value = serviceId;
+  document.getElementById('inp-to').value = '';
+
+  // Highlight selected card
+  document.querySelectorAll('.from-card').forEach(btn => {
+    btn.classList.remove('border-indigo-500', 'bg-indigo-50');
+    btn.classList.add('border-gray-200');
+  });
+  const sel = document.getElementById('from-btn-' + serviceId);
+  if (sel) {
+    sel.classList.remove('border-gray-200');
+    sel.classList.add('border-indigo-500', 'bg-indigo-50');
+  }
+
+  // Show step-to, hide step-rest
+  document.getElementById('step-to').classList.remove('hidden');
+  document.getElementById('step-rest').classList.add('hidden');
+  document.getElementById('step-rest').innerHTML = '';
+  document.getElementById('step-to-inner').innerHTML = '';
+}
+
+function selectTo(serviceId) {
+  document.getElementById('inp-to').value = serviceId;
+
+  // Highlight selected card
+  document.querySelectorAll('.to-card').forEach(btn => {
+    btn.classList.remove('border-indigo-500', 'bg-indigo-50');
+    btn.classList.add('border-gray-200');
+  });
+  const sel = document.querySelector('.to-card[data-to="' + serviceId + '"]');
+  if (sel) {
+    sel.classList.remove('border-gray-200');
+    sel.classList.add('border-indigo-500', 'bg-indigo-50');
+  }
+
+  // Show step-rest
+  document.getElementById('step-rest').classList.remove('hidden');
+}
+
+// HTMX: after step-to loads, scroll to it
+document.addEventListener('htmx:afterSwap', function(e) {
+  if (e.detail.target.id === 'step-to-inner') {
+    document.getElementById('step-to').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  if (e.detail.target.id === 'step-rest') {
+    document.getElementById('step-rest').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+});
+
+// Restore prefill from URL params (after OAuth redirect)
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const pf = params.get('pf');
+  const pt = params.get('pt');
+  if (pf) {
+    const btn = document.getElementById('from-btn-' + pf);
+    if (btn) {
+      // Trigger HTMX after page settles
+      setTimeout(() => {
+        btn.click();
+        if (pt) {
+          // Wait for TO to load, then click TO
+          document.addEventListener('htmx:afterSwap', function onToLoad(e) {
+            if (e.detail.target.id === 'step-to-inner') {
+              document.removeEventListener('htmx:afterSwap', onToLoad);
+              setTimeout(() => {
+                const toBtn = document.querySelector('.to-card[data-to="' + pt + '"]');
+                if (toBtn) toBtn.click();
+              }, 50);
+            }
+          });
+        }
+      }, 50);
+    }
+  }
+})();
+</script>
 {% endblock %}
