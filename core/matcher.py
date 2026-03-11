@@ -1,5 +1,5 @@
 """
-Нечёткое сопоставление треков между Яндекс Музыкой и SoundCloud.
+Нечёткое сопоставление треков между стриминговыми платформами.
 
 Стратегия:
 1. Нормализация: lowercase, убираем пунктуацию, feat., ремастеры и т.д.
@@ -101,25 +101,26 @@ def _score_pair(source: str, candidate: str) -> float:
 
 
 def score_track_match(
-    ym_artist: str,
-    ym_title: str,
-    sc_artist: str,
-    sc_title: str,
+    source_artist: str,
+    source_title: str,
+    cand_artist: str,
+    cand_title: str,
 ) -> float:
     """
     Возвращает итоговый score (0-100) совпадения двух треков.
+    Работает для любых пар сервисов (YM, Spotify, SC, File).
 
     Алгоритм:
-    - Генерируем варианты транслитерации для YM-строк
+    - Генерируем варианты транслитерации для строк источника
     - Для каждого варианта считаем artist_score и title_score
     - Итог = max по всем вариантам (0.4 * artist + 0.6 * title)
     """
-    norm_sc_artist = normalize(sc_artist)
-    norm_sc_title = normalize(sc_title)
+    norm_sc_artist = normalize(cand_artist)
+    norm_sc_title = normalize(cand_title)
 
     best = 0.0
-    for ym_art_variant in transliterate_variants(ym_artist):
-        for ym_ttl_variant in transliterate_variants(ym_title):
+    for ym_art_variant in transliterate_variants(source_artist):
+        for ym_ttl_variant in transliterate_variants(source_title):
             norm_art = normalize(ym_art_variant)
             norm_ttl = normalize(ym_ttl_variant)
 
@@ -153,7 +154,11 @@ class MatchResult:
 
 @dataclass
 class SCCandidate:
-    """Кандидат со стороны SoundCloud для сравнения."""
+    """
+    Кандидат для сравнения с треком-источником.
+    Используется для всех целевых платформ (SC, YM, Spotify) — название исторически SC-specific,
+    но логика и поля универсальны.
+    """
     sc_id: int
     sc_url: str
     artist: str
@@ -188,17 +193,18 @@ def split_artists(artist: str) -> list[str]:
 
 
 def find_best_match(
-    ym_artist: str,
-    ym_title: str,
+    source_artist: str,
+    source_title: str,
     candidates: list[SCCandidate],
     threshold: float | None = None,
 ) -> MatchResult | None:
     """
-    Выбирает лучшего кандидата из списка SoundCloud-треков.
+    Выбирает лучшего кандидата из списка.
+    Работает для любых пар платформ (YM→SC, Spotify→YM, File→Spotify и т.д.).
 
     Возвращает MatchResult или None если кандидатов нет.
     matched=True  если score >= threshold (по умолчанию из конфига)
-    uncertain=True если score в диапазоне [threshold-15, threshold)
+    uncertain=True если score в диапазоне [uncertain_floor, threshold)
     """
     if not candidates:
         return None
@@ -210,7 +216,7 @@ def find_best_match(
     best_candidate: SCCandidate | None = None
 
     for cand in candidates:
-        score = score_track_match(ym_artist, ym_title, cand.artist, cand.title)
+        score = score_track_match(source_artist, source_title, cand.artist, cand.title)
         if score > best_score:
             best_score = score
             best_candidate = cand

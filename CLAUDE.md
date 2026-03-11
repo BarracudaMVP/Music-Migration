@@ -5,18 +5,19 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MVP9 + MM-49**, deployed on EU server.
+Current state: **MVP9 + MM-71**, deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:
 ```
-FROM \ TO     | SoundCloud | File CSV  | Яндекс Музыка | Spotify
---------------|------------|-----------|---------------|--------
-Яндекс Музыка |     ✓      |    ✓      |       –       |    ✓
-Spotify       |     ✓      |    ✓      |       ✓       |    –
-File CSV      |     ✓      |    –      |       ✓       |    ✓
-SoundCloud    |     –      |    ✓      |       ✓       |    ✓
+FROM \ TO     | SoundCloud | File (CSV/JSON) | Яндекс Музыка | Spotify
+--------------|------------|-----------------|---------------|--------
+Яндекс Музыка |     ✓      |        ✓        |       –       |    ✓
+Spotify       |     ✓      |        ✓        |       ✓       |    –
+File          |     ✓      |        ✗        |       ✓       |    ✓
+SoundCloud    |     –      |        ✓        |       ✓       |    ✓
 ```
+File→File запрещён (карточка "В файл" скрывается в UI когда FROM=File).
 
 Note: SC destination uses **playlist_mode** — tracks are collected then placed into "YM Liked #N" playlists (SC `like_track` API returns 404 for external tokens).
 
@@ -348,5 +349,8 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - OAuth callbacks сохраняют `auth_flow_from`/`auth_flow_to` в session; после успешной авторизации редиректят на `/?pf=...&pt=...` для восстановления флоу
 - `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
-- File import/export unified in main flow (MM-67): `GET /import` и `GET /export` → 303 → `/`; `file_csv` добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file_csv"` — все адаптеры с WRITE_LIKED_TRACKS; `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
+- File import/export unified in main flow (MM-67): `GET /import` и `GET /export` → 303 → `/`; `file_csv` добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file_csv"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
 - `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)
+- `score_track_match(source_artist, source_title, cand_artist, cand_title)` и `find_best_match(source_artist, source_title, ...)` — параметры переименованы из `ym_*`/`sc_*` в универсальные (MM-68); `SCCandidate` — generic кандидат для любой целевой платформы
+- auth-gate (MM-70): кнопка submit в `flow_rest.html` disabled когда нужные сервисы не авторизованы; пикер файла и dropdown формата в одной строке с кнопкой (компактный inline layout)
+- dead code removed (MM-71): `POST /import/preview`, `POST /import/start`, `POST /export/start` удалены; шаблоны `import.html`, `export.html`, `fragments/import_preview.html` удалены; `scripts/entrypoint.sh` (перенесён из корня)

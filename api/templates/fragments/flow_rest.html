@@ -132,40 +132,6 @@
       </label>
       {% endif %}
 
-      {% if is_to_file %}
-      <div>
-        <label class="text-sm text-gray-700 block mb-1">{{ t('export_fmt_label') }}</label>
-        <select name="export_fmt"
-          class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
-          <option value="csv">CSV</option>
-          <option value="json">JSON</option>
-        </select>
-      </div>
-      {% endif %}
-
-      {% if is_from_file %}
-      <div>
-        <label class="text-sm text-gray-700 block mb-1">{{ t('from_file_label') }}</label>
-        <label class="flex-1 cursor-pointer group" for="flow-file-input">
-          <input
-            type="file"
-            name="file"
-            id="flow-file-input"
-            accept=".csv,.json"
-            required
-            class="sr-only"
-            onchange="document.getElementById('flow-file-name').textContent = this.files[0]?.name || '{{ t('file_no_file') }}'"
-          >
-          <div class="flex items-center gap-2 w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
-                      hover:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400 cursor-pointer transition">
-            <span class="bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1 text-xs font-medium
-                         group-hover:bg-indigo-100 transition whitespace-nowrap">{{ t('file_choose_btn') }}</span>
-            <span id="flow-file-name" class="text-gray-400 truncate">{{ t('file_no_file') }}</span>
-          </div>
-        </label>
-      </div>
-      {% endif %}
-
     </div>
   </div>
 
@@ -174,12 +140,45 @@
   {% set needs_to_auth = to_service != 'file_csv' and not to_connected %}
   {% set auth_ok = not needs_from_auth and not needs_to_auth %}
   <div class="flex flex-col items-end gap-1.5">
-    <button type="submit"
-      {% if not auth_ok %}disabled{% endif %}
-      class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold transition text-sm
-             {% if not auth_ok %}opacity-50 cursor-not-allowed{% else %}hover:bg-indigo-700{% endif %}">
-      {% if is_to_file %}{{ t('export_btn') }}{% else %}{{ t('index_start_btn') }}{% endif %}
-    </button>
+    <div class="flex items-center gap-2">
+
+      {% if is_from_file %}
+      <!-- Compact file picker inline with submit button -->
+      <label class="cursor-pointer group" for="flow-file-input">
+        <input
+          type="file"
+          name="file"
+          id="flow-file-input"
+          accept=".csv,.json"
+          required
+          class="sr-only"
+          onchange="document.getElementById('flow-file-name').textContent = this.files[0]?.name || '{{ t('file_no_file') }}'"
+        >
+        <div class="flex items-center gap-1.5 border border-gray-300 rounded-xl px-2.5 py-2.5 text-sm
+                    hover:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400 cursor-pointer transition">
+          <span class="bg-indigo-50 text-indigo-700 rounded-lg px-2.5 py-1 text-xs font-medium
+                       group-hover:bg-indigo-100 transition whitespace-nowrap">{{ t('file_choose_btn') }}</span>
+          <span id="flow-file-name" class="text-gray-400 text-xs max-w-[110px] truncate">{{ t('file_no_file') }}</span>
+        </div>
+      </label>
+      {% endif %}
+
+      {% if is_to_file %}
+      <!-- Compact format selector inline with download button -->
+      <select name="export_fmt"
+        class="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50 w-20">
+        <option value="csv">CSV</option>
+        <option value="json">JSON</option>
+      </select>
+      {% endif %}
+
+      <button type="submit"
+        {% if not auth_ok %}disabled{% endif %}
+        class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold transition text-sm
+               {% if not auth_ok %}opacity-50 cursor-not-allowed{% else %}hover:bg-indigo-700{% endif %}">
+        {% if is_to_file %}{{ t('export_btn') }}{% else %}{{ t('index_start_btn') }}{% endif %}
+      </button>
+    </div>
     {% if not auth_ok %}
     <p class="text-xs text-gray-400">{{ t('auth_required_hint') }}</p>
     {% endif %}
