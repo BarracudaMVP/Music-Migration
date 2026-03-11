@@ -111,15 +111,16 @@
         <option value="500">{{ t('index_limit_first').format(n=500) }}</option>
       </select>
 
-      <label class="flex items-start gap-2.5 {% if is_from_file or is_to_file %}opacity-40 cursor-not-allowed{% else %}cursor-pointer{% endif %}">
+      {% if not is_from_file and not is_to_file %}
+      <label class="flex items-start gap-2.5 cursor-pointer">
         <input type="checkbox" name="skip_already_migrated" value="true" checked
-          {% if is_from_file or is_to_file %}disabled{% endif %}
           class="mt-0.5 accent-indigo-600 w-4 h-4 shrink-0">
         <span class="text-sm text-gray-700">
           {{ t('index_skip_migrated') }}
           <span class="block text-xs text-gray-400 mt-0.5">{{ t('index_skip_migrated_hint') }}</span>
         </span>
       </label>
+      {% endif %}
 
       {% if not is_to_file %}
       <label class="flex items-start gap-2.5 cursor-pointer">
