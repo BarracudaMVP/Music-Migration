@@ -59,6 +59,17 @@ _S: dict[str, dict[str, str]] = {
     "step_select_from":     {"ru": "Выбери источник",          "en": "Select source"},
     "step_select_to":       {"ru": "Выбери назначение",        "en": "Select destination"},
 
+    # Service display names (localized)
+    "svc_yandex_music": {"ru": "Яндекс Музыка",  "en": "Yandex Music"},
+    "svc_spotify":      {"ru": "Spotify",         "en": "Spotify"},
+    "svc_soundcloud":   {"ru": "SoundCloud",      "en": "SoundCloud"},
+    "svc_file_csv":     {"ru": "Файл",            "en": "File"},
+
+    # File picker
+    "file_choose_btn":  {"ru": "Выбрать файл",    "en": "Choose file"},
+    "file_no_file":     {"ru": "Файл не выбран",  "en": "No file chosen"},
+    "to_file_btn":      {"ru": "Файл",            "en": "File"},
+
     # ------------------------------------------------------------------ #
     # Auth
     # ------------------------------------------------------------------ #

@@ -48,6 +48,11 @@ _SERVICE_ICONS = {
 }
 
 
+def _svc_name(service_id: str, lang: str) -> str:
+    """Return localized service display name."""
+    return _t(f"svc_{service_id}", lang)
+
+
 def _render(template: str, request: Request, ctx: dict) -> templates.TemplateResponse:
     """Shortcut: inject lang + t() into every template context."""
     lang = get_lang(request)
@@ -123,13 +128,14 @@ async def index(request: Request, error: str = ""):
     user_id = _ensure_user_id(request)
 
     # Unique FROM services from transfer matrix
+    lang = get_lang(request)
     matrix = ServiceRegistry.get_matrix()
     seen_from: set[str] = set()
     from_services: dict[str, str] = {}
     for pair in matrix:
         if pair["from"] not in seen_from:
             seen_from.add(pair["from"])
-            from_services[pair["from"]] = ServiceRegistry.get(pair["from"]).name
+            from_services[pair["from"]] = _svc_name(pair["from"], lang)
 
     # Check if user has any migrations for nav
     has_migrations = False
@@ -156,11 +162,12 @@ async def index(request: Request, error: str = ""):
 @router.get("/api/flow/to-step", response_class=HTMLResponse)
 async def flow_to_step(request: Request, from_service: str = Query(..., alias="from")):
     """HTMX: returns TO service cards for the selected FROM service."""
+    lang = get_lang(request)
     matrix = ServiceRegistry.get_matrix()
     to_services: dict[str, str] = {}
     for pair in matrix:
         if pair["from"] == from_service and pair["to"] not in to_services:
-            to_services[pair["to"]] = ServiceRegistry.get(pair["to"]).name
+            to_services[pair["to"]] = _svc_name(pair["to"], lang)
     return _render("fragments/flow_to.html", request, {
         "from_service": from_service,
         "to_services": to_services,
@@ -218,11 +225,12 @@ async def flow_rest(
             )
         return True  # file_csv needs no auth
 
+    lang = get_lang(request)
     return _render("fragments/flow_rest.html", request, {
         "from_service": from_service,
         "to_service": to_service,
-        "from_name": from_adapter.name,
-        "to_name": to_adapter.name,
+        "from_name": _svc_name(from_service, lang),
+        "to_name": _svc_name(to_service, lang),
         "content_types": content_types,
         "from_connected": _connected(from_service),
         "to_connected": _connected(to_service),

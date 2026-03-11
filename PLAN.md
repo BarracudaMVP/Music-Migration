@@ -1393,3 +1393,54 @@ alembic/              — новая миграция для таблицы AppS
 | 20-30 параллельных пользователей | arq max_jobs, asyncpg pool, per-user rate limit |
 | Истёкший токен во время миграции | Проверка при старте + graceful fail |
 | SC токен (cookie) — короткий срок | Уведомление + инструкция по обновлению |
+
+---
+
+### 🔲 MM-66 — Media Catalog (кэш поиска + cross-platform resolver)
+
+> Сохранять поисковые запросы треков и найденные платформенные ссылки в общую медиа-базу.
+> Повторные миграции тех же треков используют кэш вместо API-поиска.
+
+**Идея:** при поиске трека (например "Lizer Заря") сохранять нормализованный запрос в `media_tracks`,
+а при нахождении на платформе — ссылку/id в `media_track_links`. Каталог обезличен (без user_id),
+обогащается со временем всеми миграциями.
+
+**Схема БД:**
+
+```sql
+media_tracks
+  id SERIAL PK
+  search_query VARCHAR  -- нормализованный (через matcher.py)
+  title VARCHAR
+  artist VARCHAR
+  created_at TIMESTAMP
+
+media_track_links
+  id SERIAL PK
+  track_id FK → media_tracks
+  platform VARCHAR  -- 'ym' | 'sc' | 'spotify'
+  platform_id VARCHAR
+  url VARCHAR
+  match_score FLOAT
+  found_at TIMESTAMP
+```
+
+**Логика поиска с кэшем:**
+1. Нормализовать запрос → проверить `media_track_links` для нужной платформы
+2. HIT (и `found_at` < 30 дней) → использовать `platform_id` напрямую, пропустить API-поиск
+3. MISS → обычный API-поиск → сохранить результат в каталог
+
+**Затронутые файлы:**
+- [ ] `alembic/` — миграция: таблицы `media_tracks`, `media_track_links`
+- [ ] `core/db/models.py` — модели `MediaTrack`, `MediaTrackLink`
+- [ ] `core/db/crud.py` — `get_cached_track()`, `save_track_to_catalog()`
+- [ ] `migration/tracks.py` — интеграция кэша в `_process_one_track`
+- [ ] `migration/yandex_tracks.py` — аналогично
+- [ ] `migration/spotify_write.py` — аналогично
+- [ ] Тесты: cache hit/miss, TTL-инвалидация, нормализация запроса
+
+**Нюансы:**
+- TTL 30 дней на `found_at` — треки могут удаляться с платформ; при 404 — удалять ссылку
+- Не кэшировать результаты с `match_score < 90` во избежание ложных хитов
+- Нормализация через существующий `matcher.py`
+- Приватность: каталог общий, user_id не хранится

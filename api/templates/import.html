@@ -41,17 +41,22 @@
     hx-indicator="#upload-spinner"
     class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center"
   >
-    <label class="flex-1 cursor-pointer">
+    <label class="flex-1 cursor-pointer group" for="file-input">
       <input
         type="file"
         name="file"
+        id="file-input"
         accept=".csv,.json"
         required
-        class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm cursor-pointer
-               file:mr-3 file:border-0 file:bg-indigo-50 file:text-indigo-700
-               file:rounded-lg file:px-3 file:py-1 file:text-xs file:font-medium file:cursor-pointer
-               hover:file:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        class="sr-only"
+        onchange="document.getElementById('file-name-label').textContent = this.files[0]?.name || '{{ t('file_no_file') }}'"
       >
+      <div class="flex items-center gap-2 w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm
+                  hover:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400 cursor-pointer transition">
+        <span class="bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1 text-xs font-medium
+                     group-hover:bg-indigo-100 transition whitespace-nowrap">{{ t('file_choose_btn') }}</span>
+        <span id="file-name-label" class="text-gray-400 truncate">{{ t('file_no_file') }}</span>
+      </div>
     </label>
     <button type="submit"
       class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-semibold whitespace-nowrap transition">

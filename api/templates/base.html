@@ -61,10 +61,10 @@
         <!-- Language switcher -->
         {% if lang == 'en' %}
         <a href="/set-lang?lang=ru&next={{ request.url.path }}"
-           class="px-2 py-1.5 rounded-lg text-base hover:bg-gray-100 transition" title="Switch to Русский">🇬🇧 EN</a>
+           class="px-2 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition" title="Switch to Русский">RU</a>
         {% else %}
         <a href="/set-lang?lang=en&next={{ request.url.path }}"
-           class="px-2 py-1.5 rounded-lg text-base hover:bg-gray-100 transition" title="Switch to English">🇷🇺 RU</a>
+           class="px-2 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition" title="Switch to English">EN</a>
         {% endif %}
       </div>
 
@@ -83,9 +83,9 @@
       <a href="/history" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100">{{ t('nav_my_transfers') }}</a>
       {% endif %}
       {% if lang == 'en' %}
-      <a href="/set-lang?lang=ru&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">🇬🇧 English</a>
+      <a href="/set-lang?lang=ru&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">RU</a>
       {% else %}
-      <a href="/set-lang?lang=en&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">🇷🇺 Русский</a>
+      <a href="/set-lang?lang=en&next={{ request.url.path }}" class="block px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs font-medium">EN</a>
       {% endif %}
     </div>
   </nav>
