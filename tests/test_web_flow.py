@@ -64,3 +64,74 @@ async def test_flow_rest_missing_params_returns_422(app, mock_arq_pool):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/flow/rest?from=yandex_music")
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_flow_to_step_file_csv_returns_html(app, mock_arq_pool):
+    """GET /api/flow/to-step?from=file_csv → 200 with TO services that support write."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/flow/to-step?from=file_csv")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_flow_rest_from_file_csv_returns_html(app, mock_arq_pool):
+    """GET /api/flow/rest?from=file_csv&to=soundcloud → 200 with file picker."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/flow/rest?from=file_csv&to=soundcloud")
+    assert response.status_code == 200
+    body = response.text
+    assert "flow-file-input" in body  # file picker present
+
+
+@pytest.mark.asyncio
+async def test_flow_rest_to_file_csv_returns_html(app, mock_arq_pool):
+    """GET /api/flow/rest?from=yandex_music&to=file_csv → 200 with export_fmt selector."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/flow/rest?from=yandex_music&to=file_csv")
+    assert response.status_code == 200
+    body = response.text
+    assert "export_fmt" in body  # format selector present
+
+
+@pytest.mark.asyncio
+async def test_import_page_redirects_to_home(app, mock_arq_pool):
+    """GET /import → 303 redirect to /."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False
+        ) as client:
+            response = await client.get("/import")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+@pytest.mark.asyncio
+async def test_export_page_redirects_to_home(app, mock_arq_pool):
+    """GET /export → 303 redirect to /."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False
+        ) as client:
+            response = await client.get("/export")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+@pytest.mark.asyncio
+async def test_index_includes_file_csv_from_service(app, mock_arq_pool):
+    """GET / → index includes file_csv as a FROM option."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/")
+    assert response.status_code == 200
+    body = response.text
+    # file_csv button should appear in FROM step
+    assert 'data-from="file_csv"' in body

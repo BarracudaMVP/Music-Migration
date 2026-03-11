@@ -36,6 +36,7 @@ async def run_yandex_migration_job(
     user_id: str,
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
+    tracks_override: list[dict] | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks from any source service → Yandex Music."""
     from migration.yandex_tracks import migrate_to_yandex
@@ -52,13 +53,19 @@ async def run_yandex_migration_job(
 
     with logger.contextualize(migration_id=migration_id, user_id=user_id):
         try:
-            # Fetch source tracks via the appropriate adapter
-            from core.services.registry import ServiceRegistry
-            adapter = ServiceRegistry.get(from_service)
-            tracks_data = await adapter.fetch_liked_tracks(source_token)
-            if track_limit:
-                tracks_data = tracks_data[:track_limit]
-            logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
+            if tracks_override is not None:
+                tracks_data = tracks_override
+                if track_limit:
+                    tracks_data = tracks_data[:track_limit]
+                logger.info(f"[job] Using {len(tracks_data)} override tracks for migration #{migration_id}")
+            else:
+                # Fetch source tracks via the appropriate adapter
+                from core.services.registry import ServiceRegistry
+                adapter = ServiceRegistry.get(from_service)
+                tracks_data = await adapter.fetch_liked_tracks(source_token)
+                if track_limit:
+                    tracks_data = tracks_data[:track_limit]
+                logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
             ym_client = await YandexMusicClient(
                 ym_token, proxy_url=settings.ym_proxy_url or None
@@ -138,6 +145,7 @@ async def run_spotify_write_job(
     user_id: str,
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
+    tracks_override: list[dict] | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
     from migration.spotify_write import migrate_to_spotify
@@ -165,24 +173,30 @@ async def run_spotify_write_job(
                 except Exception as e:
                     logger.warning(f"[job] Could not refresh Spotify token: {e}, using existing token")
 
-            # Fetch source tracks via adapter
-            from core.services.registry import ServiceRegistry
-            adapter = ServiceRegistry.get(from_service)
-            tracks_data = await adapter.fetch_liked_tracks(source_token)
-            if track_limit:
-                tracks_data = tracks_data[:track_limit]
-            logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
-
-            # Fetch artists if adapter implements fetch_liked_artists
             artists_data: list[dict] = []
-            fetch_artists_fn = getattr(adapter, "fetch_liked_artists", None)
-            if callable(fetch_artists_fn):
-                try:
-                    raw_artists = await fetch_artists_fn(source_token)
-                    artists_data = [{"name": a["name"]} for a in raw_artists]
-                    logger.info(f"[job] Fetched {len(artists_data)} artists from {from_service}")
-                except Exception as e:
-                    logger.warning(f"[job] Could not fetch artists from {from_service}: {e}")
+            if tracks_override is not None:
+                tracks_data = tracks_override
+                if track_limit:
+                    tracks_data = tracks_data[:track_limit]
+                logger.info(f"[job] Using {len(tracks_data)} override tracks for migration #{migration_id}")
+            else:
+                # Fetch source tracks via adapter
+                from core.services.registry import ServiceRegistry
+                adapter = ServiceRegistry.get(from_service)
+                tracks_data = await adapter.fetch_liked_tracks(source_token)
+                if track_limit:
+                    tracks_data = tracks_data[:track_limit]
+                logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
+
+                # Fetch artists if adapter implements fetch_liked_artists
+                fetch_artists_fn = getattr(adapter, "fetch_liked_artists", None)
+                if callable(fetch_artists_fn):
+                    try:
+                        raw_artists = await fetch_artists_fn(source_token)
+                        artists_data = [{"name": a["name"]} for a in raw_artists]
+                        logger.info(f"[job] Fetched {len(artists_data)} artists from {from_service}")
+                    except Exception as e:
+                        logger.warning(f"[job] Could not fetch artists from {from_service}: {e}")
 
             sp_client = await SpotifyClient(access_token).init()
             try:

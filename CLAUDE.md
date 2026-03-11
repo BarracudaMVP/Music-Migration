@@ -348,3 +348,5 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - OAuth callbacks сохраняют `auth_flow_from`/`auth_flow_to` в session; после успешной авторизации редиректят на `/?pf=...&pt=...` для восстановления флоу
 - `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
+- File import/export unified in main flow (MM-67): `GET /import` и `GET /export` → 303 → `/`; `file_csv` добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file_csv"` — все адаптеры с WRITE_LIKED_TRACKS; `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
+- `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)

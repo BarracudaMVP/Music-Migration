@@ -274,3 +274,80 @@ class TestFindBestMatch:
         assert result.sc_artist == "Radiohead"
         assert result.sc_title == "Creep"
         assert isinstance(result.score, float)
+
+
+# ---------------------------------------------------------------------------
+# MM-68: Cross-service matching (Spotify→SC, SC→YM, file→any)
+# ---------------------------------------------------------------------------
+
+class TestCrossServiceMatching:
+    """Verify matcher works correctly regardless of source/destination service."""
+
+    def test_spotify_to_sc_english_exact(self):
+        """Spotify (EN) source → SC candidate: exact English match scores high."""
+        score = score_track_match("Daft Punk", "Get Lucky", "Daft Punk", "Get Lucky")
+        assert score >= 95.0
+
+    def test_spotify_to_sc_english_partial(self):
+        """Spotify (EN) source → SC candidate: partial title match still scores reasonably."""
+        score = score_track_match("The Beatles", "Hey Jude", "The Beatles", "Hey Jude (Remastered)")
+        assert score > 70.0
+
+    def test_sc_to_ym_english_matches_well(self):
+        """SC (EN) → YM: English tracks without Cyrillic match well."""
+        score = score_track_match("Pink Floyd", "Comfortably Numb", "Pink Floyd", "Comfortably Numb")
+        assert score >= 95.0
+
+    def test_ym_cyrillic_to_sc_transliterated(self):
+        """YM (RU) → SC: Cyrillic source matches transliterated candidate."""
+        score = score_track_match(
+            "Кино", "Группа крови",
+            "Kino", "Gruppa krovi"
+        )
+        assert score > 40.0
+
+    def test_file_source_english_to_sc(self):
+        """File import (EN artist/title) matches SC candidates correctly."""
+        candidates = [
+            SCCandidate(sc_id=1, sc_url="u1", artist="Nirvana", title="Smells Like Teen Spirit"),
+            SCCandidate(sc_id=2, sc_url="u2", artist="Drake", title="Gods Plan"),
+        ]
+        result = find_best_match("Nirvana", "Smells Like Teen Spirit", candidates, threshold=75.0)
+        assert result is not None
+        assert result.sc_id == 1
+        assert result.matched is True
+
+    def test_file_source_english_to_ym(self):
+        """File import English tracks can match YM candidates (same scorer)."""
+        candidates = [
+            SCCandidate(sc_id=10, sc_url="ym10", artist="Coldplay", title="Yellow"),
+            SCCandidate(sc_id=11, sc_url="ym11", artist="Coldplay", title="The Scientist"),
+        ]
+        result = find_best_match("Coldplay", "Yellow", candidates, threshold=75.0)
+        assert result is not None
+        assert result.sc_id == 10
+        assert result.matched is True
+
+    def test_no_cyrillic_skips_transliteration(self):
+        """English-only strings are not transliterated (no wasted compute)."""
+        variants = transliterate_variants("Radiohead")
+        assert variants == ["Radiohead"]
+
+    def test_feat_in_spotify_title_normalized_away(self):
+        """Spotify often includes feat. in title — normalization strips it."""
+        score = score_track_match(
+            "Drake", "Gods Plan (feat. Nobody)",
+            "Drake", "Gods Plan"
+        )
+        assert score > 75.0
+
+    def test_split_artists_works_for_spotify_collabs(self):
+        """Spotify collab artists with & are split correctly."""
+        parts = split_artists("Calvin Harris & Rihanna")
+        assert "Calvin Harris" in parts
+        assert "Rihanna" in parts
+
+    def test_different_services_mismatch_scores_low(self):
+        """Completely different tracks from any service score very low."""
+        score = score_track_match("ABBA", "Dancing Queen", "Eminem", "Lose Yourself")
+        assert score < 40.0

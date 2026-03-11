@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import tempfile
 import uuid
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
@@ -136,6 +137,8 @@ async def index(request: Request, error: str = ""):
         if pair["from"] not in seen_from:
             seen_from.add(pair["from"])
             from_services[pair["from"]] = _svc_name(pair["from"], lang)
+    # Add file_csv as a FROM option (file import not in registry matrix)
+    from_services["file_csv"] = _svc_name("file_csv", lang)
 
     # Check if user has any migrations for nav
     has_migrations = False
@@ -162,12 +165,22 @@ async def index(request: Request, error: str = ""):
 @router.get("/api/flow/to-step", response_class=HTMLResponse)
 async def flow_to_step(request: Request, from_service: str = Query(..., alias="from")):
     """HTMX: returns TO service cards for the selected FROM service."""
+    from core.services.base import Capability
+
     lang = get_lang(request)
-    matrix = ServiceRegistry.get_matrix()
     to_services: dict[str, str] = {}
-    for pair in matrix:
-        if pair["from"] == from_service and pair["to"] not in to_services:
-            to_services[pair["to"]] = _svc_name(pair["to"], lang)
+
+    if from_service == "file_csv":
+        # File import can target any service with WRITE_LIKED_TRACKS
+        for adapter in ServiceRegistry.all():
+            if adapter.id != "file_csv" and adapter.can(Capability.WRITE_LIKED_TRACKS):
+                to_services[adapter.id] = _svc_name(adapter.id, lang)
+    else:
+        matrix = ServiceRegistry.get_matrix()
+        for pair in matrix:
+            if pair["from"] == from_service and pair["to"] not in to_services:
+                to_services[pair["to"]] = _svc_name(pair["to"], lang)
+
     return _render("fragments/flow_to.html", request, {
         "from_service": from_service,
         "to_services": to_services,
@@ -187,24 +200,28 @@ async def flow_rest(
     user_id = _ensure_user_id(request)
     db_session = await load_user_session(user_id)
 
+    is_from_file = from_service == "file_csv"
+    is_to_file = to_service == "file_csv"
+
     try:
-        from_adapter = ServiceRegistry.get(from_service)
-        to_adapter = ServiceRegistry.get(to_service)
+        from_adapter = ServiceRegistry.get(from_service) if not is_from_file else None
+        to_adapter = ServiceRegistry.get(to_service) if not is_to_file else None
     except KeyError:
         return HTMLResponse("<p class='text-red-600 text-sm'>Неизвестный сервис.</p>")
 
-    # Content types availability
-    ct_defs = [
-        ("tracks",    Capability.READ_LIKED_TRACKS,   Capability.WRITE_LIKED_TRACKS),
-        ("playlists", Capability.READ_PLAYLISTS,       Capability.WRITE_PLAYLISTS),
-        ("artists",   Capability.READ_LIKED_ARTISTS,   Capability.WRITE_LIKED_ARTISTS),
-    ]
+    # Content types availability (overridden in template when file is involved)
     content_types = []
-    for ct_id, read_cap, write_cap in ct_defs:
-        available = from_adapter.can(read_cap) and to_adapter.can(write_cap)
-        content_types.append({"id": ct_id, "available": available, "checked": available})
-    # Tracks always checked
-    content_types[0]["checked"] = True
+    if not is_from_file and not is_to_file:
+        ct_defs = [
+            ("tracks",    Capability.READ_LIKED_TRACKS,   Capability.WRITE_LIKED_TRACKS),
+            ("playlists", Capability.READ_PLAYLISTS,       Capability.WRITE_PLAYLISTS),
+            ("artists",   Capability.READ_LIKED_ARTISTS,   Capability.WRITE_LIKED_ARTISTS),
+        ]
+        for ct_id, read_cap, write_cap in ct_defs:
+            available = from_adapter.can(read_cap) and to_adapter.can(write_cap)
+            content_types.append({"id": ct_id, "available": available, "checked": available})
+        # Tracks always checked
+        content_types[0]["checked"] = True
 
     # Auth status per service
     def _connected(service_id: str) -> bool:
@@ -237,6 +254,8 @@ async def flow_rest(
         "ym_redirect_configured": bool(cfg.yandex_redirect_uri),
         "spotify_enabled": bool(cfg.spotify_client_id),
         "sc_enabled": bool(cfg.sc_client_id),
+        "is_from_file": is_from_file,
+        "is_to_file": is_to_file,
     })
 
 
@@ -584,6 +603,8 @@ async def start_migrate(
     track_limit: int = Form(0),
     skip_already_migrated: bool = Form(False),
     like_tracks: bool = Form(False),
+    export_fmt: str = Form("csv"),
+    file: Optional[UploadFile] = File(None),
 ):
     from api.main import get_arq_pool
 
@@ -602,26 +623,18 @@ async def start_migrate(
     if not db_session:
         return RedirectResponse("/", status_code=303)
 
-    # Validate that the selected from→to pair is supported by the service registry
-    matrix = ServiceRegistry.get_matrix()
-    supported = {(e["from"], e["to"]) for e in matrix}
-    if (from_service, to_service) not in supported:
-        return RedirectResponse(
-            f"/?error={quote(f'Направление {from_service} \u2192 {to_service} не поддерживается')}",
-            status_code=303,
-        )
+    is_from_file = from_service == "file_csv"
+    is_to_file = to_service == "file_csv"
 
-    from api.deps import check_migration_rate_limit
-    if not await check_migration_rate_limit(user_id):
-        return RedirectResponse(
-            f"/?error={quote('Слишком много переносов. Попробуй через час.')}",
-            status_code=303,
-        )
-
-    migration_id = await create_migration(user_id, from_service=from_service, to_service=to_service)
-    arq = get_arq_pool()
-    job_mode = "full" if mode == "full" else "tracks"
-    limit = track_limit if track_limit and track_limit > 0 else None
+    # Validate that the selected from→to pair is supported (skip for file_csv)
+    if not is_from_file and not is_to_file:
+        matrix = ServiceRegistry.get_matrix()
+        supported = {(e["from"], e["to"]) for e in matrix}
+        if (from_service, to_service) not in supported:
+            return RedirectResponse(
+                f"/?error={quote(f'Направление {from_service} \u2192 {to_service} не поддерживается')}",
+                status_code=303,
+            )
 
     ym_token = db_session.get("yandex_token") or ""
     sc_token = db_session.get("soundcloud_token") or ""
@@ -630,6 +643,8 @@ async def start_migrate(
 
     # Проверяем наличие нужных токенов
     def _missing_token(service: str) -> str | None:
+        if service == "file_csv":
+            return None
         if service == "yandex_music" and not ym_token:
             return "Сначала подключи Яндекс Музыку"
         if service == "soundcloud" and not sc_token:
@@ -638,11 +653,124 @@ async def start_migrate(
             return "Сначала подключи Spotify"
         return None
 
+    # Case 1: Export to file — synchronous, no migration record needed
+    if is_to_file:
+        err = _missing_token(from_service)
+        if err:
+            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+        try:
+            from core.export import export_library
+            from fastapi.responses import Response as FastAPIResponse
+
+            if from_service == "yandex_music":
+                source_token = ym_token
+            elif from_service == "spotify":
+                source_token = spotify_token
+            else:
+                source_token = sc_token
+            data = await export_library(from_service, source_token, fmt=export_fmt)
+            filename = f"library_{from_service}.{export_fmt}"
+            media = "text/csv" if export_fmt == "csv" else "application/json"
+            return FastAPIResponse(
+                content=data,
+                media_type=media,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except Exception as e:
+            return RedirectResponse(f"/?error={quote(str(e)[:200])}", status_code=303)
+
+    # Check rate limit before creating any migration
+    from api.deps import check_migration_rate_limit
+    if not await check_migration_rate_limit(user_id):
+        return RedirectResponse(
+            f"/?error={quote('Слишком много переносов. Попробуй через час.')}",
+            status_code=303,
+        )
+
+    # Case 2: Import from file
+    if is_from_file:
+        err = _missing_token(to_service)
+        if err:
+            return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
+
+        if file is None or not file.filename:
+            return RedirectResponse(f"/?error={quote('Выбери файл для загрузки')}", status_code=303)
+
+        content = await file.read()
+        if len(content) > _MAX_UPLOAD_BYTES:
+            return RedirectResponse(
+                f"/?error={quote('Файл слишком большой (максимум 10 МБ)')}", status_code=303
+            )
+
+        suffix = ".json" if (file.filename or "").lower().endswith(".json") else ".csv"
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        tracks: list[dict] = []
+        try:
+            os.write(fd, content)
+            os.close(fd)
+            from core.services.file.adapter import FileAdapter as _FA
+            _fa = _FA()
+            columns = await _fa.get_columns(tmp_path)
+            auto_map = _fa.detect_column_mapping(columns)
+            artist_col = auto_map.get("artist_col") or "artist"
+            title_col = auto_map.get("title_col") or "title"
+            tracks = await _fa.import_tracks(tmp_path, artist_col=artist_col, title_col=title_col)
+        except Exception as e:
+            return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        if not tracks:
+            return RedirectResponse(f"/?error={quote('Файл не содержит треков')}", status_code=303)
+
+        arq = get_arq_pool()
+        limit = track_limit if track_limit and track_limit > 0 else None
+        migration_id = await create_migration(user_id, from_service="file_csv", to_service=to_service)
+
+        if to_service == "soundcloud":
+            job = await arq.enqueue_job(
+                "run_file_migration_job",
+                migration_id, sc_token, tracks, user_id,
+                track_limit=limit, like_tracks=like_tracks,
+            )
+        elif to_service == "yandex_music":
+            job = await arq.enqueue_job(
+                "run_yandex_migration_job",
+                migration_id, "", "file_csv", ym_token, user_id,
+                track_limit=None, skip_already_migrated=skip_already_migrated,
+                tracks_override=tracks,
+            )
+        elif to_service == "spotify":
+            job = await arq.enqueue_job(
+                "run_spotify_write_job",
+                migration_id, "", "file_csv",
+                spotify_token, spotify_refresh_token, user_id,
+                track_limit=None, skip_already_migrated=skip_already_migrated,
+                tracks_override=tracks,
+            )
+        else:
+            return RedirectResponse(
+                f"/?error={quote(f'Направление file_csv → {to_service} не поддерживается')}",
+                status_code=303,
+            )
+
+        if job:
+            await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
+        return RedirectResponse(f"/migrate/{migration_id}", status_code=303)
+
+    # Case 3: Normal migration
     for svc in (from_service, to_service):
         err = _missing_token(svc)
         if err:
             return RedirectResponse(f"/auth?error={quote(err)}", status_code=303)
 
+    migration_id = await create_migration(user_id, from_service=from_service, to_service=to_service)
+    arq = get_arq_pool()
+    job_mode = "full" if mode == "full" else "tracks"
+    limit = track_limit if track_limit and track_limit > 0 else None
     skip = skip_already_migrated
     like = like_tracks
 
@@ -825,14 +953,8 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.get("/import", response_class=HTMLResponse)
-async def import_page(request: Request, error: str = ""):
-    user_id = _session_user_id(request)
-    if not user_id:
-        return RedirectResponse("/auth", status_code=303)
-    db_session = await load_user_session(user_id)
-    if not db_session:
-        return RedirectResponse("/auth", status_code=303)
-    return _render("import.html", request, {"error": error})
+async def import_page(request: Request):
+    return RedirectResponse("/", status_code=303)
 
 
 @router.post("/import/preview", response_class=HTMLResponse)
@@ -963,14 +1085,8 @@ async def import_start(
 # ---------------------------------------------------------------------------
 
 @router.get("/export", response_class=HTMLResponse)
-async def export_page(request: Request, error: str = ""):
-    user_id = _session_user_id(request)
-    if not user_id:
-        return RedirectResponse("/auth", status_code=303)
-
-    from core.export import exportable_services
-    services = exportable_services()
-    return _render("export.html", request, {"services": services, "error": error})
+async def export_page(request: Request):
+    return RedirectResponse("/", status_code=303)
 
 
 @router.post("/export/start")

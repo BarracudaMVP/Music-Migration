@@ -1444,3 +1444,43 @@ media_track_links
 - Не кэшировать результаты с `match_score < 90` во избежание ложных хитов
 - Нормализация через существующий `matcher.py`
 - Приватность: каталог общий, user_id не хранится
+
+---
+
+### ✅ MM-67 — Unified file import/export in main flow
+
+**Задача:** интегрировать "Из файла" и "В файл" в стандартный HTMX-флоу на главной странице.
+
+**Что сделано:**
+- `core/i18n.py` — добавлены ключи `from_file_label`, `export_fmt_label`
+- `worker/tasks.py` — `run_yandex_migration_job` + `run_spotify_write_job` получили `tracks_override: list[dict] | None` — пропускает `fetch_liked_tracks` если передан
+- `api/routes/web.py`:
+  - `index` — `file_csv` добавлен в `from_services` вручную
+  - `flow_to_step` — для `from_service=="file_csv"` возвращает все сервисы с `WRITE_LIKED_TRACKS`
+  - `flow_rest` — передаёт `is_from_file`/`is_to_file`; для file_csv пропускает adapter lookup
+  - `GET /import`, `GET /export` → редиректы на `/`
+  - `POST /migrate` — новые параметры `export_fmt`, `file`; три case: export→файл (без job), import←файл (с tracks_override), обычный
+- `api/templates/index.html` — `enctype="multipart/form-data"`, убрана отдельная карточка file (теперь в from_services loop)
+- `api/templates/fragments/flow_to.html` — export-карточка стала HTMX-кнопкой
+- `api/templates/fragments/flow_rest.html` — условный рендеринг: file picker, format select, disabled checkboxes, кнопка "Скачать файл" для export
+
+**Тесты:** +7 в `test_web_flow.py` (flow_to file_csv, flow_rest from/to file, redirects, index содержит file_csv)
+
+---
+
+### 🔲 MM-68 — matcher.py адаптация для всех сервисов
+
+**Задача:** убедиться что fuzzy-матчинг работает одинаково для YM, Spotify, SC, File как источников.
+
+**Анализ (проведён):**
+- `score_track_match(ym_artist, ym_title, sc_artist, sc_title)` — параметры названы YM-специфично, но логика универсальна
+- `transliterate_variants` — только для кириллицы, для EN просто `[text]` — корректно
+- `normalize` — убирает feat./remaster, пунктуацию — работает для всех сервисов
+- Все миграции (→SC, →YM, →Spotify) используют один и тот же `find_best_match`
+
+**Что сделано:**
+- Добавлены тесты в `test_matcher.py` (класс `TestCrossServiceMatching`) — Spotify→SC, SC→YM, File→any, проверка transliteration skip для EN
+
+**Осталось (опционально):**
+- [ ] Переименовать параметры `score_track_match(ym_artist, ym_title, ...)` → `(source_artist, source_title, ...)` для ясности
+- [ ] Добавить в `SCCandidate` комментарий что это generic кандидат, не только SC
