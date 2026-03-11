@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MVP9 + MM-47**, deployed on EU server.
+Current state: **MVP9 + MM-49**, deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:
@@ -42,6 +42,89 @@ ruff format .
 ```bash
 .venv/Scripts/pytest tests/
 ```
+
+## Deploy & Release (production, EU server)
+
+Все команды выполняются **на EU сервере** из `/root/Music-Migration/`.
+
+### Деплой
+
+```bash
+# Обновить до последнего main (самый частый случай)
+bash scripts/deploy.sh
+
+# Переключиться на тег (стабильный релиз)
+bash scripts/deploy.sh v1.0-mm49
+
+# Переключиться на конкретный коммит
+bash scripts/deploy.sh 6e1b8ad
+
+# Переключиться на ветку
+bash scripts/deploy.sh main
+```
+
+Что делает `deploy.sh`:
+1. `git fetch --all --tags` — получает свежие данные с remote
+2. `git checkout <версия>` — переключается на нужный тег/коммит/ветку
+3. Если ветка — `git pull` для подтягивания новых коммитов
+4. `docker compose run --rm api alembic upgrade head` — применяет миграции БД
+5. `docker compose up --build -d` — пересобирает образы и перезапускает стек
+
+### Создание тега релиза (локально, перед деплоем)
+
+```bash
+# Создать тег на текущем коммите и запушить
+bash scripts/tag-release.sh v1.0-mm49
+
+# Создать с аннотацией
+bash scripts/tag-release.sh v1.0-mm49 "Web UI redesign — stepwise flow"
+
+# Просмотр всех тегов
+bash scripts/tag-release.sh --list
+
+# История тегов + коммиты
+bash scripts/tag-release.sh --history
+
+# Удалить тег (локально + remote)
+bash scripts/tag-release.sh --delete v1.0-mm49
+```
+
+Что делает `tag-release.sh`:
+- Создаёт аннотированный тег (`git tag -a`) — хранит автора и дату
+- Пушит тег на remote (`git push origin <tag>`)
+- При конфликте тега — спрашивает подтверждение перед перезаписью
+
+### Типичный workflow релиза
+
+```bash
+# Локально (Windows):
+git checkout main && git pull
+bash scripts/tag-release.sh v1.0-mm49 "MM-49: web UI redesign"
+
+# На EU сервере:
+bash scripts/deploy.sh v1.0-mm49
+```
+
+### Прочие скрипты
+
+```bash
+# SSL первоначальная настройка (один раз)
+bash scripts/setup-ssl.sh admin@musicmigration.site
+
+# Обновление SSL-сертификата (cron: 0 3 1,15 * *)
+bash scripts/renew-ssl.sh
+
+# Docker стек
+docker compose ps                      # статус контейнеров
+docker compose logs -f --tail=50       # логи всех сервисов
+docker compose logs -f api             # логи только API
+```
+
+### entrypoint.sh
+
+Запускается внутри Docker-контейнера `api` при старте:
+1. `alembic upgrade head` — применяет миграции
+2. `uvicorn api.main:app --host 0.0.0.0 --port 8000` — запускает сервер
 
 ## Environment Variables (.env)
 
@@ -260,3 +343,8 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
 - SC write endpoints: `PUT /me/track_likes/{id}`, `POST /playlists`, `PUT /me/followings/{id}` — all correct; Authorization Code Flow grants write access without explicit scope declarations
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
+- Web UI stepwise flow (MM-49): `GET /api/flow/to-step?from=X` → HTMX карточки TO; `GET /api/flow/rest?from=X&to=Y` → content types + auth status + settings; `_SERVICE_ICONS` dict в `api/routes/web.py` передаётся через `_render()` в каждый шаблон
+- `POST /migrate` читает `content_types[]` (multiple checkbox) через `request.form().getlist()`; вычисляет `mode=full|tracks` для совместимости с worker'ами
+- OAuth callbacks сохраняют `auth_flow_from`/`auth_flow_to` в session; после успешной авторизации редиректят на `/?pf=...&pt=...` для восстановления флоу
+- `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
+- Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
