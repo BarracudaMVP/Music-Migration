@@ -924,45 +924,42 @@ File → any       |   ✓   |     ✗     |    ✗
 - [ ] Смена языка — иконка флага (🇷🇺 / 🇬🇧) вместо текстовой кнопки, интуитивно понятна
 
 **Безопасность миграций:**
-- [ ] Пользователь видит только свои миграции (`/migrate/{id}/tracks`, `/history` — фильтр по `user_id` из сессии)
-- [ ] Попытка открыть чужую миграцию → 403 или редирект на главную
-- [ ] Админ через `/admin/migrations` видит все (без изменений)
-- [ ] `api/routes/web.py` — в `migration_progress`, `migration_status_fragment`, `get_migration_tracks` добавить проверку `migration["user_id"] == session_user_id`
+- [x] Пользователь видит только свои миграции (`/migrate/{id}/tracks`, `/history` — фильтр по `user_id` из сессии)
+- [x] Попытка открыть чужую миграцию → 403 или редирект на главную
+- [ ] Админ через `/admin/migrations` видит все (без изменений) — не трогали, уже работает
+- [x] `api/routes/web.py` — в `migration_progress`, `migration_status_fragment`, `get_migration_tracks` добавить проверку `migration["user_id"] == session_user_id`
 
-**Что менять:**
+**Что сделано:**
 
 *Главная / выбор сервисов:*
-- [ ] `api/templates/index.html` — двухшаговый выбор: сначала FROM (карточки), потом TO (карточки, зависит от матрицы); JS/HTMX для динамического показа шага 2
-- [ ] `api/routes/web.py` — `GET /api/services/to?from={service}` (или HTMX fragment) — возвращает доступные TO для выбранного FROM
-- [ ] При выборе TO="file" — inline-выбор формата (radio: CSV / JSON)
-- [ ] При выборе FROM="file" — inline-загрузка файла с авто-определением формата; убрать текущую подпись "Или загрузи файл..." и ссылку на /import с главного экрана
+- [x] `api/templates/index.html` — пошаговый флоу: FROM карточки → TO карточки (HTMX) → content types + auth + settings (HTMX)
+- [x] `api/routes/web.py` — `GET /api/flow/to-step?from={service}` и `GET /api/flow/rest?from={service}&to={service}` (HTMX fragments)
+- [ ] При выборе TO="file" — inline-выбор формата (отложено, file_csv не в матрице)
+- [x] Убрана подпись "Или загрузи файл..." — заменена карточкой "📁 Из файла" → /import
 
 *Выбор типа контента:*
-- [ ] `api/templates/index.html` — блок чекбоксов "Что переносить": ☐ Треки  ☐ Плейлисты  ☐ Артисты
-- [ ] `api/routes/web.py` — `GET /api/services/content-types?from={service}&to={service}` — возвращает список доступных типов для пары FROM→TO (на основе Capability флагов); HTMX обновляет блок при смене TO
-- [ ] Чекбоксы всегда показываются; если для пары доступен только один тип — остальные задизейблены и не отмечены
-- [ ] Выбранные типы передаются в POST /migrations как `content_types: ["tracks", "playlists", "artists"]`
-- [ ] `api/routes/migrations.py` — передаёт `content_types` в соответствующий ARQ job
-- [ ] `core/i18n.py` — новые ключи: `content_tracks`, `content_playlists`, `content_artists`, `step_content_type`
+- [x] `api/templates/fragments/flow_rest.html` — чекбоксы Треки/Плейлисты/Артисты
+- [x] Логика доступности через `FROM.can(READ_X) and TO.can(WRITE_X)` — недоступные disabled
+- [x] `POST /migrate` — читает `content_types[]` из формы, вычисляет `mode=full|tracks`
+- [x] `core/i18n.py` — новые ключи добавлены
 
 *Авторизация встроена:*
-- [ ] Блоки авторизации показываются прямо на главной или через HTMX-overlay, не отдельный `/auth`
-- [ ] Если токен сохранён и валиден — авторизационный блок скрыт, показываем "✓ Подключено"
+- [x] Статус авторизации FROM/TO показывается в `flow_rest.html` прямо в форме
+- [x] OAuth callbacks после авторизации редиректят на `/?pf=...&pt=...` (восстановление флоу)
 
 *Навигация:*
-- [ ] `api/templates/base.html` — убрать кнопки "Аккаунт", "Выход"; иконка флага для смены языка; "Мои переносы" скрыть если нет переносов (передавать `has_migrations` в контекст)
-- [ ] `api/routes/web.py` — `GET /` проверяет наличие миграций пользователя, передаёт флаг в шаблон
+- [x] `api/templates/base.html` — убраны "Аккаунт", "Выход"; флаги 🇷🇺/🇬🇧 для языка; "Мои переносы" только при `has_migrations`
+- [x] `api/routes/web.py` — `GET /` передаёт `has_migrations` в шаблон
 
 *Мои переносы:*
-- [ ] `api/routes/web.py` — `/history` переименовать в `/transfers` (или оставить alias); фильтровать по `user_id` сессии
-- [ ] При наличии хотя бы одного переноса у пользователя — баннер/кнопка "Мои переносы" в шапке
-- [ ] Авто-редирект на `/transfers` при открытии `/` если есть активный перенос (`status="running"`)
+- [x] "Мои переносы" в шапке при наличии переносов
+- [ ] Авто-редирект на `/transfers` при наличии активного — отложено
 
 *Защита миграций:*
-- [ ] `api/routes/web.py` — во всех маршрутах `/migrate/{id}*` проверять `migration["user_id"] == _session_user_id(request)`; если не совпадает — 403
+- [x] Проверка `user_id` в `/migrate/{id}`, `/migrate/{id}/status-fragment`, `/migrate/{id}/tracks`
 
 *i18n:*
-- [ ] Новые ключи: `nav_my_transfers`, `nav_lang_ru`, `nav_lang_en`, `step_select_from`, `step_select_to`, `step_format`, `step_content_type`, `import_formats_hint`, `auth_connected`, `content_tracks`, `content_playlists`, `content_artists`
+- [x] Добавлены: `nav_my_transfers`, `step_from`, `step_to`, `step_content_type`, `step_auth`, `step_settings`, `content_tracks`, `content_playlists`, `content_artists`, `auth_status_connected`, `auth_status_not_connected`, `from_file_btn`, `step_loading`, `step_select_from`, `step_select_to`
 
 ---
 
@@ -1234,6 +1231,135 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 - [x] Исправлен дефолт `match_threshold`: 95.0 → 75.0 в `config.py`
 
 **Файлы:** `core/matcher.py`, `config.py`, `.env.example`
+
+---
+
+### ✅ MM-62 — Web UI bug fixes (Query alias + lang switcher)
+
+> Два критических бага в веб-UI: FROM-сервис не реагировал на выбор; языковой переключатель показывал флаг другого языка.
+
+**Проблемы:**
+- `GET /api/flow/to-step?from=X` → FastAPI ожидал `?from_service=X` → 422 → HTMX ничего не показывал
+- `GET /api/flow/rest?from=X&to=Y` → та же проблема с именами параметров
+- `base.html` при `lang='en'` показывал 🇷🇺 (а не 🇬🇧) — отображался флаг ДРУГОГО языка
+
+**Что сделано:**
+- [x] `api/routes/web.py` — добавлен `Query(..., alias="from")` / `Query(..., alias="to")` для `flow_to_step` и `flow_rest`
+- [x] `api/templates/base.html` — языковой переключатель теперь показывает текущий язык (🇬🇧 EN / 🇷🇺 RU)
+- [x] `tests/test_web_flow.py` — 4 новых теста (145 total, все проходят)
+
+**Файлы:** `api/routes/web.py`, `api/templates/base.html`, `tests/test_web_flow.py`
+
+---
+
+### ⬜ MM-63 — Web UI redesign (icons + visual polish)
+
+> Замена emoji-иконок на SVG brand icons для каждого сервиса, улучшение визуального качества карточек.
+
+**Задачи:**
+- [ ] Добавить SVG-иконки для Yandex Music, Spotify, SoundCloud (simpleicons.org)
+- [ ] Заменить 🎵 emoji на proper brand icons в картах сервисов
+- [ ] Улучшить стили карточек: spacing, colors, borders
+- [ ] Проверить на мобильных размерах
+
+---
+
+### 🔲 MM-65 — Вынос настроек в БД + Admin UI
+
+> Настройки сейчас разбросаны по `.env` и требуют рестарта при изменении. Задача: вынести
+> операционные и OAuth-настройки в БД с редактированием через Admin UI, оставив в `.env`
+> только bootstrap/security параметры.
+
+**Принцип разделения:**
+
+*Остаётся в `.env` (нельзя в БД):*
+- `DATABASE_URL`, `REDIS_URL` — нужны до подключения к БД
+- `DB_ENCRYPTION_KEY` — ключ шифрования самой БД, хранить в БД бессмысленно
+- `SECRET_KEY` — SessionMiddleware, нужен при старте до загрузки чего-либо
+- `API_INTERNAL_TOKEN` — shared secret bot↔API
+- `TELEGRAM_BOT_TOKEN` — нужен до старта бота
+- `WEB_ENABLED`, `WEB_ALLOWED_IPS` — инфраструктурные (контролируют доступ к самому UI)
+- `LOG_LEVEL`, `LOG_FORMAT` — нужны при инициализации логгера
+
+*`ADMIN_PASSWORD` — гибридный:*
+- Если задан в `.env` → override (bootstrap и аварийный сброс)
+- Если не задан в `.env` → берётся из БД (хранится как bcrypt-хеш)
+- Смена через Admin UI → пишет в БД
+- Сброс: задать `ADMIN_PASSWORD` в `.env` + рестарт → перезапишет значение в БД → убрать из `.env`
+
+*Переходит в БД (редактируется через Admin UI):*
+
+| Настройка | Зачем в БД |
+|-----------|-----------|
+| `MATCH_THRESHOLD` | Тюнинг матчинга без рестарта |
+| `MATCH_UNCERTAIN_FLOOR` | То же |
+| `SC_RATE_LIMIT_SLEEP` | Оперативная реакция на rate limit SC |
+| `SC_PLAYLIST_BATCH_SIZE` | Эксперименты с батчингом |
+| `YM_PROXY_URL` | Смена прокси без рестарта |
+| `YANDEX_CLIENT_ID/SECRET/REDIRECT_URI` | Смена OAuth app без рестарта |
+| `SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI` | То же |
+| `SC_CLIENT_ID/SECRET/REDIRECT_URI` | То же |
+| `ALLOWED_USERS` | Управление через UI (сейчас строка в .env) |
+
+**Архитектура:**
+
+```
+core/db/models.py     — новая таблица AppSettings (key, value, updated_at)
+core/db/crud.py       — get_setting(key, default), set_setting(key, value), get_all_settings()
+config.py             — Settings.get_effective(key): .env → DB → default (priority)
+                        При старте: если ADMIN_PASSWORD в .env → сохранить в DB → убрать из памяти
+api/routes/admin.py   — новая вкладка /admin/settings: GET (форма), POST (сохранить)
+api/templates/admin/settings.html — форма редактирования настроек с группами
+alembic/              — новая миграция для таблицы AppSettings
+```
+
+**Загрузка настроек в runtime:**
+- Настройки из БД кешируются в памяти (TTL 60с или при изменении через UI)
+- `config.settings` остаётся точкой входа; для DB-настроек добавить `settings.get_db("key")`
+- При изменении через UI → инвалидировать кеш → следующее обращение перечитает из БД
+
+**Admin UI — вкладка "Настройки":**
+```
+[Матчинг]
+  Порог совпадения:          [75.0]
+  Нижняя граница неточных:  [60.0]
+
+[SoundCloud]
+  Задержка записи (сек):    [2.0]
+  Размер батча плейлистов:  [500]
+
+[Яндекс Музыка]
+  Proxy URL:                [socks5://...]
+
+[OAuth — Яндекс]
+  Client ID / Secret / Redirect URI
+
+[OAuth — Spotify]
+  Client ID / Secret / Redirect URI
+
+[OAuth — SoundCloud]
+  Client ID / Secret / Redirect URI
+
+[Доступ]
+  Allowed Users (через запятую): [123456, 789012]
+  Сменить пароль администратора: [новый пароль]
+```
+
+**Задачи:**
+- [ ] `alembic` — миграция: таблица `app_settings (key VARCHAR PK, value TEXT, updated_at)`
+- [ ] `core/db/models.py` — модель `AppSetting`
+- [ ] `core/db/crud.py` — `get_setting()`, `set_setting()`, `get_all_settings()`, кеш с TTL
+- [ ] `config.py` — при старте: если `ADMIN_PASSWORD` задан в env → bcrypt → сохранить в БД → обнулить в памяти
+- [ ] `api/routes/admin.py` — маршруты `/admin/settings` GET/POST; смена пароля через отдельный POST
+- [ ] `api/templates/admin/settings.html` — форма с группами настроек
+- [ ] Обновить потребителей настроек: `matcher.py`, `worker/tasks.py`, `core/soundcloud/client.py` — читать из кеша БД вместо `settings.*`
+- [ ] `.env.example` — пометить перенесённые параметры как `# опционально — теперь в Admin UI`
+- [ ] Тесты: юнит-тесты для `get_setting/set_setting`, интеграционный для admin settings endpoint
+
+**Ограничения:**
+- OAuth-секреты хранить зашифровано через `crypto.py` (тот же Fernet что для токенов)
+- `YM_PROXY_URL` — если задан в `.env`, он берётся первым (override для отладки)
+- При деплое с нуля: настройки инициализируются из `.env` в БД при первом старте (если в БД нет)
 
 ---
 

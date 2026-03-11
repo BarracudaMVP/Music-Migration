@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
@@ -154,7 +154,7 @@ async def index(request: Request, error: str = ""):
 # ---------------------------------------------------------------------------
 
 @router.get("/api/flow/to-step", response_class=HTMLResponse)
-async def flow_to_step(request: Request, from_service: str):
+async def flow_to_step(request: Request, from_service: str = Query(..., alias="from")):
     """HTMX: returns TO service cards for the selected FROM service."""
     matrix = ServiceRegistry.get_matrix()
     to_services: dict[str, str] = {}
@@ -168,7 +168,11 @@ async def flow_to_step(request: Request, from_service: str):
 
 
 @router.get("/api/flow/rest", response_class=HTMLResponse)
-async def flow_rest(request: Request, from_service: str, to_service: str):
+async def flow_rest(
+    request: Request,
+    from_service: str = Query(..., alias="from"),
+    to_service: str = Query(..., alias="to"),
+):
     """HTMX: returns content-types + auth status + settings for a FROM→TO pair."""
     from core.services.base import Capability
     from config import settings as cfg
