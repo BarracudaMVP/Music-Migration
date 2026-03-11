@@ -1040,6 +1040,7 @@ async def history(request: Request):
     migrations = [
         {
             "id": m.id,
+            "user_migration_number": m.user_migration_number,
             "status": m.status,
             "status_label": _status_label(m.status, lang),
             "created_at": m.created_at,

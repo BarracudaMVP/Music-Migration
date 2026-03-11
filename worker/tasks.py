@@ -9,7 +9,7 @@ def _make_progress_callback(redis, migration_id: int):
     async def callback(current: int, total: int, track_str: str) -> None:
         await redis.set(
             f"migration_current_track:{migration_id}",
-            track_str,
+            f"[{current}/{total}] {track_str}",
             ex=_CURRENT_TRACK_TTL,
         )
     return callback

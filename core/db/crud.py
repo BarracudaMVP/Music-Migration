@@ -30,7 +30,16 @@ async def create_migration(
     to_service: str | None = None,
 ) -> int:
     async with AsyncSessionLocal() as session:
-        migration = Migration(user_id=user_id, from_service=from_service, to_service=to_service)
+        count_result = await session.execute(
+            select(func.count()).select_from(Migration).where(Migration.user_id == user_id)
+        )
+        user_num = count_result.scalar_one() + 1
+        migration = Migration(
+            user_id=user_id,
+            from_service=from_service,
+            to_service=to_service,
+            user_migration_number=user_num,
+        )
         session.add(migration)
         await session.commit()
         await session.refresh(migration)
@@ -60,6 +69,7 @@ async def get_migration(migration_id: int) -> dict | None:
             "soundcloud_user_id": row.soundcloud_user_id,
             "created_at": row.created_at,
             "status": row.status,
+            "user_migration_number": row.user_migration_number,
         }
 
 

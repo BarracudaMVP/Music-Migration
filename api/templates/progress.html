@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{{ t('history_transfer') }} #{{ migration_id }}{% endblock %}
+{% block title %}{{ t('history_transfer') }} #{{ migration.user_migration_number or migration_id }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration.user_migration_number or migration_id }}</span></h1>
   <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('progress_back') }}</a>
 </div>
 
 <div
   id="status-block"
   hx-get="/migrate/{{ migration_id }}/status-fragment"
-  hx-trigger="load, every 3s"
+  hx-trigger="load, every 1s"
   hx-swap="outerHTML"
 >
   <div class="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-sm">

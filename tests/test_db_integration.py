@@ -69,6 +69,27 @@ async def test_get_migration_nonexistent_returns_none(db):
     assert await get_migration(99999) is None
 
 
+@pytest.mark.asyncio
+async def test_user_migration_number_increments_per_user(db):
+    """Each user gets their own sequential numbering starting from 1."""
+    from core.db import create_migration, get_migration
+    mid1 = await create_migration("user_a")
+    mid2 = await create_migration("user_a")
+    mid3 = await create_migration("user_a")
+    mid_other = await create_migration("user_b")
+
+    r1 = await get_migration(mid1)
+    r2 = await get_migration(mid2)
+    r3 = await get_migration(mid3)
+    r_other = await get_migration(mid_other)
+
+    assert r1["user_migration_number"] == 1
+    assert r2["user_migration_number"] == 2
+    assert r3["user_migration_number"] == 3
+    # user_b has their own counter starting at 1
+    assert r_other["user_migration_number"] == 1
+
+
 # ---------------------------------------------------------------------------
 # Tracks
 # ---------------------------------------------------------------------------

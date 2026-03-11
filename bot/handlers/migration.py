@@ -19,7 +19,7 @@ from core.i18n import t
 
 router = Router()
 
-_POLL_INTERVAL = 15  # seconds between status polls
+_POLL_INTERVAL = 5  # seconds between status polls
 _NOT_FOUND_PREVIEW = 30  # tracks shown inline
 
 

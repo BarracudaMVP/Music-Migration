@@ -1264,6 +1264,24 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 ---
 
+### ✅ MM-64 — Live progress UX (per-user numbering + faster updates)
+
+> Улучшение UX прогресса миграции: понятная нумерация, более частые обновления, позиция трека в очереди.
+
+- [x] DB: `user_migration_number` поле в `Migration` + alembic миграция `h8i9j0k1l2m3`
+- [x] `core/db/crud.py` — `create_migration()` считает предыдущие миграции пользователя и сохраняет порядковый номер
+- [x] `core/db/crud.py` — `get_migration()` возвращает `user_migration_number`
+- [x] `api/routes/web.py` — history route передаёт `user_migration_number` в шаблон
+- [x] Шаблоны: `user_migration_number or id` вместо глобального `id`:
+  - `api/templates/history.html`
+  - `api/templates/progress.html`
+  - `api/templates/fragments/status.html`
+- [x] Веб: HTMX polling 3s → 1s (`progress.html` + `fragments/status.html`)
+- [x] Worker: `[i/total]` prefix в `migration_current_track` Redis key (`worker/tasks.py`)
+- [x] Бот: `_POLL_INTERVAL` 15s → 5s (`bot/handlers/migration.py`)
+
+---
+
 ### 🔲 MM-65 — Вынос настроек в БД + Admin UI
 
 > Настройки сейчас разбросаны по `.env` и требуют рестарта при изменении. Задача: вынести

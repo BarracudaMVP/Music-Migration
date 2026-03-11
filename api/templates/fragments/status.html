@@ -3,7 +3,7 @@
   id="status-block"
   {% if polling %}
   hx-get="/migrate/{{ migration_id }}/status-fragment"
-  hx-trigger="every 3s"
+  hx-trigger="every 1s"
   hx-swap="outerHTML"
   {% endif %}
   class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-slide-in"
@@ -29,7 +29,7 @@
       <span class="text-sm font-medium text-gray-500">{{ status_label }}</span>
       {% endif %}
     </div>
-    <span class="text-xs text-gray-400">#{{ migration_id }}</span>
+    <span class="text-xs text-gray-400">#{{ migration.user_migration_number or migration_id }}</span>
   </div>
 
   <!-- Animated progress bar (shown while running) -->
