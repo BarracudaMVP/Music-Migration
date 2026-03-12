@@ -59,4 +59,6 @@ memory/
 
 # Скрипты деплоя — хранятся только на сервере и локально, не в git
 # (иначе git checkout старого тега удалит их с сервера)
+# entrypoint.sh — исключение: часть Docker-образа, должен быть в git
 scripts/
+!scripts/entrypoint.sh
