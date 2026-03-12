@@ -21,8 +21,8 @@
 ```
 ┌─────────────────────┐     ┌──────────────────────────────────────┐
 │   Telegram Bot      │     │   Web UI (Jinja2 + HTMX)             │
-│   (aiogram 3.x)     │     │   / /auth /migrate /history          │
-│   FSM: YM / Spotify │     │   /import /export /admin             │
+│   (aiogram 3.x)     │     │   / /migrate /history /admin         │
+│   FSM: пошаговый    │     │   /auth/* /api/flow/* (HTMX)         │
 └──────────┬──────────┘     └─────────────────┬────────────────────┘
            │ HTTP (internal API)               │ HTTP
            └───────────────────┬───────────────┘
@@ -60,7 +60,7 @@
   └──────┬──────┘ └────┬─────┘ └──────┬───────┘
          │             │              │
          ▼             ▼              ▼
-  api.music.yandex  api-v2.soundcloud  api.spotify.com
+  api.music.yandex  api.soundcloud.com  api.spotify.com
 ```
 
 ---
@@ -74,10 +74,11 @@ Capability:
   READ_LIKED_ARTISTS     WRITE_LIKED_ARTISTS
   EXPORT_FILE            IMPORT_FILE
 
-Сервисы (текущее состояние, MM-38 + MM-39 реализованы):
+Сервисы (текущее состояние, MM-38 + MM-39 + MM-52 + MM-54 реализованы):
   yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS
   soundcloud:     READ_LIKED_TRACKS, WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
-  file_csv:       EXPORT_FILE, IMPORT_FILE
+                  (OAuth Authorization Code Flow, api.soundcloud.com, Authorization: OAuth {token})
+  file_csv:       EXPORT_FILE, IMPORT_FILE  ← будет переименован в "file" в MM-69
   spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS
 ```
 
@@ -376,15 +377,19 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### ✅ MM-28 — Экспорт SoundCloud → File
+### ✅ MM-25 — Сетевая безопасность RU-сервера
 
-> Экспортировать лайкнутые треки из SoundCloud в CSV/JSON файл.
-> Логика аналогична MM-24 (YM → File) — достаточно добавить capability в адаптер.
+> Dante SOCKS5 прокси на RU сервере сейчас доступен без ограничений по IP.
+> Нужно закрыть порт 1080 для всех кроме EU сервера (и опционально локальной машины разработчика).
+> Реализовано через Ansible playbooks (не bash-скрипты).
 
-- [x] `SoundCloudAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "soundcloud_token"`
-- [x] `SoundCloudAdapter`: реализовать `fetch_liked_tracks(token)` → `[{artist, title}]` (через `SoundCloudClient.get_liked_tracks()`)
-- [x] `/export` показывает SoundCloud как источник (шаблон динамический — подхватывает автоматически)
-- [x] `SoundCloudClient.get_liked_tracks()` — новый метод: GET `/me/track_likes` с пагинацией через `next_href`
+- [x] `infrastructure/ansible/ru.yml` — ufw (deny all, allow 22 + 1080 только с EU IP / dev IP) + Dante с `socksmethod: username` + создание системного пользователя
+- [x] `infrastructure/ansible/eu.yml` — Docker setup + git pull + `docker compose up --build -d` + healthcheck
+- [x] `infrastructure/ansible/inventory.yml` — хосты EU и RU серверов
+- [x] `infrastructure/ansible/group_vars/all.yml` — общие переменные (eu_server_ip, dante_user, deploy_dir)
+- [x] `infrastructure/ansible/group_vars/vault.yml` — секреты (dante_password, не коммитится — gitignored)
+- [x] `infrastructure/ansible/templates/danted.conf.j2` — Dante конфиг с username auth
+- [x] **Применено на серверах** — ufw активен, Dante перезапущен с новым конфигом, прокси протестирован
 
 ---
 
@@ -410,6 +415,30 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
+### ✅ MM-27 — entrypoint.sh → scripts/
+
+> Перенос скрипта запуска Docker-контейнера из корня проекта в `scripts/`.
+
+- [x] `scripts/entrypoint.sh` — создан (копия корневого `entrypoint.sh`)
+- [x] `entrypoint.sh` — удалён из корня
+- [x] `Dockerfile.api` — обновлён: `chmod +x scripts/entrypoint.sh`, `CMD ["./scripts/entrypoint.sh"]`
+
+**Файлы:** `scripts/entrypoint.sh` (создан), `entrypoint.sh` (удалён), `Dockerfile.api`
+
+---
+
+### ✅ MM-28 — Экспорт SoundCloud → File
+
+> Экспортировать лайкнутые треки из SoundCloud в CSV/JSON файл.
+> Логика аналогична MM-24 (YM → File) — достаточно добавить capability в адаптер.
+
+- [x] `SoundCloudAdapter`: добавить `Capability.EXPORT_TRACKS` + `session_token_key = "soundcloud_token"`
+- [x] `SoundCloudAdapter`: реализовать `fetch_liked_tracks(token)` → `[{artist, title}]` (через `SoundCloudClient.get_liked_tracks()`)
+- [x] `/export` показывает SoundCloud как источник (шаблон динамический — подхватывает автоматически)
+- [x] `SoundCloudClient.get_liked_tracks()` — новый метод: GET `/me/track_likes` с пагинацией через `next_href`
+
+---
+
 ### ✅ MM-29 — PostgreSQL only (убрать SQLite)
 
 > Alembic остаётся — он нужен для управления схемой PostgreSQL. Убираем только SQLite-специфику.
@@ -425,20 +454,37 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### ✅ MM-34 — Файрвол на уровне провайдера (Timeweb Cloud)
+### 🔲 MM-30 — README
 
-> Whitelist-режим: только указанный трафик разрешён, остальное блокируется.
+- [ ] Описание сервиса (что делает, кому нужен)
+- [ ] Инструкция по запуску через docker-compose (prod)
+- [ ] Переменные окружения (.env)
+- [ ] Telegram-бот — как найти, команды
+- [ ] Веб-интерфейс — разделы и функции
+- [ ] FAQ: как получить токены, что делать если трек не найден
 
-**RU сервер:**
-- [x] TCP 22 — от всех (SSH)
-- [x] TCP 1080 — только с 72.56.68.207 (EU сервер, SOCKS5)
-- [x] Проверено: port 1080 закрыт с посторонних IP, прокси работает с EU
+---
 
-**EU сервер:**
-- [x] TCP 22 — от всех (SSH)
-- [x] TCP 80 — от всех (HTTP → nginx)
-- [x] TCP 443 — от всех (HTTPS → nginx)
-- [x] Проверено: SSH, 80, 443 доступны
+### ✅ MM-31 — Управление доступом к веб-интерфейсу
+
+> Возможность запустить только бэкенд + бот без веба, или закрыть веб для определённых IP.
+
+- [x] `config.py` — `web_enabled: bool = True` и `web_allowed_ips: str = ""`
+- [x] `api/middleware.py` — `WebIPWhitelistMiddleware`: проверяет IP по `X-Forwarded-For` / `request.client.host`; `/api/*` и `/health` всегда доступны
+- [x] `api/main.py` — web.router и admin.router регистрируются только если `web_enabled=True`; `WebIPWhitelistMiddleware` добавляется только если `web_allowed_ips` задан
+- [x] CLAUDE.md — `WEB_ENABLED` и `WEB_ALLOWED_IPS` задокументированы в env-переменных
+- [x] 133 теста проходят
+- [ ] docker-compose `profiles` — отложено (достаточно `WEB_ENABLED=false` в .env)
+
+---
+
+### ✅ MM-32 — Читаемые логи в Docker
+
+- [x] Убрать дублирование: `LOG_FORMAT` env var переключает режим (`pretty` | `json`)
+- [x] `pretty` (default) — один sink: stderr, colored (локальная разработка)
+- [x] `json` — один sink: stdout, newline-delimited JSON (Docker/Promtail)
+- [x] `docker-compose.yml` — `LOG_FORMAT=json` прописан для api/bot/worker
+- [x] `config.py` — `log_format` поле; `CLAUDE.md` — задокументировано
 
 ---
 
@@ -473,6 +519,23 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 - `ytmusicapi` — scraping, может сломаться при изменении YT
 - YouTube Data API v3 — квоты (10 000 units/day по умолчанию); лайк = 50 units, создание плейлиста = 50 units
 - Поиск треков: в YT нет прямого аналога "найти песню по artist+title" — нужен `search()` через ytmusicapi или YouTube Search API
+
+---
+
+### ✅ MM-34 — Файрвол на уровне провайдера (Timeweb Cloud)
+
+> Whitelist-режим: только указанный трафик разрешён, остальное блокируется.
+
+**RU сервер:**
+- [x] TCP 22 — от всех (SSH)
+- [x] TCP 1080 — только с 72.56.68.207 (EU сервер, SOCKS5)
+- [x] Проверено: port 1080 закрыт с посторонних IP, прокси работает с EU
+
+**EU сервер:**
+- [x] TCP 22 — от всех (SSH)
+- [x] TCP 80 — от всех (HTTP → nginx)
+- [x] TCP 443 — от всех (HTTPS → nginx)
+- [x] Проверено: SSH, 80, 443 доступны
 
 ---
 
@@ -580,28 +643,6 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-42 — Яндекс Музыка WRITE артисты
-
-> Дополнение к MM-38: лайки артистов в Яндекс Музыке.
-
-- [ ] `YandexMusicClient.search_artists(query, limit=10)` → `client.search(type_="artist")`
-- [ ] `YandexMusicClient.like_artist(artist_id)` → `users_likes_artists_add([artist_id])`
-- [ ] `YandexMusicAdapter`: добавить `WRITE_LIKED_ARTISTS`
-- [ ] `migration/yandex_tracks.py`: добавить `migrate_artists_to_yandex(artists_data, ym_client, migration_id)`
-- [ ] `worker/tasks.py`: расширить `run_yandex_migration_job` поддержкой `migrate_artists`
-
----
-
-### ✅ MM-32 — Читаемые логи в Docker
-
-- [x] Убрать дублирование: `LOG_FORMAT` env var переключает режим (`pretty` | `json`)
-- [x] `pretty` (default) — один sink: stderr, colored (локальная разработка)
-- [x] `json` — один sink: stdout, newline-delimited JSON (Docker/Promtail)
-- [x] `docker-compose.yml` — `LOG_FORMAT=json` прописан для api/bot/worker
-- [x] `config.py` — `log_format` поле; `CLAUDE.md` — задокументировано
-
----
-
 ### ✅ MM-40 — Динамическая оценка времени переноса
 
 > `format_eta(track_count, to_service, lang, sc_rate_limit_sleep)` → «⏱ ~6 мин» / «⏱ ~4 ч 52 мин»
@@ -632,64 +673,15 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-30 — README
+### 🔲 MM-42 — Яндекс Музыка WRITE артисты
 
-- [ ] Описание сервиса (что делает, кому нужен)
-- [ ] Инструкция по запуску через docker-compose (prod)
-- [ ] Переменные окружения (.env)
-- [ ] Telegram-бот — как найти, команды
-- [ ] Веб-интерфейс — разделы и функции
-- [ ] FAQ: как получить токены, что делать если трек не найден
+> Дополнение к MM-38: лайки артистов в Яндекс Музыке.
 
----
-
-### ✅ MM-31 — Управление доступом к веб-интерфейсу
-
-> Возможность запустить только бэкенд + бот без веба, или закрыть веб для определённых IP.
-
-- [x] `config.py` — `web_enabled: bool = True` и `web_allowed_ips: str = ""`
-- [x] `api/middleware.py` — `WebIPWhitelistMiddleware`: проверяет IP по `X-Forwarded-For` / `request.client.host`; `/api/*` и `/health` всегда доступны
-- [x] `api/main.py` — web.router и admin.router регистрируются только если `web_enabled=True`; `WebIPWhitelistMiddleware` добавляется только если `web_allowed_ips` задан
-- [x] CLAUDE.md — `WEB_ENABLED` и `WEB_ALLOWED_IPS` задокументированы в env-переменных
-- [x] 133 теста проходят
-- [ ] docker-compose `profiles` — отложено (достаточно `WEB_ENABLED=false` в .env)
-
----
-
-### ✅ MM-25 — Сетевая безопасность RU-сервера
-
-> Dante SOCKS5 прокси на RU сервере сейчас доступен без ограничений по IP.
-> Нужно закрыть порт 1080 для всех кроме EU сервера (и опционально локальной машины разработчика).
-> Реализовано через Ansible playbooks (не bash-скрипты).
-
-- [x] `infrastructure/ansible/ru.yml` — ufw (deny all, allow 22 + 1080 только с EU IP / dev IP) + Dante с `socksmethod: username` + создание системного пользователя
-- [x] `infrastructure/ansible/eu.yml` — Docker setup + git pull + `docker compose up --build -d` + healthcheck
-- [x] `infrastructure/ansible/inventory.yml` — хосты EU и RU серверов
-- [x] `infrastructure/ansible/group_vars/all.yml` — общие переменные (eu_server_ip, dante_user, deploy_dir)
-- [x] `infrastructure/ansible/group_vars/vault.yml` — секреты (dante_password, не коммитится — gitignored)
-- [x] `infrastructure/ansible/templates/danted.conf.j2` — Dante конфиг с username auth
-- [x] **Применено на серверах** — ufw активен, Dante перезапущен с новым конфигом, прокси протестирован
-
----
-
-### ✅ MM-47 — SoundCloud playlist_mode (замена like_track плейлистами)
-
-> SC API возвращает HTTP 404 на `PUT /me/track_likes/{id}` для внешних токенов.
-> Решение: собирать sc_id в памяти в ходе поиска, в конце создавать плейлисты батчами.
-
-- [x] `config.py` — `sc_playlist_batch_size: int = 500` (env: `SC_PLAYLIST_BATCH_SIZE`)
-- [x] `migration/tracks.py` — `playlist_mode: bool = False` во всех функциях пайплайна
-- [x] `migration/tracks.py` — `_process_one_track` возвращает `tuple[str, int | None]`; в playlist_mode не вызывает `like_track`, сразу маркирует `status=liked` и возвращает `sc_id`
-- [x] `migration/tracks.py` — `_run_pending_loop` собирает `collected_ids`, после цикла вызывает `_create_liked_playlists`
-- [x] `migration/tracks.py` — `_create_liked_playlists(sc_client, track_ids)`: батчи по `sc_playlist_batch_size`, плейлисты "YM Liked #1", "YM Liked #2"…
-- [x] `migration/spotify_tracks.py` — `playlist_mode` пробрасывается через `migrate_spotify_tracks` и `run_spotify_migration`
-- [x] `worker/tasks.py` — все три SC-джоба (`run_migration_job`, `run_file_migration_job`, `run_spotify_migration_job`) с `playlist_mode=True`
-- [x] `CLAUDE.md` — `SC_PLAYLIST_BATCH_SIZE` в env vars, паттерн в Key Patterns, Architecture обновлена
-
-**Ключевые решения:**
-- Поиск и `like_track` разделены: весь цикл — только search+match (без write API), плейлист создаётся один раз в конце
-- `playlist_mode=False` по умолчанию — не ломает тесты и CLI
-- При одном батче плейлист называется "YM Liked", при нескольких — "YM Liked #N"
+- [ ] `YandexMusicClient.search_artists(query, limit=10)` → `client.search(type_="artist")`
+- [ ] `YandexMusicClient.like_artist(artist_id)` → `users_likes_artists_add([artist_id])`
+- [ ] `YandexMusicAdapter`: добавить `WRITE_LIKED_ARTISTS`
+- [ ] `migration/yandex_tracks.py`: добавить `migrate_artists_to_yandex(artists_data, ym_client, migration_id)`
+- [ ] `worker/tasks.py`: расширить `run_yandex_migration_job` поддержкой `migrate_artists`
 
 ---
 
@@ -720,45 +712,6 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### ✅ MM-52 — SoundCloud официальный OAuth (замена cookie-авторизации)
-
-> Текущий метод (cookie `oauth_token` из DevTools) использует внутренний браузерный токен.
-> SC API блокирует write-операции (like_track → 404, create_playlist → 403 Datadome) для таких токенов с server IP.
-> Решение: официальный OAuth Authorization Code Flow — как уже сделано для Spotify (MM-22/39).
-> Приложение зарегистрировано на soundcloud.com/you/apps, ожидается одобрение write scope.
-
-**Что решает:**
-- ✅ `PUT /me/track_likes/{id}` — нормальный лайк трека
-- ✅ `POST /playlists` — создание плейлиста без Datadome
-- ✅ Авторизация без DevTools (мобилка, любой браузер)
-- ✅ refresh_token — токен не протухает
-
-**Env vars (добавить в `.env` и `config.py`):**
-```
-SC_CLIENT_ID=
-SC_CLIENT_SECRET=
-SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
-```
-
-**Реализация (аналогично Spotify):**
-- [x] `core/soundcloud/oauth.py` — `get_auth_url()`, `exchange_code()`, `refresh_access_token()`
-- [x] `api/routes/web.py` — `GET /auth/soundcloud` (редирект на SC), `GET /auth/soundcloud/callback` (обмен кода, сохранение токена)
-- [x] `api/templates/auth.html` — кнопка "Подключить SoundCloud" вместо поля ввода cookie
-- [x] `core/db/models.py` — `UserSession.soundcloud_refresh_token` (новое поле)
-- [x] `core/db/crud.py` — `save_soundcloud_token()`, `load_user_session()` обновлён
-- [x] `alembic/versions/f6a7b8c9d0e1_add_soundcloud_refresh_token.py` — новая миграция
-- [x] `worker/tasks.py` — `_refresh_sc_token_if_needed()` + auto-refresh в 3 джобах
-- [x] Бот — `_ask_soundcloud_token()` → ссылка на веб если `sc_client_id` задан
-- [x] `core/i18n.py` — `auth_sc_oauth_hint`, `auth_sc_oauth_btn`, `bot_sc_no_token`
-
-**Порядок:**
-1. Дождаться одобрения SC приложения (или протестировать с текущими credentials)
-2. Проверить что `GET /me` работает с OAuth token
-3. Проверить что `PUT /me/track_likes/{id}` работает
-4. Реализовать полный flow
-
----
-
 ### 🔲 MM-46 — Перенос приложения из /root/ в /opt/ на EU сервере
 
 > Технический долг: приложение лежит в `/root/Music-Migration/` — домашней директории root.
@@ -777,59 +730,24 @@ SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
 
 ---
 
-### ✅ MM-50 — Лимит треков при переносе
+### ✅ MM-47 — SoundCloud playlist_mode (замена like_track плейлистами)
 
-> Для тестирования и поэтапного переноса: пользователь выбирает сколько треков перенести — все или первые N.
-> Лимит применяется после загрузки из источника, перед вставкой в БД.
+> SC API возвращает HTTP 404 на `PUT /me/track_likes/{id}` для внешних токенов.
+> Решение: собирать sc_id в памяти в ходе поиска, в конце создавать плейлисты батчами.
 
-**Веб:**
-- [x] `api/templates/index.html` — поле "Лимит треков": дропдаун (Все / 50 / 100 / 500)
-- [x] `api/routes/web.py` — `track_limit: int = Form(0)` в `start_migrate`, `0` → `None`
-- [x] `core/i18n.py` — ключи `index_track_limit`, `index_limit_all`, `index_limit_first`
+- [x] `config.py` — `sc_playlist_batch_size: int = 500` (env: `SC_PLAYLIST_BATCH_SIZE`)
+- [x] `migration/tracks.py` — `playlist_mode: bool = False` во всех функциях пайплайна
+- [x] `migration/tracks.py` — `_process_one_track` возвращает `tuple[str, int | None]`; в playlist_mode не вызывает `like_track`, сразу маркирует `status=liked` и возвращает `sc_id`
+- [x] `migration/tracks.py` — `_run_pending_loop` собирает `collected_ids`, после цикла вызывает `_create_liked_playlists`
+- [x] `migration/tracks.py` — `_create_liked_playlists(sc_client, track_ids)`: батчи по `sc_playlist_batch_size`, плейлисты "YM Liked #1", "YM Liked #2"…
+- [x] `migration/spotify_tracks.py` — `playlist_mode` пробрасывается через `migrate_spotify_tracks` и `run_spotify_migration`
+- [x] `worker/tasks.py` — все три SC-джоба (`run_migration_job`, `run_file_migration_job`, `run_spotify_migration_job`) с `playlist_mode=True`
+- [x] `CLAUDE.md` — `SC_PLAYLIST_BATCH_SIZE` в env vars, паттерн в Key Patterns, Architecture обновлена
 
-**Бот:**
-- [x] `bot/states.py` — добавлен `AuthFlow.selecting_limit`
-- [x] `bot/handlers/auth.py` — кнопки режима `select_mode:tracks/full`; отдельный шаг лимита (Все/50/100/500)
-- [x] `bot/handlers/migration.py` — `on_select_mode` → `selecting_limit`; `on_start_migration` парсит лимит
-- [x] `bot/api_client.py` — `start_migration()` принимает и передаёт `track_limit`
-- [x] `core/i18n.py` — `bot_select_limit`, `bot_btn_limit_all`, `bot_btn_limit_n`
-
-**Пайплайн:**
-- [x] `migration/tracks.py` — `migrate_tracks(..., track_limit=None)` + `migrate_from_file_tracks`
-- [x] `migration/spotify_tracks.py` — `migrate_spotify_tracks(..., track_limit=None)`
-- [x] `worker/tasks.py` — все 5 джобов принимают и пробрасывают `track_limit: int | None = None`
-- [x] `api/routes/migrations.py` — `StartMigrationRequest` добавлен `track_limit: int | None = None`
-
----
-
-### ✅ MM-51 — Выбор целевого сервиса (to_service) в боте
-
-> Сейчас бот намертво переносит только в SoundCloud. Нужно добавить выбор куда переносим —
-> SoundCloud, Яндекс Музыку или Spotify — симметрично тому как уже работает веб (дропдауны из матрицы).
-
-**Новый флоу бота:**
-```
-/migrate
-  → selecting_from   (YM | Spotify)
-  → selecting_to     (SC | YM | Spotify — динамически из матрицы)
-  → waiting_*_token  (сбор токенов для FROM + TO)
-  → confirming
-```
-
-- [x] `bot/states.py` — добавлен `selecting_to = State()`
-- [x] `bot/handlers/auth.py`:
-  - `on_select_from_ym` / `on_select_from_spotify` — теперь вызывают `_show_to_selection` вместо прямого перехода к токенам
-  - `_show_to_selection` — динамически строит клавиатуру из `ServiceRegistry.get_matrix()` для выбранного FROM
-  - `on_select_to` — единый обработчик; маршрутизирует к нужным шагам авторизации по FROM+TO
-  - `_route_to_sc` — валидация/запрос SC-токена
-  - `_route_to_spotify` — проверка наличия spotify_token, ссылка на веб если нет
-  - `_continue_after_ym_token` — после получения YM-токена роутит к SC или Spotify или сразу к подтверждению
-  - `_show_confirmation` — универсальный, использует `_SERVICE_LABEL` для любого FROM
-  - `_show_confirmation_spotify` — делегирует в `_show_confirmation` (обратная совместимость)
-  - SC как FROM — `bot_sc_coming_soon`, state.clear()
-- [x] `core/i18n.py` — ключи `bot_service_soundcloud`, `bot_select_to`, `bot_sc_coming_soon`
-- [x] `bot/handlers/migration.py` — `to_service` читается из state, передаётся в `api_client.start_migration`
-- [x] `api/routes/web.py` — ETA использует реальный `to_service` из migration record (сделано в MM-55)
+**Ключевые решения:**
+- Поиск и `like_track` разделены: весь цикл — только search+match (без write API), плейлист создаётся один раз в конце
+- `playlist_mode=False` по умолчанию — не ломает тесты и CLI
+- При одном батче плейлист называется "YM Liked", при нескольких — "YM Liked #N"
 
 ---
 
@@ -965,51 +883,98 @@ File → any       |   ✓   |     ✗     |    ✗
 
 ---
 
-### 🔲 MM-56 — Редизайн интерфейса бота (копирует флоу MM-49)
+### ✅ MM-50 — Лимит треков при переносе
 
-> **Суть:** бот должен точно воспроизвести пошаговый флоу веб-интерфейса (MM-49) средствами Telegram UI.
-> Веб — эталон UX: те же шаги, та же матрица, те же настройки.
-> Разница только в отображении: кнопки вместо HTMX-карточек, нет инлайн файлпикера.
+> Для тестирования и поэтапного переноса: пользователь выбирает сколько треков перенести — все или первые N.
+> Лимит применяется после загрузки из источника, перед вставкой в БД.
 
-**Флоу бота (целевой):**
+**Веб:**
+- [x] `api/templates/index.html` — поле "Лимит треков": дропдаун (Все / 50 / 100 / 500)
+- [x] `api/routes/web.py` — `track_limit: int = Form(0)` в `start_migrate`, `0` → `None`
+- [x] `core/i18n.py` — ключи `index_track_limit`, `index_limit_all`, `index_limit_first`
+
+**Бот:**
+- [x] `bot/states.py` — добавлен `AuthFlow.selecting_limit`
+- [x] `bot/handlers/auth.py` — кнопки режима `select_mode:tracks/full`; отдельный шаг лимита (Все/50/100/500)
+- [x] `bot/handlers/migration.py` — `on_select_mode` → `selecting_limit`; `on_start_migration` парсит лимит
+- [x] `bot/api_client.py` — `start_migration()` принимает и передаёт `track_limit`
+- [x] `core/i18n.py` — `bot_select_limit`, `bot_btn_limit_all`, `bot_btn_limit_n`
+
+**Пайплайн:**
+- [x] `migration/tracks.py` — `migrate_tracks(..., track_limit=None)` + `migrate_from_file_tracks`
+- [x] `migration/spotify_tracks.py` — `migrate_spotify_tracks(..., track_limit=None)`
+- [x] `worker/tasks.py` — все 5 джобов принимают и пробрасывают `track_limit: int | None = None`
+- [x] `api/routes/migrations.py` — `StartMigrationRequest` добавлен `track_limit: int | None = None`
+
+---
+
+### ✅ MM-51 — Выбор целевого сервиса (to_service) в боте
+
+> Сейчас бот намертво переносит только в SoundCloud. Нужно добавить выбор куда переносим —
+> SoundCloud, Яндекс Музыку или Spotify — симметрично тому как уже работает веб (дропдауны из матрицы).
+
+**Новый флоу бота:**
 ```
 /migrate
-  → Шаг 1: Выбор FROM — кнопки сервисов (YM 🎵 | Spotify 🟢 | SC*)
-  → Шаг 2: Выбор TO  — кнопки из матрицы для выбранного FROM
-  → Шаг 3: Выбор типа контента — кнопки-тогглы: 🎵 Треки | 📋 Плейлисты | 👤 Артисты
-            → показываются только те, где есть пересечение READ у FROM и WRITE у TO
-            → если доступен только один тип — шаг пропускается, передаётся автоматически
-  → Шаг 4: Авторизация — только нужные шаги (FROM + TO); если токен валиден — пропускается
-  → Шаг 5: Настройки — лимит треков, пропуск перенесённых (тогли на одном экране)
-  → Старт → прогресс-бар → итог
+  → selecting_from   (YM | Spotify)
+  → selecting_to     (SC | YM | Spotify — динамически из матрицы)
+  → waiting_*_token  (сбор токенов для FROM + TO)
+  → confirming
 ```
 
-**Матрица доступности (та же, что в MM-49):**
-- YM→SC: Треки ✓, Плейлисты ✓, Артисты ✓
-- YM→Spotify: Треки ✓, Артисты ✓
-- YM→File: только Треки
-- Spotify→SC: Треки ✓, Плейлисты ✓, Артисты ✓
-- Spotify→YM: только Треки
-- SC→any: только Треки
-- File→any: только Треки
-Логика: `FROM.can(READ_X) and TO.can(WRITE_X)` через ServiceRegistry/адаптеры.
+- [x] `bot/states.py` — добавлен `selecting_to = State()`
+- [x] `bot/handlers/auth.py`:
+  - `on_select_from_ym` / `on_select_from_spotify` — теперь вызывают `_show_to_selection` вместо прямого перехода к токенам
+  - `_show_to_selection` — динамически строит клавиатуру из `ServiceRegistry.get_matrix()` для выбранного FROM
+  - `on_select_to` — единый обработчик; маршрутизирует к нужным шагам авторизации по FROM+TO
+  - `_route_to_sc` — валидация/запрос SC-токена
+  - `_route_to_spotify` — проверка наличия spotify_token, ссылка на веб если нет
+  - `_continue_after_ym_token` — после получения YM-токена роутит к SC или Spotify или сразу к подтверждению
+  - `_show_confirmation` — универсальный, использует `_SERVICE_LABEL` для любого FROM
+  - `_show_confirmation_spotify` — делегирует в `_show_confirmation` (обратная совместимость)
+  - SC как FROM — `bot_sc_coming_soon`, state.clear()
+- [x] `core/i18n.py` — ключи `bot_service_soundcloud`, `bot_select_to`, `bot_sc_coming_soon`
+- [x] `bot/handlers/migration.py` — `to_service` читается из state, передаётся в `api_client.start_migration`
+- [x] `api/routes/web.py` — ETA использует реальный `to_service` из migration record (сделано в MM-55)
 
-**Изменения:**
-- [ ] Единый экран настроек перед стартом (сейчас лимит выбирается отдельным шагом, остальные — тоглы на confirmation)
-- [ ] Убрать разделение "tracks" / "full" как отдельных кнопок → заменить на шаг выбора типа контента (Треки/Плейлисты/Артисты)
-- [ ] Добавить FSM-состояние `selecting_content_type` между шагом выбора TO и авторизацией
-- [ ] Инлайн-кнопки с тогглом (✅/☐) — пользователь жмёт чтобы выбрать/снять, затем "Далее →"
-- [ ] Если для пары FROM→TO доступен только один тип контента — шаг пропускается автоматически
-- [ ] Экран подтверждения с краткой сводкой: FROM → TO, выбранные типы, кол-во треков (ETA), все тогли на одном экране
-- [ ] SC как FROM (пока недоступен) — заглушка, не падение
-- [ ] `bot/states.py` — добавить `AuthFlow.selecting_content_type`
-- [ ] `bot/handlers/auth.py` — добавить хендлер шага выбора типа контента; передавать `content_types` в API
-- [ ] `core/i18n.py` — новые ключи: `bot_select_content_type`, `bot_content_tracks`, `bot_content_playlists`, `bot_content_artists`, `bot_content_next`
+---
 
-**Принципы синхронизации с MM-49:**
-- Та же матрица сервисов (из `ServiceRegistry`)
-- Те же флаги: `skip_already_migrated`, `like_tracks`, `track_limit`
-- SC как FROM — кнопка присутствует, но показывает "скоро" или ведёт на веб
+### ✅ MM-52 — SoundCloud официальный OAuth (замена cookie-авторизации)
+
+> Текущий метод (cookie `oauth_token` из DevTools) использует внутренний браузерный токен.
+> SC API блокирует write-операции (like_track → 404, create_playlist → 403 Datadome) для таких токенов с server IP.
+> Решение: официальный OAuth Authorization Code Flow — как уже сделано для Spotify (MM-22/39).
+> Приложение зарегистрировано на soundcloud.com/you/apps, ожидается одобрение write scope.
+
+**Что решает:**
+- ✅ `PUT /me/track_likes/{id}` — нормальный лайк трека
+- ✅ `POST /playlists` — создание плейлиста без Datadome
+- ✅ Авторизация без DevTools (мобилка, любой браузер)
+- ✅ refresh_token — токен не протухает
+
+**Env vars (добавить в `.env` и `config.py`):**
+```
+SC_CLIENT_ID=
+SC_CLIENT_SECRET=
+SC_REDIRECT_URI=https://yourdomain.com/auth/soundcloud/callback
+```
+
+**Реализация (аналогично Spotify):**
+- [x] `core/soundcloud/oauth.py` — `get_auth_url()`, `exchange_code()`, `refresh_access_token()`
+- [x] `api/routes/web.py` — `GET /auth/soundcloud` (редирект на SC), `GET /auth/soundcloud/callback` (обмен кода, сохранение токена)
+- [x] `api/templates/auth.html` — кнопка "Подключить SoundCloud" вместо поля ввода cookie
+- [x] `core/db/models.py` — `UserSession.soundcloud_refresh_token` (новое поле)
+- [x] `core/db/crud.py` — `save_soundcloud_token()`, `load_user_session()` обновлён
+- [x] `alembic/versions/f6a7b8c9d0e1_add_soundcloud_refresh_token.py` — новая миграция
+- [x] `worker/tasks.py` — `_refresh_sc_token_if_needed()` + auto-refresh в 3 джобах
+- [x] Бот — `_ask_soundcloud_token()` → ссылка на веб если `sc_client_id` задан
+- [x] `core/i18n.py` — `auth_sc_oauth_hint`, `auth_sc_oauth_btn`, `bot_sc_no_token`
+
+**Порядок:**
+1. Дождаться одобрения SC приложения (или протестировать с текущими credentials)
+2. Проверить что `GET /me` работает с OAuth token
+3. Проверить что `PUT /me/track_likes/{id}` работает
+4. Реализовать полный flow
 
 ---
 
@@ -1064,7 +1029,7 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 ---
 
-### 🔲 MM-54 — SC API фиксы (официальный endpoint + правильный auth)
+### ✅ MM-54 — SC API фиксы (официальный endpoint + правильный auth)
 
 > Переход с неофициального `api-v2.soundcloud.com` на официальный `api.soundcloud.com` по документации SC.
 
@@ -1115,6 +1080,56 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 - [x] `bot/api_client.py` — поле `skip_already_migrated` в теле запроса
 
 **Итоговая модель статусов (принято в MM-48):** `status='liked'` означает "успешно обработано" — трек либо добавлен в плейлист, либо лайкнут напрямую. Разделения статусов нет. Лайк — дополнительное действие, не меняет статус. Если `like_tracks=True` и SC вернул 404 → трек попадает в плейлист (тоже `liked`). Таким образом: `liked` = "в плейлисте" ИЛИ "напрямую лайкнуто". Лайкнутый напрямую трек в плейлист не добавляется. Модель принята как окончательная — разделять `in_playlist`/`liked` не планируется.
+
+---
+
+### 🔲 MM-56 — Редизайн интерфейса бота (точное воспроизведение веб-флоу MM-49)
+
+> **Суть:** бот должен воспроизвести веб-интерфейс (MM-49) **как можно точнее** средствами Telegram UI.
+> Веб — **эталон**: те же шаги в том же порядке, та же матрица сервисов, те же настройки, те же флаги.
+> Отличия — только технические ограничения Telegram: inline-кнопки вместо HTMX-карточек,
+> нет инлайн файлпикера (File→X/X→File доступны только через веб).
+> Любое отклонение от веб-флоу требует явного обоснования.
+
+**Флоу бота (целевой):**
+```
+/migrate
+  → Шаг 1: Выбор FROM — кнопки сервисов (YM 🎵 | Spotify 🟢 | SC*)
+  → Шаг 2: Выбор TO  — кнопки из матрицы для выбранного FROM
+  → Шаг 3: Выбор типа контента — кнопки-тогглы: 🎵 Треки | 📋 Плейлисты | 👤 Артисты
+            → показываются только те, где есть пересечение READ у FROM и WRITE у TO
+            → если доступен только один тип — шаг пропускается, передаётся автоматически
+  → Шаг 4: Авторизация — только нужные шаги (FROM + TO); если токен валиден — пропускается
+  → Шаг 5: Настройки — лимит треков, пропуск перенесённых (тогли на одном экране)
+  → Старт → прогресс-бар → итог
+```
+
+**Матрица доступности (та же, что в MM-49):**
+- YM→SC: Треки ✓, Плейлисты ✓, Артисты ✓
+- YM→Spotify: Треки ✓, Артисты ✓
+- YM→File: только Треки
+- Spotify→SC: Треки ✓, Плейлисты ✓, Артисты ✓
+- Spotify→YM: только Треки
+- SC→any: только Треки
+- File→any: только Треки
+Логика: `FROM.can(READ_X) and TO.can(WRITE_X)` через ServiceRegistry/адаптеры.
+
+**Изменения:**
+- [ ] Единый экран настроек перед стартом (сейчас лимит выбирается отдельным шагом, остальные — тоглы на confirmation)
+- [ ] Убрать разделение "tracks" / "full" как отдельных кнопок → заменить на шаг выбора типа контента (Треки/Плейлисты/Артисты)
+- [ ] Добавить FSM-состояние `selecting_content_type` между шагом выбора TO и авторизацией
+- [ ] Инлайн-кнопки с тогглом (✅/☐) — пользователь жмёт чтобы выбрать/снять, затем "Далее →"
+- [ ] Если для пары FROM→TO доступен только один тип контента — шаг пропускается автоматически
+- [ ] Экран подтверждения с краткой сводкой: FROM → TO, выбранные типы, кол-во треков (ETA), все тогли на одном экране
+- [ ] SC как FROM (пока недоступен) — заглушка, не падение
+- [ ] `bot/states.py` — добавить `AuthFlow.selecting_content_type`
+- [ ] `bot/handlers/auth.py` — добавить хендлер шага выбора типа контента; передавать `content_types` в API
+- [ ] `core/i18n.py` — новые ключи: `bot_select_content_type`, `bot_content_tracks`, `bot_content_playlists`, `bot_content_artists`, `bot_content_next`
+
+**Принципы синхронизации с MM-49:**
+- Та же матрица сервисов (из `ServiceRegistry`)
+- Те же флаги: `skip_already_migrated`, `like_tracks`, `track_limit`
+- SC как FROM — кнопка присутствует, но показывает "скоро" или ведёт на веб
 
 ---
 
@@ -1384,21 +1399,6 @@ alembic/              — новая миграция для таблицы AppS
 
 ---
 
-## Риски и митигации
-
-| Риск | Митигация |
-|------|-----------|
-| SoundCloud rate limit | sleep(2) + 429 backoff с reset_time |
-| Трек не найден (кириллица) | iuliia транслитерация + dual-path scoring |
-| Обрыв задачи | arq retry + resumable пайплайн |
-| Yandex Music недоступен с EU IP | SOCKS5 прокси через RU сервер ✅ |
-| SoundCloud недоступен с RU IP | Воркер на EU сервере |
-| 20-30 параллельных пользователей | arq max_jobs, asyncpg pool, per-user rate limit |
-| Истёкший токен во время миграции | Проверка при старте + graceful fail |
-| SC токен (cookie) — короткий срок | Уведомление + инструкция по обновлению |
-
----
-
 ### 🔲 MM-66 — Media Catalog (кэш поиска + cross-platform resolver)
 
 > Сохранять поисковые запросы треков и найденные платформенные ссылки в общую медиа-базу.
@@ -1490,6 +1490,23 @@ media_track_links
 
 ---
 
+### ✅ MM-69 — Rename file_csv → file
+
+**Задача:** `FileAdapter.id = "file_csv"` — имя отражает только CSV, хотя поддерживается и JSON. Переименовать в `"file"`.
+
+**Что сделано:**
+- [x] `core/services/file/adapter.py` — `id = "file"`, `name = "Файл (CSV/JSON)"`
+- [x] `core/i18n.py` — ключ `svc_file_csv` → `svc_file`
+- [x] `api/routes/web.py` — все `"file_csv"` → `"file"` (11 мест); `_SERVICE_ICONS`: `"file"` вместо `"file_csv"`
+- [x] `api/templates/fragments/flow_to.html` — `data-to="file"`, `hx-get="...&to=file"`, `onclick="selectTo('file')"`; проверка `!= 'file'`
+- [x] `api/templates/fragments/flow_rest.html` — все `'file_csv'` → `'file'`
+- [x] `tests/test_web_flow.py` — обновлены все `file_csv` → `file`, функции и docstring'и
+- [x] `alembic/versions/i9j0k1l2m3n4_rename_file_csv_to_file.py` — `UPDATE migrations SET from_service/to_service = 'file' WHERE = 'file_csv'`
+
+**Тесты:** 162 passed
+
+---
+
 ### ✅ MM-70 — Main screen UX: auth-gate + content_type validation
 
 **Задача:** кнопка "Начать перенос" теперь disabled когда нужные сервисы не авторизованы; последний чекбокс типа контента нельзя снять.
@@ -1521,30 +1538,6 @@ media_track_links
 - `_MAX_UPLOAD_BYTES` — используется в `POST /migrate`
 
 **Файлы:** `api/routes/web.py`, `api/templates/import.html` (удалён), `api/templates/export.html` (удалён), `api/templates/fragments/import_preview.html` (удалён), `core/i18n.py`
-
----
-
-### ✅ entrypoint.sh → scripts/
-
-- `scripts/entrypoint.sh` — создан (копия корневого `entrypoint.sh`)
-- `entrypoint.sh` — удалён из корня
-- `Dockerfile.api` — обновлён: `chmod +x scripts/entrypoint.sh`, `CMD ["./scripts/entrypoint.sh"]`
-
-**Файлы:** `scripts/entrypoint.sh` (создан), `entrypoint.sh` (удалён), `Dockerfile.api`
-
----
-
-### 🔲 MM-69 — Rename file_csv → file
-
-**Задача:** `FileAdapter.id = "file_csv"` — имя отражает только CSV, хотя поддерживается и JSON. Переименовать в `"file"`.
-
-**Все изменения:**
-- `core/services/file/adapter.py` — `id = "file"`, `name = "Файл (CSV/JSON)"`
-- `core/i18n.py` — переименовать ключ `svc_file_csv` → `svc_file`
-- `api/routes/web.py` — все `"file_csv"` литералы → `"file"` (7+ мест); `_SERVICE_ICONS`: `"file"` вместо `"file_csv"`
-- Шаблоны — `data-from="file_csv"` → `data-from="file"`, все проверки `!= 'file_csv'`
-- Тесты — обновить все `"file_csv"` → `"file"`
-- **Alembic миграция** — `UPDATE migrations SET from_service='file' WHERE from_service='file_csv'`; то же для `to_service`
 
 ---
 
@@ -1677,4 +1670,21 @@ Telegram-бот, внешние ссылки.
 
 **Результат задачи:** Список с решением по каждому эндпоинту (оставить / удалить / переработать)
 и реализация принятых решений.
+
+---
+
+## Риски и митигации
+
+| Риск | Митигация |
+|------|-----------|
+| SoundCloud rate limit | sleep(2) + 429 backoff с reset_time |
+| Трек не найден (кириллица) | iuliia транслитерация + dual-path scoring |
+| Обрыв задачи | arq retry + resumable пайплайн |
+| Yandex Music недоступен с EU IP | SOCKS5 прокси через RU сервер ✅ |
+| SoundCloud недоступен с RU IP | Воркер на EU сервере |
+| 20-30 параллельных пользователей | arq max_jobs, asyncpg pool, per-user rate limit |
+| Истёкший токен во время миграции | Проверка при старте + graceful fail |
+| SC токен (cookie) — короткий срок | Уведомление + инструкция по обновлению |
+
+---
 

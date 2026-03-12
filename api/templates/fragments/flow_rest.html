@@ -38,7 +38,7 @@
     <div class="space-y-2">
 
       <!-- FROM service auth -->
-      {% if from_service != 'file_csv' %}
+      {% if from_service != 'file' %}
       <div class="flex items-center justify-between border rounded-xl px-4 py-3 {% if from_connected %}border-green-200 bg-green-50{% else %}border-gray-200 bg-white{% endif %}">
         <div class="flex items-center gap-2 text-sm">
           <span class="text-lg">{{ service_icons.get(from_service, '🎵') }}</span>
@@ -67,7 +67,7 @@
       {% endif %}
 
       <!-- TO service auth -->
-      {% if to_service != 'file_csv' and to_service != from_service %}
+      {% if to_service != 'file' and to_service != from_service %}
       <div class="flex items-center justify-between border rounded-xl px-4 py-3 {% if to_connected %}border-green-200 bg-green-50{% else %}border-gray-200 bg-white{% endif %}">
         <div class="flex items-center gap-2 text-sm">
           <span class="text-lg">{{ service_icons.get(to_service, '🎵') }}</span>
@@ -137,8 +137,8 @@
   </div>
 
   <!-- Submit -->
-  {% set needs_from_auth = from_service != 'file_csv' and not from_connected %}
-  {% set needs_to_auth = to_service != 'file_csv' and not to_connected %}
+  {% set needs_from_auth = from_service != 'file' and not from_connected %}
+  {% set needs_to_auth = to_service != 'file' and not to_connected %}
   {% set auth_ok = not needs_from_auth and not needs_to_auth %}
   <div class="flex flex-col items-end gap-1.5">
     <div class="flex items-center gap-2">

@@ -62,7 +62,7 @@ _S: dict[str, dict[str, str]] = {
     "svc_yandex_music": {"ru": "Яндекс Музыка",  "en": "Yandex Music"},
     "svc_spotify":      {"ru": "Spotify",         "en": "Spotify"},
     "svc_soundcloud":   {"ru": "SoundCloud",      "en": "SoundCloud"},
-    "svc_file_csv":     {"ru": "Файл",            "en": "File"},
+    "svc_file":         {"ru": "Файл",            "en": "File"},
 
     # File picker
     "file_choose_btn":  {"ru": "Выбрать файл",    "en": "Choose file"},

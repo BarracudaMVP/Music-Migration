@@ -24,8 +24,8 @@ def _open_csv(path: str):
 
 
 class FileAdapter(MusicServiceAdapter):
-    id = "file_csv"
-    name = "Файл CSV/JSON"
+    id = "file"
+    name = "Файл (CSV/JSON)"
     capabilities = Capability.EXPORT_FILE | Capability.IMPORT_FILE
 
     # ------------------------------------------------------------------

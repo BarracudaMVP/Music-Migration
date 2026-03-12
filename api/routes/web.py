@@ -44,7 +44,7 @@ _SERVICE_ICONS = {
     "yandex_music": "🎵",
     "spotify": "🟢",
     "soundcloud": "☁️",
-    "file_csv": "📁",
+    "file": "📁",
 }
 
 
@@ -137,7 +137,7 @@ async def index(request: Request, error: str = ""):
             seen_from.add(pair["from"])
             from_services[pair["from"]] = _svc_name(pair["from"], lang)
     # Add file_csv as a FROM option (file import not in registry matrix)
-    from_services["file_csv"] = _svc_name("file_csv", lang)
+    from_services["file"] = _svc_name("file", lang)
 
     # Check if user has any migrations for nav
     has_migrations = False
@@ -169,10 +169,10 @@ async def flow_to_step(request: Request, from_service: str = Query(..., alias="f
     lang = get_lang(request)
     to_services: dict[str, str] = {}
 
-    if from_service == "file_csv":
+    if from_service == "file":
         # File import can target any service with WRITE_LIKED_TRACKS
         for adapter in ServiceRegistry.all():
-            if adapter.id != "file_csv" and adapter.can(Capability.WRITE_LIKED_TRACKS):
+            if adapter.id != "file" and adapter.can(Capability.WRITE_LIKED_TRACKS):
                 to_services[adapter.id] = _svc_name(adapter.id, lang)
     else:
         matrix = ServiceRegistry.get_matrix()
@@ -199,8 +199,8 @@ async def flow_rest(
     user_id = _ensure_user_id(request)
     db_session = await load_user_session(user_id)
 
-    is_from_file = from_service == "file_csv"
-    is_to_file = to_service == "file_csv"
+    is_from_file = from_service == "file"
+    is_to_file = to_service == "file"
 
     try:
         from_adapter = ServiceRegistry.get(from_service) if not is_from_file else None
@@ -622,8 +622,8 @@ async def start_migrate(
     if not db_session:
         return RedirectResponse("/", status_code=303)
 
-    is_from_file = from_service == "file_csv"
-    is_to_file = to_service == "file_csv"
+    is_from_file = from_service == "file"
+    is_to_file = to_service == "file"
 
     # Validate that the selected from→to pair is supported (skip for file_csv)
     if not is_from_file and not is_to_file:
@@ -642,7 +642,7 @@ async def start_migrate(
 
     # Проверяем наличие нужных токенов
     def _missing_token(service: str) -> str | None:
-        if service == "file_csv":
+        if service == "file":
             return None
         if service == "yandex_music" and not ym_token:
             return "Сначала подключи Яндекс Музыку"
@@ -727,7 +727,7 @@ async def start_migrate(
 
         arq = get_arq_pool()
         limit = track_limit if track_limit and track_limit > 0 else None
-        migration_id = await create_migration(user_id, from_service="file_csv", to_service=to_service)
+        migration_id = await create_migration(user_id, from_service="file", to_service=to_service)
 
         if to_service == "soundcloud":
             job = await arq.enqueue_job(
@@ -738,14 +738,14 @@ async def start_migrate(
         elif to_service == "yandex_music":
             job = await arq.enqueue_job(
                 "run_yandex_migration_job",
-                migration_id, "", "file_csv", ym_token, user_id,
+                migration_id, "", "file", ym_token, user_id,
                 track_limit=None, skip_already_migrated=skip_already_migrated,
                 tracks_override=tracks,
             )
         elif to_service == "spotify":
             job = await arq.enqueue_job(
                 "run_spotify_write_job",
-                migration_id, "", "file_csv",
+                migration_id, "", "file",
                 spotify_token, spotify_refresh_token, user_id,
                 track_limit=None, skip_already_migrated=skip_already_migrated,
                 tracks_override=tracks,
