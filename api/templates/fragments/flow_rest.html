@@ -41,7 +41,7 @@
       {% if from_service != 'file' %}
       <div class="flex items-center justify-between border rounded-xl px-4 py-3 {% if from_connected %}border-green-200 bg-green-50{% else %}border-gray-200 bg-white{% endif %}">
         <div class="flex items-center gap-2 text-sm">
-          <span class="text-lg">{{ service_icons.get(from_service, '🎵') }}</span>
+          <span class="text-lg leading-none">{{ service_icons.get(from_service, '🎵') | safe }}</span>
           <span class="font-medium text-gray-700">{{ from_name }}</span>
         </div>
         {% if from_connected %}
@@ -70,7 +70,7 @@
       {% if to_service != 'file' and to_service != from_service %}
       <div class="flex items-center justify-between border rounded-xl px-4 py-3 {% if to_connected %}border-green-200 bg-green-50{% else %}border-gray-200 bg-white{% endif %}">
         <div class="flex items-center gap-2 text-sm">
-          <span class="text-lg">{{ service_icons.get(to_service, '🎵') }}</span>
+          <span class="text-lg leading-none">{{ service_icons.get(to_service, '🎵') | safe }}</span>
           <span class="font-medium text-gray-700">{{ to_name }}</span>
         </div>
         {% if to_connected %}

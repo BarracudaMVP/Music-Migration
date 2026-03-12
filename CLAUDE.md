@@ -247,15 +247,13 @@ core/
     ├── matcher.py                      — Fuzzy matching + Cyrillic transliteration + split_artists
     └── crypto.py                       — Token encryption/decryption (Fernet)
 
-migration/
-    ├── tracks.py                       — * → SC pipeline: search → match → collect sc_ids →
-    │                                     create "YM Liked #N" playlists (playlist_mode=True)
-    │                                     _run_pending_loop, _process_one_track, _create_liked_playlists
-    ├── playlists.py                    — YM playlists → SC playlists
-    ├── artists.py                      — YM liked artists → SC follows
-    ├── spotify_tracks.py               — Spotify → SC (reuses _run_pending_loop, playlist_mode)
-    ├── yandex_tracks.py                — any source → YM likes (multi-query, fuzzy match, sleep 1.0s)
-    └── spotify_write.py                — any source → Spotify likes + artist follows (auto-refresh token)
+migration/                              — конвенция по destination: sc_* → SC, to_* → YM/Spotify
+    ├── sc_tracks.py                    — any → SC (треки): YM, Spotify, File источники объединены;
+    │                                     _run_pending_loop, _process_one_track, _create_liked_playlists (playlist_mode)
+    ├── sc_playlists.py                 — YM → SC плейлисты
+    ├── sc_artists.py                   — YM → SC артисты (follows)
+    ├── to_yandex.py                    — any → YM лайки (multi-query, fuzzy match, sleep 1.0s)
+    └── to_spotify.py                   — any → Spotify лайки + подписки на артистов (auto-refresh token)
 
 bot/
     ├── main.py                         — aiogram 3.x entry

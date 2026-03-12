@@ -15,7 +15,7 @@ from config import settings
 
 
 async def main(ym_token: str, sc_token: str) -> None:
-    from migration.tracks import run_migration
+    from migration.sc_tracks import run_migration
 
     async def progress(current: int, total: int, track: str) -> None:
         print(f"  [{current}/{total}] {track}", flush=True)

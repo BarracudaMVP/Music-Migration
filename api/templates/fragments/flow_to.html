@@ -12,7 +12,7 @@
       hx-indicator="#step-rest-loader"
       onclick="selectTo('{{ svc_id }}')"
     >
-      <span class="text-2xl">{{ service_icons.get(svc_id, '🎵') }}</span>
+      <span class="text-2xl leading-none">{{ service_icons.get(svc_id, '🎵') | safe }}</span>
       <span>{{ svc_name }}</span>
     </button>
     {% endfor %}
@@ -28,7 +28,7 @@
       hx-indicator="#step-rest-loader"
       onclick="selectTo('file')"
     >
-      <span class="text-2xl">📁</span>
+      <span class="text-2xl leading-none">{{ service_icons.get('file', '📁') | safe }}</span>
       <span>{{ t('to_file_btn') }}</span>
     </button>
     {% endif %}

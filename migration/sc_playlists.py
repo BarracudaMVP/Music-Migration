@@ -1,8 +1,8 @@
 """
-MVP2: Перенос плейлистов Яндекс Музыки → SoundCloud.
+Миграция плейлистов → SoundCloud.
 
-Использует кэш из БД (треки уже перенесённые в MVP1) чтобы не
-искать одни и те же треки повторно.
+Источник: Яндекс Музыка.
+Использует кэш из БД (треки уже перенесённые) чтобы не искать одни и те же треки повторно.
 """
 from dataclasses import dataclass
 from loguru import logger
@@ -38,7 +38,7 @@ async def migrate_playlists(
     migration_id: int,
     progress_callback=None,
 ) -> PlaylistMigrationStats:
-    """Пайплайн миграции плейлистов."""
+    """Пайплайн миграции плейлистов YM → SC."""
     logger.info("Загружаю плейлисты из ЯМ...")
     ym_playlists = await ym_client.get_playlists()
 
@@ -46,11 +46,9 @@ async def migrate_playlists(
         logger.info("Нет плейлистов для переноса")
         return PlaylistMigrationStats()
 
-    # Создаём записи в БД
     for pl in ym_playlists:
         await create_playlist_record(migration_id, pl.kind, pl.title)
 
-    # Кэш уже перенесённых треков {ym_id: sc_id}
     track_cache = await get_liked_sc_tracks(migration_id)
     logger.info(f"Кэш треков: {len(track_cache)} записей")
 
@@ -58,7 +56,6 @@ async def migrate_playlists(
     total = len(pending)
     stats = PlaylistMigrationStats(total=total)
 
-    # Создаём маппинг kind → YMPlaylist для быстрого доступа
     pl_by_kind = {pl.kind: pl for pl in ym_playlists}
 
     for i, row in enumerate(pending, start=1):
@@ -104,13 +101,11 @@ async def _process_one_playlist(
     sc_track_ids: list[int] = []
 
     for track in ym_pl.tracks:
-        # Сначала пробуем кэш
         sc_id = track_cache.get(track.id)
         if sc_id:
             sc_track_ids.append(sc_id)
             continue
 
-        # Новый поиск
         query = f"{track.artists_str} {track.title}"
         results = await sc_client.search_tracks(query)
         if not results:
@@ -123,7 +118,7 @@ async def _process_one_playlist(
         match = find_best_match(track.artists_str, track.title, candidates)
         if match and match.matched:
             sc_track_ids.append(match.track_id)
-            track_cache[track.id] = match.track_id  # обновляем локальный кэш
+            track_cache[track.id] = match.track_id
 
     if not sc_track_ids:
         logger.warning(f"Плейлист {row['ym_title']!r}: ни один трек не найден на SC")

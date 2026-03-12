@@ -1270,15 +1270,19 @@ DEBUG | [spotify] search query='Дора Loverboy' → GET /search?q=...&type=tr
 
 ---
 
-### ⬜ MM-63 — Web UI redesign (icons + visual polish)
+### ✅ MM-63 — Web UI redesign (icons + visual polish)
 
-> Замена emoji-иконок на SVG brand icons для каждого сервиса, улучшение визуального качества карточек.
+> Замена emoji-иконок на SVG brand icons для каждого сервиса.
 
 **Задачи:**
-- [ ] Добавить SVG-иконки для Yandex Music, Spotify, SoundCloud (simpleicons.org)
-- [ ] Заменить 🎵 emoji на proper brand icons в картах сервисов
-- [ ] Улучшить стили карточек: spacing, colors, borders
-- [ ] Проверить на мобильных размерах
+- [x] Добавить SVG-иконки для Spotify (#1ED760, simpleicons), SoundCloud (#FF3300, simpleicons)
+- [x] Yandex Music — кастомный SVG: красный прямоугольник rx=6 + буква «Я» (simpleicons не имеет yandexmusic)
+- [x] File — SVG документ-иконка (Feather/Heroicons стиль, серый)
+- [x] `_SERVICE_ICONS` в `api/routes/web.py` — строки SVG вместо emoji; `width="1em" height="1em"` → масштабируется через `text-2xl`/`text-lg` родителя
+- [x] Шаблоны: добавлен `| safe` фильтр + `leading-none` в 5 местах (`index.html`, `flow_to.html` ×2, `flow_rest.html` ×2)
+- [x] Жёстко закодированный `📁` в `flow_to.html` заменён на `service_icons.get('file')`
+
+**Файлы:** `api/routes/web.py`, `api/templates/index.html`, `api/templates/fragments/flow_to.html`, `api/templates/fragments/flow_rest.html`
 
 ---
 
@@ -1541,28 +1545,33 @@ media_track_links
 
 ---
 
-### 🔲 MM-72 — Стандартизация migration/
+### ✅ MM-72 — Стандартизация migration/
 
 **Задача:** нет единой конвенции именования файлов в `migration/`.
 
-**Текущее состояние:**
-| Файл | Что делает |
-|---|---|
-| `tracks.py` | YM → SC |
-| `artists.py` | YM → SC |
-| `playlists.py` | YM → SC |
-| `spotify_tracks.py` | Spotify → SC |
-| `spotify_write.py` | any → Spotify |
-| `yandex_tracks.py` | any → YM |
+**Было → Стало:**
+| Старый файл | Новый файл | Что делает |
+|---|---|---|
+| `tracks.py` + `spotify_tracks.py` | `sc_tracks.py` | любой → SC (треки; merge, т.к. spotify_tracks импортировал `_run_pending_loop` из tracks) |
+| `artists.py` | `sc_artists.py` | YM → SC (артисты) |
+| `playlists.py` | `sc_playlists.py` | YM → SC (плейлисты) |
+| `yandex_tracks.py` | `to_yandex.py` | любой → YM |
+| `spotify_write.py` | `to_spotify.py` | любой → Spotify |
 
-**Предлагаемая конвенция (по destination):**
-- `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py` — всё что → SC
-- `to_yandex.py` — any → YM
-- `to_spotify.py` — any → Spotify
+**Конвенция:** по destination — `sc_*` для → SC, `to_*` для → YM/Spotify.
 
-**Изменения:**
-- Переименовать 6 файлов, обновить импорты в `worker/tasks.py`
-- Унифицировать docstrings по одному шаблону
+**Изменённые файлы:**
+- [x] `migration/sc_tracks.py` — создан (merge tracks.py + spotify_tracks.py); секции YM→SC, Spotify→SC, File→SC, shared pipeline internals
+- [x] `migration/sc_artists.py` — создан из artists.py
+- [x] `migration/sc_playlists.py` — создан из playlists.py
+- [x] `migration/to_yandex.py` — создан из yandex_tracks.py
+- [x] `migration/to_spotify.py` — создан из spotify_write.py
+- [x] Старые файлы удалены (tracks, artists, playlists, spotify_tracks, yandex_tracks, spotify_write)
+- [x] `worker/tasks.py` — обновлены все 5 импортов
+- [x] `cli.py` — обновлён импорт
+- [x] `tests/test_pipeline.py` — обновлены все `migration.tracks` → `migration.sc_tracks`
+
+**Тесты:** 162 passed
 
 ---
 

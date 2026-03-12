@@ -1,5 +1,5 @@
 """
-Migration pipeline: any source → Spotify liked tracks + artist follows.
+Миграция треков → Spotify (из любого источника): лайки треков + подписки на артистов.
 
 Source tracks are passed as [{"artist": str, "title": str}] —
 fetched from any adapter (SoundCloud, Yandex Music, File, etc.).

@@ -39,7 +39,7 @@ async def run_yandex_migration_job(
     tracks_override: list[dict] | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks from any source service → Yandex Music."""
-    from migration.yandex_tracks import migrate_to_yandex
+    from migration.to_yandex import migrate_to_yandex
     from core.yandex.client import YandexMusicClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
@@ -101,7 +101,7 @@ async def run_spotify_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from Spotify to SoundCloud."""
-    from migration.spotify_tracks import run_spotify_migration
+    from migration.sc_tracks import run_spotify_migration
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
@@ -148,7 +148,7 @@ async def run_spotify_write_job(
     tracks_override: list[dict] | None = None,
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
-    from migration.spotify_write import migrate_to_spotify
+    from migration.to_spotify import migrate_to_spotify
     from core.spotify.client import SpotifyClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
@@ -252,7 +252,7 @@ async def run_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: runs the migration pipeline for a pre-created migration record."""
-    from migration.tracks import run_migration
+    from migration.sc_tracks import run_migration
     from core.db import update_migration, get_track_stats, get_artist_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
@@ -299,7 +299,7 @@ async def run_file_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from a file to SoundCloud (no Yandex Music)."""
-    from migration.tracks import migrate_from_file_tracks
+    from migration.sc_tracks import migrate_from_file_tracks
     from core.soundcloud.client import SoundCloudClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text

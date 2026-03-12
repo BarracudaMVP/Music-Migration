@@ -1,5 +1,7 @@
 """
-MVP2: Перенос лайкнутых артистов Яндекс Музыки → подписки на SoundCloud.
+Миграция артистов → SoundCloud (подписки).
+
+Источник: Яндекс Музыка (лайкнутые артисты).
 """
 from dataclasses import dataclass
 from loguru import logger
@@ -37,7 +39,7 @@ async def migrate_artists(
     migration_id: int,
     progress_callback=None,
 ) -> ArtistMigrationStats:
-    """Пайплайн миграции артистов."""
+    """Пайплайн миграции артистов YM → SC."""
     logger.info("Загружаю лайкнутых артистов из ЯМ...")
     ym_artists = await ym_client.get_liked_artists()
 
@@ -97,7 +99,6 @@ async def _process_one_artist(sc_client: SoundCloudClient, row: dict) -> str:
         for u in sc_users
     ]
 
-    # Для артистов матчим только по имени — передаём имя и как artist, и как title
     match = find_best_match(ym_name, ym_name, candidates)
     if not match or not match.matched:
         await update_artist(artist_id, status="not_found")

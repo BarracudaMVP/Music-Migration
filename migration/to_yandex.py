@@ -1,5 +1,5 @@
 """
-Migration pipeline: any source → Yandex Music liked tracks.
+Миграция треков → Яндекс Музыка (из любого источника).
 
 Source tracks are passed as [{"artist": str, "title": str}] —
 fetched from any adapter (SoundCloud, Spotify, File, etc.).

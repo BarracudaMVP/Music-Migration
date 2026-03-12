@@ -1,10 +1,10 @@
 """
-MVP1: Миграция лайкнутых треков Яндекс Музыки → SoundCloud.
+Миграция треков → SoundCloud (из любого источника).
 
-Пайплайн:
-1. Получаем треки из ЯМ
-2. Сохраняем все в БД со статусом 'pending' (idempotent)
-3. Для каждого pending-трека: ищем на SC, матчим, лайкаем
+Пайплайн для YM / Spotify / File → SC:
+1. Загружаем треки из источника
+2. Сохраняем в БД со статусом 'pending' (idempotent)
+3. Для каждого pending-трека: ищем на SC, матчим, добавляем в плейлист
 4. Возвращаем итоговую статистику
 
 При повторном запуске пропускает уже обработанные треки.
@@ -28,6 +28,7 @@ from core.db import (
 )
 from config import settings
 from core.yandex.client import YandexMusicClient
+from core.spotify.client import SpotifyClient
 from core.soundcloud.client import SoundCloudClient, LikeNotSupportedError
 from core.matcher import find_best_match, split_artists, TrackCandidate
 
@@ -54,6 +55,10 @@ class MigrationStats:
         return parts
 
 
+# ---------------------------------------------------------------------------
+# YM → SC
+# ---------------------------------------------------------------------------
+
 async def migrate_tracks(
     ym_client: YandexMusicClient,
     sc_client: SoundCloudClient,
@@ -64,16 +69,9 @@ async def migrate_tracks(
     skip_already_migrated: bool = True,
     like_tracks: bool = False,
 ) -> MigrationStats:
-    """
-    Основной пайплайн миграции треков.
-
-    progress_callback(current, total, track_str) — опциональный колбэк
-    для обновления прогресса (используется ботом).
-    track_limit — ограничить количество треков (None = все).
-    """
+    """Переносит лайкнутые треки Яндекс Музыки → SoundCloud."""
     await update_migration(migration_id, status="running")
 
-    # --- Шаг 1: загружаем треки из ЯМ ---
     logger.info("Шаг 1/3: загружаю треки из Яндекс Музыки...")
     ym_tracks = await ym_client.get_liked_tracks()
     if track_limit:
@@ -85,7 +83,6 @@ async def migrate_tracks(
         await update_migration(migration_id, status="done")
         return MigrationStats()
 
-    # --- Шаг 2: сохраняем в БД (с дедупликацией предыдущих переносов) ---
     logger.info(f"Шаг 2/3: сохраняю {len(ym_tracks)} треков в БД...")
     migration_record = await get_migration(migration_id) or {}
     user_id = migration_record.get("user_id", "")
@@ -111,7 +108,6 @@ async def migrate_tracks(
         already_migrated=already_migrated,
     )
 
-    # --- Шаг 3: обрабатываем pending-треки ---
     logger.info("Шаг 3/3: обрабатываю треки...")
     stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode, like_tracks=like_tracks)
     stats.skipped = skipped
@@ -120,6 +116,146 @@ async def migrate_tracks(
     logger.info(f"Миграция завершена. {stats}")
     return stats
 
+
+# ---------------------------------------------------------------------------
+# Spotify → SC
+# ---------------------------------------------------------------------------
+
+async def migrate_spotify_tracks(
+    spotify_client: SpotifyClient,
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    progress_callback=None,
+    playlist_mode: bool = False,
+    track_limit: int | None = None,
+    skip_already_migrated: bool = True,
+    like_tracks: bool = False,
+) -> MigrationStats:
+    """Переносит лайкнутые треки Spotify → SoundCloud."""
+    await update_migration(migration_id, status="running")
+
+    logger.info("Шаг 1/3: загружаю треки из Spotify...")
+    sp_tracks = await spotify_client.get_liked_tracks()
+
+    if not sp_tracks:
+        logger.warning("Нет лайкнутых треков в Spotify")
+        await update_migration(migration_id, status="done")
+        return MigrationStats()
+
+    if track_limit:
+        sp_tracks = sp_tracks[:track_limit]
+        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(sp_tracks)}")
+    logger.info(f"Шаг 2/3: сохраняю {len(sp_tracks)} треков в БД...")
+    migration_record = await get_migration(migration_id) or {}
+    user_id = migration_record.get("user_id", "")
+    to_service = migration_record.get("to_service") or "soundcloud"
+
+    already_migrated: set[str] = set()
+    if skip_already_migrated:
+        already_migrated = await get_previously_migrated_ym_ids(user_id, to_service)
+        if already_migrated:
+            logger.info(f"Найдено {len(already_migrated)} треков из предыдущих переносов — будут пропущены")
+
+    skipped = await bulk_insert_tracks(
+        migration_id,
+        [
+            {
+                "ym_id": f"spotify:{t.id}",
+                "ym_artist": t.artists_str,
+                "ym_title": t.title,
+                "ym_album": t.album,
+            }
+            for t in sp_tracks
+        ],
+        already_migrated=already_migrated,
+    )
+
+    logger.info("Шаг 3/3: обрабатываю треки...")
+    stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode, like_tracks=like_tracks)
+    stats.skipped = skipped
+
+    await update_migration(migration_id, status="done")
+    logger.info(f"Spotify миграция треков завершена. {stats}")
+    return stats
+
+
+async def run_spotify_migration(
+    spotify_token: str,
+    soundcloud_token: str,
+    migration_id: int,
+    user_id: str = "cli",
+    mode: str = "tracks",
+    progress_callback=None,
+    playlist_mode: bool = False,
+    track_limit: int | None = None,
+    skip_already_migrated: bool = True,
+    like_tracks: bool = False,
+) -> MigrationStats:
+    """
+    Точка входа для ARQ worker (Spotify → SC).
+    mode: 'tracks' — только треки, 'full' — треки + плейлисты (TODO).
+    """
+    spotify_client = await SpotifyClient(spotify_token).init()
+    sc_client = await SoundCloudClient(soundcloud_token).init()
+
+    try:
+        stats = await migrate_spotify_tracks(
+            spotify_client, sc_client, migration_id, progress_callback,
+            playlist_mode=playlist_mode, track_limit=track_limit,
+            skip_already_migrated=skip_already_migrated,
+            like_tracks=like_tracks,
+        )
+    finally:
+        await spotify_client.close()
+        await sc_client.close()
+
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# File → SC
+# ---------------------------------------------------------------------------
+
+async def migrate_from_file_tracks(
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    tracks_data: list[dict],
+    progress_callback=None,
+    playlist_mode: bool = False,
+    track_limit: int | None = None,
+) -> MigrationStats:
+    """
+    Пайплайн переноса треков из файла → SC.
+    tracks_data: list[{"artist": str, "title": str}]
+    """
+    await update_migration(migration_id, status="running")
+
+    if track_limit:
+        tracks_data = tracks_data[:track_limit]
+        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(tracks_data)}")
+    logger.info(f"Вставляю {len(tracks_data)} треков из файла в БД...")
+    await bulk_insert_tracks(
+        migration_id,
+        [
+            {
+                "ym_id": f"file:{i}",
+                "ym_artist": t["artist"],
+                "ym_title": t["title"],
+                "ym_album": "",
+            }
+            for i, t in enumerate(tracks_data)
+        ],
+    )
+
+    stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode)
+    await update_migration(migration_id, status="done")
+    logger.info(f"Перенос из файла завершён. {stats}")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Shared pipeline internals
+# ---------------------------------------------------------------------------
 
 async def _run_pending_loop(
     sc_client: SoundCloudClient,
@@ -185,43 +321,6 @@ async def _create_liked_playlists(sc_client: SoundCloudClient, track_ids: list[i
             logger.warning(f"Не удалось создать плейлист {title!r}")
 
 
-async def migrate_from_file_tracks(
-    sc_client: SoundCloudClient,
-    migration_id: int,
-    tracks_data: list[dict],
-    progress_callback=None,
-    playlist_mode: bool = False,
-    track_limit: int | None = None,
-) -> MigrationStats:
-    """
-    Пайплайн переноса треков из файла (без Яндекс Музыки).
-    tracks_data: list[{"artist": str, "title": str}]
-    """
-    await update_migration(migration_id, status="running")
-
-    if track_limit:
-        tracks_data = tracks_data[:track_limit]
-        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(tracks_data)}")
-    logger.info(f"Вставляю {len(tracks_data)} треков из файла в БД...")
-    await bulk_insert_tracks(
-        migration_id,
-        [
-            {
-                "ym_id": f"file:{i}",
-                "ym_artist": t["artist"],
-                "ym_title": t["title"],
-                "ym_album": "",
-            }
-            for i, t in enumerate(tracks_data)
-        ],
-    )
-
-    stats = await _run_pending_loop(sc_client, migration_id, progress_callback, playlist_mode=playlist_mode)
-    await update_migration(migration_id, status="done")
-    logger.info(f"Перенос из файла завершён. {stats}")
-    return stats
-
-
 async def _process_one_track(
     sc_client: SoundCloudClient, row: dict, playlist_mode: bool = False, like_tracks: bool = False
 ) -> tuple[str, int | None]:
@@ -234,7 +333,6 @@ async def _process_one_track(
     ym_title = row["ym_title"]
     track_id = row["id"]
 
-    # Поиск на SoundCloud: один запрос на каждого артиста (параллельно)
     artists = split_artists(ym_artist)
     queries = [f"{a} {ym_title}" for a in artists]
 
@@ -245,7 +343,6 @@ async def _process_one_track(
     else:
         results_list = [await sc_client.search_tracks(queries[0])]
 
-    # Дедупликация кандидатов по track_id
     all_candidates: dict[int, TrackCandidate] = {}
     for sc_results in results_list:
         for t in sc_results:
@@ -259,7 +356,6 @@ async def _process_one_track(
 
     candidates = list(all_candidates.values())
 
-    # Fallback: поиск только по названию если пул пустой
     if not candidates:
         fallback_results = await sc_client.search_tracks(ym_title)
         candidates = [
@@ -281,7 +377,6 @@ async def _process_one_track(
     else:
         logger.info(f"[match] {ym_artist} — {ym_title} → not_found (score={match.score:.0f})")
 
-    # Сомнительное совпадение — не лайкаем, сохраняем для ручной проверки
     if match.uncertain:
         await update_track(
             track_id,
@@ -297,7 +392,6 @@ async def _process_one_track(
         return "not_found", None
 
     if like_tracks:
-        # Режим прямых лайков: пробуем like_track, при 404 fallback в плейлист
         try:
             success = await sc_client.like_track(match.track_id)
             if success:
@@ -308,7 +402,7 @@ async def _process_one_track(
                     sc_url=match.track_url,
                     match_score=match.score,
                 )
-                return "liked", None  # лайк поставлен напрямую — в плейлист не нужен
+                return "liked", None
             else:
                 await update_track(track_id, status="error")
                 return "error", None
@@ -321,10 +415,9 @@ async def _process_one_track(
                 sc_url=match.track_url,
                 match_score=match.score,
             )
-            return "liked", match.track_id  # собираем track_id для плейлиста
+            return "liked", match.track_id
 
     if playlist_mode:
-        # Плейлист-режим: сохраняем статус и возвращаем track_id для создания плейлиста в конце
         await update_track(
             track_id,
             status="liked",
@@ -334,7 +427,6 @@ async def _process_one_track(
         )
         return "liked", match.track_id
 
-    # Обычный режим: лайкаем
     success = await sc_client.like_track(match.track_id)
     if success:
         await update_track(
@@ -350,6 +442,9 @@ async def _process_one_track(
         return "error", None
 
 
+# ---------------------------------------------------------------------------
+# CLI entry point (YM → SC full migration)
+# ---------------------------------------------------------------------------
 
 async def run_migration(
     yandex_token: str,
@@ -366,17 +461,12 @@ async def run_migration(
     like_tracks: bool = False,
 ) -> tuple[int, "FullMigrationStats"]:
     """
-    Точка входа для CLI и бота.
+    Точка входа для CLI и бота (YM → SC).
     Инициализирует клиентов, создаёт запись в БД, запускает пайплайн.
     Возвращает (migration_id, FullMigrationStats).
-
-    migrate_playlists / migrate_artists — включают MVP2.
-    on_migration_created(migration_id) — вызывается сразу после создания
-    записи в БД (используется ботом для /status).
-    migration_id — если передан (ARQ worker), пропускаем create_migration и on_migration_created.
     """
-    from migration.playlists import migrate_playlists as _migrate_playlists
-    from migration.artists import migrate_artists as _migrate_artists
+    from migration.sc_playlists import migrate_playlists as _migrate_playlists
+    from migration.sc_artists import migrate_artists as _migrate_artists
 
     ym_client = await YandexMusicClient(yandex_token, proxy_url=settings.ym_proxy_url or None).init()
     sc_client = await SoundCloudClient(soundcloud_token).init()
