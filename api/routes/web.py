@@ -19,6 +19,7 @@ from core.db import (
     get_tracks_page,
     load_user_session,
     save_user_session,
+    save_yandex_token,
     save_soundcloud_token,
     save_spotify_token,
     save_user_lang,
@@ -263,11 +264,14 @@ async def flow_rest(
 # ---------------------------------------------------------------------------
 
 @router.get("/auth", response_class=HTMLResponse)
-async def auth_page(request: Request, error: str = ""):
+async def auth_page(request: Request, error: str = "", flow_from: str = "", flow_to: str = ""):
     from config import settings as cfg
     from bot.oauth.yandex import get_auth_url
 
     user_id = _ensure_user_id(request)
+    if flow_from:
+        request.session["auth_flow_from"] = flow_from
+        request.session["auth_flow_to"] = flow_to
     db_session = await load_user_session(user_id)
     ym_done = bool(request.session.get("ym_token") or (db_session and db_session.get("yandex_token")))
     spotify_done = bool(
@@ -418,7 +422,7 @@ async def poll_yandex_bot_token(state_id: str, request: Request):
 
 @router.post("/auth/yandex", response_class=HTMLResponse)
 async def auth_yandex(request: Request, code: str = Form(...)):
-    _ensure_user_id(request)
+    user_id = _ensure_user_id(request)
     try:
         from bot.oauth.yandex import exchange_code
         from core.yandex.client import YandexMusicClient
@@ -434,28 +438,14 @@ async def auth_yandex(request: Request, code: str = Form(...)):
         )
         request.session["ym_token"] = token
         request.session["ym_login"] = login
+        await save_yandex_token(user_id, token)
     except Exception as e:
         return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
+    pf = request.session.pop("auth_flow_from", "")
+    pt = request.session.pop("auth_flow_to", "")
+    if pf:
+        return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}", status_code=303)
     return RedirectResponse("/auth", status_code=303)
-
-
-@router.post("/auth/soundcloud", response_class=HTMLResponse)
-async def auth_soundcloud(request: Request, sc_token: str = Form(...)):
-    user_id = _ensure_user_id(request)
-    try:
-        from core.soundcloud.client import SoundCloudClient
-
-        sc = await SoundCloudClient(sc_token).init()
-        await sc.close()
-    except Exception as e:
-        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
-
-    ym_token = request.session.get("ym_token", "")
-    await save_user_session(user_id, ym_token, sc_token)
-    # Clear temp session keys
-    request.session.pop("ym_token", None)
-    request.session.pop("ym_login", None)
-    return RedirectResponse("/", status_code=303)
 
 
 @router.get("/auth/soundcloud")
@@ -949,16 +939,6 @@ async def export_migration(migration_id: int, fmt: str = "csv"):
 # ---------------------------------------------------------------------------
 
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
-
-
-@router.get("/import", response_class=HTMLResponse)
-async def import_page(request: Request):
-    return RedirectResponse("/", status_code=303)
-
-
-@router.get("/export", response_class=HTMLResponse)
-async def export_page(request: Request):
-    return RedirectResponse("/", status_code=303)
 
 
 # ---------------------------------------------------------------------------

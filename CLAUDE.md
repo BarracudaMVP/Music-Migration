@@ -192,17 +192,17 @@ api/
     ├── main.py                         — FastAPI entry, router registration (web+admin gated by WEB_ENABLED)
     ├── middleware.py                   — AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
     ├── routes/
-    │   ├── web.py                      — Web UI: /, /auth, /auth/spotify, /auth/yandex,
-    │   │                                  /migrate, /migrate/{id}/tracks, /history,
-    │   │                                  /import, /export, /set-lang (Jinja2+HTMX)
+    │   ├── web.py                      — Web UI: /, /auth, /auth/yandex, /auth/soundcloud,
+    │   │                                  /auth/spotify, /migrate, /migrate/{id}/tracks,
+    │   │                                  /history, /set-lang (Jinja2+HTMX)
     │   ├── migrations.py               — REST: POST /migrations, GET /migrations/{id}
     │   ├── reports.py                  — GET /migrations/{id}/not-found (queries DB)
     │   ├── services.py                 — GET /api/services, GET /api/services/matrix
     │   └── admin.py                    — Admin UI: /admin/login, /dashboard, /migrations, /users, /services
     ├── templates/                      — Jinja2 templates
     │   ├── base.html, index.html, auth.html, progress.html, result.html
-    │   ├── history.html, tracks.html, import.html, export.html
-    │   ├── fragments/status.html, fragments/import_preview.html
+    │   ├── history.html, tracks.html
+    │   ├── fragments/status.html, fragments/flow_to.html, fragments/flow_rest.html
     │   └── admin/                      — Admin templates
     └── deps.py                         — FastAPI dependencies (verify_internal_token, check_migration_rate_limit)
 
@@ -247,13 +247,14 @@ core/
     ├── matcher.py                      — Fuzzy matching + Cyrillic transliteration + split_artists
     └── crypto.py                       — Token encryption/decryption (Fernet)
 
-migration/                              — конвенция по destination: sc_* → SC, to_* → YM/Spotify
+migration/                              — пайплайны по destination; планируется MM-76: sc_* → to_soundcloud.py
     ├── sc_tracks.py                    — any → SC (треки): YM, Spotify, File источники объединены;
     │                                     _run_pending_loop, _process_one_track, _create_liked_playlists (playlist_mode)
     ├── sc_playlists.py                 — YM → SC плейлисты
     ├── sc_artists.py                   — YM → SC артисты (follows)
     ├── to_yandex.py                    — any → YM лайки (multi-query, fuzzy match, sleep 1.0s)
     └── to_spotify.py                   — any → Spotify лайки + подписки на артистов (auto-refresh token)
+    (MM-76 planned: sc_tracks+sc_playlists+sc_artists → to_soundcloud.py, unified to_* naming)
 
 bot/
     ├── main.py                         — aiogram 3.x entry
@@ -347,9 +348,12 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - OAuth callbacks сохраняют `auth_flow_from`/`auth_flow_to` в session; после успешной авторизации редиректят на `/?pf=...&pt=...` для восстановления флоу
 - `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
-- File import/export unified in main flow (MM-67): `GET /import` и `GET /export` → 303 → `/`; `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
+- File import/export unified in main flow (MM-67): `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
 - `FileAdapter.id = "file"` (MM-69, ранее `"file_csv"`); i18n ключ `svc_file`; alembic миграция `i9j0k1l2m3n4` обновляет старые записи в БД
 - `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)
 - `score_track_match(source_artist, source_title, cand_artist, cand_title)` и `find_best_match(source_artist, source_title, ...)` — параметры переименованы из `ym_*`/`sc_*` в универсальные (MM-68); `TrackCandidate` — generic кандидат для любой целевой платформы (переименован из `SCCandidate`)
 - auth-gate (MM-70): кнопка submit в `flow_rest.html` disabled когда нужные сервисы не авторизованы; пикер файла и dropdown формата в одной строке с кнопкой (компактный inline layout)
 - dead code removed (MM-71): `POST /import/preview`, `POST /import/start`, `POST /export/start` удалены; шаблоны `import.html`, `export.html`, `fragments/import_preview.html` удалены; `scripts/entrypoint.sh` (перенесён из корня)
+- dead code removed (MM-75): `GET /import`, `GET /export` (303-заглушки) и `POST /auth/soundcloud` (legacy cookie-flow до MM-52) удалены; `GET /auth` получил `flow_from`/`flow_to` параметры; `POST /auth/yandex` теперь сохраняет токен в БД и восстанавливает флоу после успеха
+- `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
+- migration/ конвенция `sc_*` → SC, `to_*` → YM/Spotify (MM-72); планируется MM-76: слить `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`

@@ -100,29 +100,6 @@ async def test_flow_rest_to_file_returns_html(app, mock_arq_pool):
     assert "export_fmt" in body  # format selector present
 
 
-@pytest.mark.asyncio
-async def test_import_page_redirects_to_home(app, mock_arq_pool):
-    """GET /import → 303 redirect to /."""
-    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False
-        ) as client:
-            response = await client.get("/import")
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
-
-
-@pytest.mark.asyncio
-async def test_export_page_redirects_to_home(app, mock_arq_pool):
-    """GET /export → 303 redirect to /."""
-    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False
-        ) as client:
-            response = await client.get("/export")
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
-
 
 @pytest.mark.asyncio
 async def test_index_includes_file_from_service(app, mock_arq_pool):

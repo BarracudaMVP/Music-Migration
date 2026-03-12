@@ -1641,7 +1641,7 @@ media_track_links
 
 ---
 
-### 🔲 MM-75 — Ревью и очистка legacy-эндпоинтов: /auth, /import, /export
+### ✅ MM-75 — Ревью и очистка legacy-эндпоинтов: /auth, /import, /export
 
 **Задача:** После перехода на единый флоу (`/`) и HTMX-фрагменты (`/api/flow/*`) часть
 эндпоинтов могла стать ненужной. Проверить каждый с учётом **всех клиентов**: веб UI,
@@ -1655,30 +1655,130 @@ Telegram-бот, внешние ссылки.
 | `GET /import` | 303 → `/` | Можно удалить редирект? Есть ли внешние ссылки? |
 | `GET /export` | 303 → `/` | Можно удалить редирект? Есть ли внешние ссылки? |
 
-**Что проверить по каждому:**
+**Решения и реализация:**
 
-- [ ] **`GET /auth`** — найти все вызовы в боте (`bot/`): есть ли `WEB_BASE_URL + "/auth"` или
-      аналог? Проверить `bot/oauth/yandex.py` и хэндлеры. Если бот направляет пользователя на
-      `/auth` — эндпоинт нужен. Если нет — `auth.html` и роут можно удалить, а YM OAuth fallback
-      перенести в основной флоу на `/`.
-- [ ] **`GET /import`** — проверить: есть ли упоминания `/import` в боте, в `base.html`,
-      в `progress.html`, в уведомлениях. Если только 303-редирект без реальных ссылок — удалить.
-- [ ] **`GET /export`** — аналогично `/import`.
+| Эндпоинт | Решение | Действие |
+|---|---|---|
+| `GET /auth` | **KEEP + FIX** | Нужен как fallback YM-кода и для показа ошибок OAuth. Баг: игнорировал `flow_from`/`flow_to` → пользователь застревал после ввода кода |
+| `POST /auth/yandex` | **FIX** | После успеха всегда шёл на `/auth`. Теперь: сохраняет токен в БД + восстанавливает флоу (`/?pf=...&pt=...`) |
+| `POST /auth/soundcloud` | **DELETE** | Dead code с MM-52 — нет форм в шаблонах |
+| `GET /import` | **DELETE** | Чистый `303 → /`, нет входящих ссылок |
+| `GET /export` | **DELETE** | То же самое |
 
-**Важно:** Telegram-бот общается с API через внутренний токен (`API_INTERNAL_TOKEN`).
-Веб-ссылки для пользователя бот формирует через `WEB_BASE_URL`. Проверить все места,
-где бот строит URL для отправки пользователю.
+- [x] `GET /auth`: добавлен приём `flow_from`/`flow_to`, сохраняются в `request.session`
+- [x] `POST /auth/yandex`: добавлен `save_yandex_token()` + восстановление флоу после успеха
+- [x] `POST /auth/soundcloud` удалён (dead code c MM-52)
+- [x] `GET /import`, `GET /export` удалены
+- [x] Тесты `test_import_page_redirects_to_home`, `test_export_page_redirects_to_home` удалены
+- [x] `save_yandex_token` добавлен в импорты `api/routes/web.py`
 
-**Файлы для анализа:**
-- `bot/handlers/` — все хэндлеры
-- `bot/oauth/yandex.py` — OAuth flow бота
-- `bot/api_client.py` — HTTP-клиент бота
-- `api/routes/web.py` — определения роутов
-- `api/templates/base.html`, `progress.html`, `result.html` — ссылки в шаблонах
-- `worker/notifications.py` — ссылки в уведомлениях
+**Файлы:** `api/routes/web.py`, `tests/test_web_flow.py`
 
-**Результат задачи:** Список с решением по каждому эндпоинту (оставить / удалить / переработать)
-и реализация принятых решений.
+---
+
+### 🔲 MM-79 — Унификация auth-слоя: вынос в api/routes/auth.py + согласованность паттернов
+
+> Все OAuth-роуты (`/auth/yandex`, `/auth/soundcloud`, `/auth/spotify`) работают корректно, но живут в перегруженном `web.py` и имеют несогласованные паттерны. Задача — вынести и унифицировать.
+
+**Текущие несогласованности:**
+
+| Аспект | YM | Spotify | SoundCloud |
+|---|---|---|---|
+| State storage | cookie `_ym_state` | session `spotify_oauth_state` | cookie `_sc_state` + `_sc_verifier` |
+| После успеха в сессии | `session["ym_token"]` = raw token | `session["spotify_connected"] = True` | `session["sc_connected"] = True` |
+| Bot-логика в callback | ✅ смешана с web-флоу | — | — |
+| Куда идут ошибки | `/auth?error=` | `/auth?error=` | `/auth?error=` |
+
+**Задачи:**
+- [ ] Создать `api/routes/auth.py` — перенести туда все роуты `/auth/*` и `/api/auth/*` из `web.py`
+- [ ] Зарегистрировать `auth_router` в `api/main.py`
+- [ ] Унифицировать session-ключ после авторизации: использовать `session["{svc}_connected"] = True` для всех сервисов (YM: убрать `session["ym_token"]` = raw token → заменить на `session["ym_connected"] = True`, токен только в БД)
+- [ ] Вынести bot-логику из `auth_yandex_callback` в отдельный `GET /auth/yandex/bot-callback` — чтобы web-callback был чистым
+- [ ] Стандартизировать ошибки: редирект на `/?error=...` вместо `/auth?error=...` (пользователь не всегда на `/auth`)
+- [ ] Обновить все места, которые читают `session["ym_token"]` напрямую (проверить `flow_rest`, `auth_page`, `migrate`)
+- [ ] Обновить тесты
+
+**На обсуждение:** Убрать ручной ввод кода YM (`POST /auth/yandex` + форма в `auth.html`)?
+- В продакшне `YANDEX_REDIRECT_URI` настроен — callback работает, форма никогда не показывается
+- В дев-окружении без redirect URI форма нужна, но это edge case
+- Если убрать: `GET /auth` остаётся только для показа ошибок OAuth (`/auth?error=...`), форму можно убрать из `auth.html`
+- Решение принять в рамках MM-79
+
+**Файлы:** `api/routes/web.py` → `api/routes/auth.py`, `api/main.py`, тесты
+
+---
+
+### 🔲 MM-76 — migration/ рефакторинг: sc_* → to_soundcloud.py
+
+> Привести конвенцию именования модулей `migration/` к единому стилю `to_*` по аналогии с `to_yandex.py` и `to_spotify.py`.
+
+**Проблема:** После MM-72 конвенция стала смешанной:
+- SC-направление: `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py` (по типу контента)
+- YM-направление: `to_yandex.py` (единый файл)
+- Spotify-направление: `to_spotify.py` (единый файл)
+
+**Решение:** Слить `sc_tracks.py` + `sc_playlists.py` + `sc_artists.py` → `to_soundcloud.py`.
+
+**Задачи:**
+- [ ] Создать `migration/to_soundcloud.py` — объединить все три файла
+  - Секции: `# ── Tracks ──`, `# ── Playlists ──`, `# ── Artists ──`, `# ── Entry points ──`
+  - Публичный API: `migrate_tracks()`, `migrate_playlists()`, `migrate_artists()`, `run_migration()`, `run_spotify_migration()`, `migrate_from_file_tracks()`
+- [ ] Обновить импорты в `worker/tasks.py` (все `from migration.sc_*`)
+- [ ] Обновить импорт в `cli.py`
+- [ ] Удалить `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py`
+- [ ] Обновить тесты (`migration.sc_tracks` → `migration.to_soundcloud`)
+- [ ] Обновить CLAUDE.md (architecture diagram)
+
+**Итоговая структура `migration/`:**
+```
+migration/
+    ├── to_soundcloud.py   — any → SC (треки, плейлисты, артисты)
+    ├── to_yandex.py       — any → YM лайки
+    └── to_spotify.py      — any → Spotify (лайки + подписки)
+```
+
+**Файлы:** `migration/sc_tracks.py`, `migration/sc_playlists.py`, `migration/sc_artists.py` → `migration/to_soundcloud.py`, `worker/tasks.py`, `cli.py`, `tests/test_pipeline.py`
+
+---
+
+### 🔲 MM-77 — SoundCloud как источник (чтение библиотеки)
+
+> Полноценная поддержка SoundCloud как FROM-сервиса: чтение лайкнутых треков и (опционально) плейлистов.
+
+**Контекст:** В матрице переносов SC→File, SC→YM, SC→Spotify уже помечены как ✓, но реализация `fetch_liked_tracks` у `SoundCloudAdapter` не проверена с OAuth-токеном. SC `/me` возвращает 403 для неодобренных приложений — нужно выяснить, работает ли чтение библиотеки.
+
+**Задачи:**
+- [ ] Проверить `SoundCloudAdapter.fetch_liked_tracks()` с OAuth-токеном — эндпоинт `GET /me/track_likes` или `GET /me/likes/tracks`
+- [ ] Если SC API отдаёт 403 на чтение — найти рабочий эндпоинт (возможно `/stream/users/{id}/liked_tracks`)
+- [ ] Реализовать пагинацию (SC отдаёт `next_href` для продолжения)
+- [ ] (Опц.) `fetch_liked_playlists()` для SC → поддержка переноса плейлистов из SC
+- [ ] (Опц.) `fetch_liked_artists()` — `GET /me/followings`
+- [ ] Добавить SC в `from_services` в `api/routes/web.py` если отсутствует (сейчас матрица поддерживает, но нет UI-карточки?)
+- [ ] Написать тест на адаптер (мок SC API)
+
+**Файлы:** `core/soundcloud/client.py`, `core/services/soundcloud/adapter.py`, `api/routes/web.py`, `tests/`
+
+---
+
+### 🔲 MM-78 — Асинхронный экспорт в файл (через ARQ worker)
+
+> Экспорт в CSV/JSON должен идти через фоновый воркер (как все остальные миграции), а не синхронно — библиотека может быть большой, пользователь не должен ждать HTTP-ответа.
+
+**Контекст:** Сейчас `POST /migrate` с `to_service=file` выполняет экспорт синхронно в рамках HTTP-запроса: читает токен из сессии, вызывает `export_library()`, отдаёт файл через `FileResponse`. Для больших библиотек (тысячи треков) это может занять минуты — HTTP timeout или зависший UI.
+
+**Задачи:**
+- [ ] Добавить ARQ job `run_export_job(ctx, migration_id, service_id, token, fmt, user_id)` в `worker/tasks.py`
+  - Вызывает `export_library(service_id, token, fmt)` внутри воркера
+  - Сохраняет результат в Redis или временный файл, путь/ключ пишет в Migration запись
+  - По завершении уведомляет Telegram с ссылкой на скачивание
+- [ ] Создать endpoint `GET /migrations/{id}/export-file` — отдаёт файл по migration_id (проверяет статус done + путь к файлу)
+- [ ] `POST /migrate` для `to_service=file`: вместо sync экспорта → `create_migration` + enqueue ARQ job → редирект на `/migrate/{id}` (прогресс, как обычная миграция)
+- [ ] Прогресс: `export_library()` принимает `progress_callback` — добавить поддержку callback в `core/export.py`
+- [ ] Добавить `download_url` или `result_path` в модель Migration (alembic миграция)
+- [ ] Обновить `result.html` / `progress.html`: кнопка скачивания файла если `migration.download_url` заполнен
+- [ ] Написать тест
+
+**Файлы:** `worker/tasks.py`, `api/routes/web.py`, `core/export.py`, `core/db/models.py`, `alembic/`, `api/templates/`
 
 ---
 
