@@ -2,6 +2,7 @@
 .env
 *.env
 !.env.example
+!.env.dev
 
 # Реальная инфра (не коммитить, примеры в infrastructure_example/)
 infrastructure/

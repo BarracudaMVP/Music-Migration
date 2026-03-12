@@ -93,7 +93,15 @@ def _session_user_id(request: Request) -> str | None:
 
 
 def _ensure_user_id(request: Request) -> str:
-    """Return existing or create a new anonymous web user ID."""
+    """Return existing or create a new anonymous web user ID.
+
+    In DEV_MODE always returns a fixed 'dev_user' ID so the pre-seeded
+    DB session is picked up automatically on every browser visit.
+    """
+    from config import settings as cfg
+    if cfg.dev_mode:
+        request.session["user_id"] = "dev_user"
+        return "dev_user"
     uid = request.session.get("user_id")
     if not uid:
         uid = f"web_{uuid.uuid4().hex[:12]}"

@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -77,6 +77,24 @@ class Settings(BaseSettings):
     sc_client_id: str = Field(default="")
     sc_client_secret: str = Field(default="")
     sc_redirect_uri: str = Field(default="http://localhost:8000/auth/soundcloud/callback")
+
+    # Dev mode (local development only — NEVER enable in production)
+    dev_mode: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def guard_dev_mode(self) -> "Settings":
+        """Force dev_mode=False if a non-localhost public URL is configured.
+
+        Prevents DEV_MODE from being accidentally active in production even
+        if someone copies .env.dev to the server.
+        """
+        if not self.dev_mode:
+            return self
+        public_url = self.web_base_url or self.api_base_url
+        _local = ("localhost", "127.0.0.1", "0.0.0.0")
+        if public_url and not any(h in public_url for h in _local):
+            self.dev_mode = False
+        return self
 
     def get_allowed_users(self) -> set[int]:
         if not self.allowed_users.strip():

@@ -2,6 +2,7 @@
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI
+from loguru import logger
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware import AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
@@ -15,6 +16,12 @@ from core.services.spotify.adapter import SpotifyAdapter
 from core.services.yandex.adapter import YandexMusicAdapter
 
 setup_logger("api")
+
+if settings.dev_mode:
+    logger.warning(
+        "⚠️  DEV_MODE is enabled — fake auth available at /dev/login. "
+        "NEVER run with DEV_MODE=true in production."
+    )
 
 app = FastAPI(title="Music Migration API", version="9.0.0")
 

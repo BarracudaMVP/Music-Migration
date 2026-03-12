@@ -1797,3 +1797,47 @@ migration/
 
 ---
 
+### ✅ MM-80 — Local dev mode (локальный запуск для фронтендеров)
+
+> Локальная среда для разработки UI без реальных OAuth credentials и без конфликта с продакшном.
+
+**Проблема:** OAuth callbacks ведут на реальный домен → нельзя авторизоваться локально.
+Nginx требует SSL-сертификаты → сложно поднять локально. Нужен способ обойти auth gate для UI-разработки.
+
+**Решение:**
+- `DEV_MODE=true` в `.env` включает маршрут `/dev/login` — устанавливает фейковую сессию
+- `docker-compose.dev.yml` — standalone стек (postgres + redis + api, без nginx/bot/worker)
+- `.env.dev` — готовый шаблон с фейковыми кредами, без реальных секретов
+- `LOCAL_SETUP.md` — полная инструкция для нового разработчика
+
+**Реализация (итоговая — после ревью, `/dev/login` убран):**
+- [x] `config.py` — `dev_mode: bool = False`; `model_validator` форсирует `LOG_LEVEL=DEBUG` + `LOG_FORMAT=pretty` при `dev_mode=True`
+- [x] `api/routes/web.py` — `_ensure_user_id()` в `DEV_MODE` всегда возвращает `"dev_user"` и прописывает в сессию
+- [x] `api/main.py` — startup warning при `dev_mode=True`
+- [x] `scripts/seed_dev.py` — создаёт `UserSession(user_id='dev_user')` с фейковыми токенами для YM/SC/Spotify; запускается из `entrypoint.sh` при `DEV_MODE=true`
+- [x] `scripts/entrypoint.sh` — добавлен запуск `seed_dev.py` если `DEV_MODE=true`
+- [x] `docker-compose.dev.yml` — postgres + redis + api (порт 8000 напрямую), без nginx/bot/worker
+- [x] `.env.dev` — фейковые credentials, `DEV_MODE=true`; добавлен в `!.env.dev` исключение `.gitignore`
+- [x] `.gitignore` — `!.env.dev`
+- [x] `LOCAL_SETUP.md` — полная инструкция
+- [x] `tests/test_dev_mode.py` — 6 тестов: default False, parse True, авто-DEBUG logging, logging не трогается при False, dev_user в URL, /dev/login → 404
+
+**Как работает автоавторизация (без роута):**
+1. Браузер открывает `/` → `_ensure_user_id()` → возвращает `"dev_user"` (фиксировано в dev mode)
+2. `flow_rest` вызывает `load_user_session("dev_user")` → находит фейковые токены в БД (из seed)
+3. `_connected()` видит токены → возвращает `True` для всех сервисов → auth gate открыт
+4. Никаких специальных роутов — просто открыть браузер
+
+**Безопасность:**
+- Нет специального роута → нечего угадывать/эксплуатировать
+- `dev_mode=False` по умолчанию; случайный `DEV_MODE=true` на проде → все пользователи делят один `user_id` (UX-баг, не уязвимость)
+- `docker-compose.dev.yml` без SSL-volumes — нельзя использовать вместо прода
+- Фейковые токены не проходят реальные API-вызовы — миграции падают сразу
+
+**Дополнительная защита от прода:**
+- `model_validator` в `config.py`: если `WEB_BASE_URL` или `API_BASE_URL` указывает на не-localhost домен — `dev_mode` принудительно сбрасывается в `False`, даже если в `.env` стоит `true`. Таким образом случайная копия `.env.dev` на прод не активирует dev mode.
+
+**Файлы:** `config.py`, `api/routes/web.py`, `api/main.py`, `docker-compose.dev.yml`, `.env.dev`, `.gitignore`, `LOCAL_SETUP.md`, `tests/test_dev_mode.py`
+
+---
+
