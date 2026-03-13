@@ -192,9 +192,15 @@ api/
     ├── main.py                         — FastAPI entry, router registration (web+admin gated by WEB_ENABLED)
     ├── middleware.py                   — AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
     ├── routes/
-    │   ├── web.py                      — Web UI: /, /auth, /auth/yandex, /auth/soundcloud,
-    │   │                                  /auth/spotify, /migrate, /migrate/{id}/tracks,
-    │   │                                  /history, /set-lang (Jinja2+HTMX)
+    │   ├── web.py                      — Web UI: /, /auth (error display), /migrate, /migrate/{id}/tracks,
+    │   │                                  /history, /set-lang, /api/flow/* (Jinja2+HTMX)
+    │   ├── oauth.py                    — OAuth redirect/callback: /auth/yandex, /auth/soundcloud,
+    │   │                                  /auth/spotify (all providers), /auth/logout,
+    │   │                                  /api/auth/yandex/poll/{state_id} (bot polling)
+    │   │                                  State in Redis oauth_state:{provider}:{state} TTL 600s
+    │   │                                  Short-lived oauth_code:{code} TTL 30s (for MM-81 JWT)
+    │   ├── bot_auth.py                 — Internal bot/worker auth: POST /api/auth/yandex/token,
+    │   │                                  POST /api/auth/soundcloud/validate (X-Internal-Token)
     │   ├── migrations.py               — REST: POST /migrations, GET /migrations/{id}
     │   ├── reports.py                  — GET /migrations/{id}/not-found (queries DB)
     │   ├── services.py                 — GET /api/services, GET /api/services/matrix
@@ -356,5 +362,6 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - dead code removed (MM-71): `POST /import/preview`, `POST /import/start`, `POST /export/start` удалены; шаблоны `import.html`, `export.html`, `fragments/import_preview.html` удалены; `scripts/entrypoint.sh` (перенесён из корня)
 - dev mode (MM-80): `DEV_MODE=true` активирует: `_ensure_user_id()` возвращает фиксированный `"dev_user"` → приложение подхватывает `UserSession` из БД (сидируется вручную); `guard_dev_mode` `model_validator` в `config.py` автоматически сбрасывает `dev_mode=False` если `WEB_BASE_URL`/`API_BASE_URL` указывает на не-localhost домен (защита от случайного продовского деплоя); `docker-compose.dev.yml` — standalone стек без nginx/bot/worker; `.env.dev` — шаблон без реальных секретов (коммитится в git); `LOCAL_SETUP.md` — инструкция
 - dead code removed (MM-75): `GET /import`, `GET /export` (303-заглушки) и `POST /auth/soundcloud` (legacy cookie-flow до MM-52) удалены; `GET /auth` получил `flow_from`/`flow_to` параметры; `POST /auth/yandex` теперь сохраняет токен в БД и восстанавливает флоу после успеха
+- auth refactor (MM-79): `api/routes/auth.py` → `api/routes/bot_auth.py` (internal); новый `api/routes/oauth.py` — все OAuth redirect/callback роуты; state хранится в Redis `oauth_state:{provider}:{state}` TTL 600s (убраны `_ym_state` cookie, `_sc_state`/`_sc_verifier` cookies, `session["spotify_oauth_state"]`); `session["ym_token"]` → `session["ym_connected"]`; `POST /auth/yandex` удалён; после OAuth генерируется short-lived `oauth_code:{code}` (TTL 30s) для MM-81
 - `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
 - migration/ конвенция `sc_*` → SC, `to_*` → YM/Spotify (MM-72); планируется MM-76: слить `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`

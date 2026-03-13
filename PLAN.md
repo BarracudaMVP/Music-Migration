@@ -1676,7 +1676,7 @@ Telegram-бот, внешние ссылки.
 
 ---
 
-### 🔲 MM-79 — Auth refactor: вынос в api/routes/oauth.py + унификация под SPA
+### ✅ MM-79 — Auth refactor: вынос в api/routes/oauth.py + унификация под SPA
 
 > Подготовка auth-слоя к JWT (MM-81). Все OAuth-роуты выносятся из перегруженного `web.py` в `oauth.py` и унифицируются. **Никаких HTML-страниц для /auth не поднимаем** — OAuth это только redirect-машина, UI живёт в SPA.
 >
