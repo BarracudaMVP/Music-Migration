@@ -38,7 +38,7 @@ def _make_match(sc_id=1, score=90.0, matched=True, uncertain=False):
 @pytest.mark.asyncio
 async def test_process_track_liked():
     """Happy path: SC returns results, match found, like succeeds → 'liked'."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=42)])
@@ -46,8 +46,8 @@ async def test_process_track_liked():
 
     row = {"id": 1, "ym_id": "ym1", "ym_artist": "Radiohead", "ym_title": "Creep"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=42)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=42)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "liked"
@@ -60,14 +60,14 @@ async def test_process_track_liked():
 @pytest.mark.asyncio
 async def test_process_track_no_sc_results():
     """SC returns empty list → 'not_found'."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[])
 
     row = {"id": 2, "ym_id": "ym2", "ym_artist": "Unknown", "ym_title": "Unknown"}
 
-    with patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "not_found"
@@ -77,15 +77,15 @@ async def test_process_track_no_sc_results():
 @pytest.mark.asyncio
 async def test_process_track_find_best_match_returns_none():
     """find_best_match returns None (candidates list empty internally) → 'not_found'."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track()])
 
     row = {"id": 3, "ym_id": "ym3", "ym_artist": "A", "ym_title": "T"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=None), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=None), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "not_found"
@@ -95,7 +95,7 @@ async def test_process_track_find_best_match_returns_none():
 @pytest.mark.asyncio
 async def test_process_track_uncertain():
     """Score in uncertain zone (matched=False, uncertain=True) → 'uncertain', sc_id saved."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=99)])
@@ -104,8 +104,8 @@ async def test_process_track_uncertain():
 
     uncertain_match = _make_match(sc_id=99, score=68.0, matched=False, uncertain=True)
 
-    with patch("migration.sc_tracks.find_best_match", return_value=uncertain_match), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=uncertain_match), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "uncertain"
@@ -117,7 +117,7 @@ async def test_process_track_uncertain():
 @pytest.mark.asyncio
 async def test_process_track_below_threshold_not_uncertain():
     """Score below threshold AND below uncertain floor → 'not_found', match_score saved."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track()])
@@ -126,8 +126,8 @@ async def test_process_track_below_threshold_not_uncertain():
 
     low_match = _make_match(sc_id=1, score=20.0, matched=False, uncertain=False)
 
-    with patch("migration.sc_tracks.find_best_match", return_value=low_match), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=low_match), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "not_found"
@@ -137,7 +137,7 @@ async def test_process_track_below_threshold_not_uncertain():
 @pytest.mark.asyncio
 async def test_process_track_like_fails():
     """like_track returns False → 'error'."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=77)])
@@ -145,8 +145,8 @@ async def test_process_track_like_fails():
 
     row = {"id": 7, "ym_id": "ym7", "ym_artist": "A", "ym_title": "T"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=77)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=77)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result = await _process_one_track(sc_client, row)
 
     assert result[0] == "error"
@@ -156,14 +156,14 @@ async def test_process_track_like_fails():
 @pytest.mark.asyncio
 async def test_process_track_search_query_format():
     """Primary query is '{artist} {title}'. When empty, fallback to title-only."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[])
 
     row = {"id": 8, "ym_id": "ym8", "ym_artist": "Radiohead", "ym_title": "Creep"}
 
-    with patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
     # Primary query uses "{artist} {title}" format
@@ -175,7 +175,7 @@ async def test_process_track_search_query_format():
 @pytest.mark.asyncio
 async def test_process_compound_artist_parallel_queries():
     """Compound artist (feat.) → multiple parallel search queries."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=5)])
@@ -183,8 +183,8 @@ async def test_process_compound_artist_parallel_queries():
 
     row = {"id": 9, "ym_id": "ym9", "ym_artist": "Artist1 feat. Artist2", "ym_title": "Song"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=5)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=5)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
     calls = [c.args[0] for c in sc_client.search_tracks.call_args_list]
@@ -195,7 +195,7 @@ async def test_process_compound_artist_parallel_queries():
 @pytest.mark.asyncio
 async def test_process_dedup_candidates_by_sc_id():
     """Same sc_id from multiple queries → find_best_match receives deduplicated list."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     shared_track = _make_sc_track(sc_id=77)
     sc_client = MagicMock()
@@ -210,8 +210,8 @@ async def test_process_dedup_candidates_by_sc_id():
         captured["candidates"] = candidates
         return _make_match(sc_id=77)
 
-    with patch("migration.sc_tracks.find_best_match", side_effect=fake_find_best_match), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.find_best_match", side_effect=fake_find_best_match), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
     assert len([c for c in captured["candidates"] if c.track_id == 77]) == 1
@@ -220,7 +220,7 @@ async def test_process_dedup_candidates_by_sc_id():
 @pytest.mark.asyncio
 async def test_process_title_only_fallback_when_compound_empty():
     """When all compound queries return empty → fallback to title-only."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     call_log = []
 
@@ -233,7 +233,7 @@ async def test_process_title_only_fallback_when_compound_empty():
 
     row = {"id": 11, "ym_id": "ym11", "ym_artist": "A feat. B", "ym_title": "Song"}
 
-    with patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         await _process_one_track(sc_client, row)
 
     assert "Song" in call_log
@@ -244,7 +244,7 @@ async def test_process_title_only_fallback_when_compound_empty():
 # ---------------------------------------------------------------------------
 
 def test_migration_stats_str():
-    from migration.sc_tracks import MigrationStats
+    from migration.to_soundcloud import MigrationStats
     stats = MigrationStats(total=100, liked=80, not_found=15, errors=3, uncertain=2)
     s = str(stats)
     assert "100" in s
@@ -254,7 +254,7 @@ def test_migration_stats_str():
 
 
 def test_migration_stats_defaults():
-    from migration.sc_tracks import MigrationStats
+    from migration.to_soundcloud import MigrationStats
     stats = MigrationStats()
     assert stats.total == 0
     assert stats.liked == 0
@@ -270,7 +270,7 @@ def test_migration_stats_defaults():
 @pytest.mark.asyncio
 async def test_process_track_playlist_mode():
     """playlist_mode=True: like_track NOT called; sc_id returned for playlist."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=42)])
@@ -278,8 +278,8 @@ async def test_process_track_playlist_mode():
 
     row = {"id": 1, "ym_id": "ym1", "ym_artist": "Radiohead", "ym_title": "Creep"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=42)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=42)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         result, sc_id = await _process_one_track(sc_client, row, playlist_mode=True)
 
     assert result == "liked"
@@ -290,7 +290,7 @@ async def test_process_track_playlist_mode():
 @pytest.mark.asyncio
 async def test_process_track_like_tracks_success():
     """like_tracks=True: like_track called; on success returns None sc_id (no playlist)."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=55)])
@@ -298,8 +298,8 @@ async def test_process_track_like_tracks_success():
 
     row = {"id": 2, "ym_id": "ym2", "ym_artist": "Nirvana", "ym_title": "Smells Like Teen Spirit"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=55)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=55)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result, sc_id = await _process_one_track(sc_client, row, like_tracks=True)
 
     assert result == "liked"
@@ -313,7 +313,7 @@ async def test_process_track_like_tracks_success():
 @pytest.mark.asyncio
 async def test_process_track_like_tracks_404_fallback_to_playlist():
     """like_tracks=True + LikeNotSupportedError → returns sc_id for playlist fallback."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
     from core.soundcloud.client import LikeNotSupportedError
 
     sc_client = MagicMock()
@@ -322,8 +322,8 @@ async def test_process_track_like_tracks_404_fallback_to_playlist():
 
     row = {"id": 3, "ym_id": "ym3", "ym_artist": "Pink Floyd", "ym_title": "Comfortably Numb"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=77)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock) as mock_update:
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=77)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock) as mock_update:
         result, sc_id = await _process_one_track(sc_client, row, like_tracks=True)
 
     assert result == "liked"
@@ -336,7 +336,7 @@ async def test_process_track_like_tracks_404_fallback_to_playlist():
 @pytest.mark.asyncio
 async def test_process_track_like_tracks_false_not_called():
     """like_tracks=False (default), playlist_mode=False: original like_track path."""
-    from migration.sc_tracks import _process_one_track
+    from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
     sc_client.search_tracks = AsyncMock(return_value=[_make_sc_track(sc_id=11)])
@@ -344,8 +344,8 @@ async def test_process_track_like_tracks_false_not_called():
 
     row = {"id": 4, "ym_id": "ym4", "ym_artist": "A", "ym_title": "T"}
 
-    with patch("migration.sc_tracks.find_best_match", return_value=_make_match(sc_id=11)), \
-         patch("migration.sc_tracks.update_track", new_callable=AsyncMock):
+    with patch("migration.to_soundcloud.find_best_match", return_value=_make_match(sc_id=11)), \
+         patch("migration.to_soundcloud.update_track", new_callable=AsyncMock):
         result, sc_id = await _process_one_track(sc_client, row, like_tracks=False, playlist_mode=False)
 
     assert result == "liked"

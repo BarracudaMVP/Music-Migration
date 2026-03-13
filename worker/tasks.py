@@ -101,7 +101,7 @@ async def run_spotify_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from Spotify to SoundCloud."""
-    from migration.sc_tracks import run_spotify_migration
+    from migration.to_soundcloud import run_spotify_migration
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
@@ -252,7 +252,7 @@ async def run_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: runs the migration pipeline for a pre-created migration record."""
-    from migration.sc_tracks import run_migration
+    from migration.to_soundcloud import run_migration
     from core.db import update_migration, get_track_stats, get_artist_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
 
@@ -268,8 +268,8 @@ async def run_migration_job(
                 soundcloud_token=sc_token,
                 user_id=user_id,
                 migration_id=migration_id,
-                migrate_playlists=migrate_full,
-                migrate_artists=migrate_full,
+                do_playlists=migrate_full,
+                do_artists=migrate_full,
                 progress_callback=progress_cb,
                 playlist_mode=not like_tracks,
                 track_limit=track_limit,
@@ -299,7 +299,7 @@ async def run_file_migration_job(
     like_tracks: bool = False,
 ) -> None:
     """ARQ job: migrate tracks from a file to SoundCloud (no Yandex Music)."""
-    from migration.sc_tracks import migrate_from_file_tracks
+    from migration.to_soundcloud import migrate_from_file_tracks
     from core.soundcloud.client import SoundCloudClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text

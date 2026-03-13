@@ -1,5 +1,5 @@
 """
-Миграция треков → SoundCloud (из любого источника).
+Миграция → SoundCloud (треки, плейлисты, артисты из любого источника).
 
 Пайплайн для YM / Spotify / File → SC:
 1. Загружаем треки из источника
@@ -25,12 +25,23 @@ from core.db import (
     get_previously_migrated_ym_ids,
     update_track,
     get_track_stats,
+    create_playlist_record,
+    update_playlist,
+    get_pending_playlists,
+    get_liked_sc_tracks,
+    bulk_insert_artists,
+    get_pending_artists,
+    update_artist,
+    get_artist_stats,
 )
 from config import settings
 from core.yandex.client import YandexMusicClient
 from core.spotify.client import SpotifyClient
 from core.soundcloud.client import SoundCloudClient, LikeNotSupportedError
 from core.matcher import find_best_match, split_artists, TrackCandidate
+
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -55,9 +66,53 @@ class MigrationStats:
         return parts
 
 
-# ---------------------------------------------------------------------------
-# YM → SC
-# ---------------------------------------------------------------------------
+@dataclass
+class PlaylistMigrationStats:
+    total: int = 0
+    created: int = 0
+    errors: int = 0
+
+    def __str__(self) -> str:
+        return (
+            f"Плейлистов всего: {self.total} | "
+            f"Создано: {self.created} | "
+            f"Ошибок: {self.errors}"
+        )
+
+
+@dataclass
+class ArtistMigrationStats:
+    total: int = 0
+    followed: int = 0
+    not_found: int = 0
+    errors: int = 0
+
+    def __str__(self) -> str:
+        return (
+            f"Артистов всего: {self.total} | "
+            f"Подписок: {self.followed} | "
+            f"Не найдено: {self.not_found} | "
+            f"Ошибок: {self.errors}"
+        )
+
+
+@dataclass
+class FullMigrationStats:
+    tracks: MigrationStats
+    playlists: PlaylistMigrationStats | None = None
+    artists: ArtistMigrationStats | None = None
+
+    def __str__(self) -> str:
+        parts = [str(self.tracks)]
+        if self.playlists:
+            parts.append(str(self.playlists))
+        if self.artists:
+            parts.append(str(self.artists))
+        return "\n".join(parts)
+
+
+# ── Tracks ────────────────────────────────────────────────────────────────────
+
 
 async def migrate_tracks(
     ym_client: YandexMusicClient,
@@ -117,10 +172,6 @@ async def migrate_tracks(
     return stats
 
 
-# ---------------------------------------------------------------------------
-# Spotify → SC
-# ---------------------------------------------------------------------------
-
 async def migrate_spotify_tracks(
     spotify_client: SpotifyClient,
     sc_client: SoundCloudClient,
@@ -179,43 +230,6 @@ async def migrate_spotify_tracks(
     return stats
 
 
-async def run_spotify_migration(
-    spotify_token: str,
-    soundcloud_token: str,
-    migration_id: int,
-    user_id: str = "cli",
-    mode: str = "tracks",
-    progress_callback=None,
-    playlist_mode: bool = False,
-    track_limit: int | None = None,
-    skip_already_migrated: bool = True,
-    like_tracks: bool = False,
-) -> MigrationStats:
-    """
-    Точка входа для ARQ worker (Spotify → SC).
-    mode: 'tracks' — только треки, 'full' — треки + плейлисты (TODO).
-    """
-    spotify_client = await SpotifyClient(spotify_token).init()
-    sc_client = await SoundCloudClient(soundcloud_token).init()
-
-    try:
-        stats = await migrate_spotify_tracks(
-            spotify_client, sc_client, migration_id, progress_callback,
-            playlist_mode=playlist_mode, track_limit=track_limit,
-            skip_already_migrated=skip_already_migrated,
-            like_tracks=like_tracks,
-        )
-    finally:
-        await spotify_client.close()
-        await sc_client.close()
-
-    return stats
-
-
-# ---------------------------------------------------------------------------
-# File → SC
-# ---------------------------------------------------------------------------
-
 async def migrate_from_file_tracks(
     sc_client: SoundCloudClient,
     migration_id: int,
@@ -252,10 +266,6 @@ async def migrate_from_file_tracks(
     logger.info(f"Перенос из файла завершён. {stats}")
     return stats
 
-
-# ---------------------------------------------------------------------------
-# Shared pipeline internals
-# ---------------------------------------------------------------------------
 
 async def _run_pending_loop(
     sc_client: SoundCloudClient,
@@ -442,16 +452,246 @@ async def _process_one_track(
         return "error", None
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point (YM → SC full migration)
-# ---------------------------------------------------------------------------
+# ── Playlists ─────────────────────────────────────────────────────────────────
+
+
+async def migrate_playlists(
+    ym_client: YandexMusicClient,
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    progress_callback=None,
+) -> PlaylistMigrationStats:
+    """Пайплайн миграции плейлистов YM → SC."""
+    logger.info("Загружаю плейлисты из ЯМ...")
+    ym_playlists = await ym_client.get_playlists()
+
+    if not ym_playlists:
+        logger.info("Нет плейлистов для переноса")
+        return PlaylistMigrationStats()
+
+    for pl in ym_playlists:
+        await create_playlist_record(migration_id, pl.kind, pl.title)
+
+    track_cache = await get_liked_sc_tracks(migration_id)
+    logger.info(f"Кэш треков: {len(track_cache)} записей")
+
+    pending = await get_pending_playlists(migration_id)
+    total = len(pending)
+    stats = PlaylistMigrationStats(total=total)
+
+    pl_by_kind = {pl.kind: pl for pl in ym_playlists}
+
+    for i, row in enumerate(pending, start=1):
+        if progress_callback:
+            await progress_callback(i, total, row["ym_title"])
+
+        ym_pl = pl_by_kind.get(row["ym_kind"])
+        if not ym_pl:
+            await update_playlist(row["id"], status="error")
+            stats.errors += 1
+            continue
+
+        try:
+            result = await _process_one_playlist(
+                sc_client, row, ym_pl, migration_id, track_cache
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при обработке плейлиста {row['ym_title']!r}: {e}")
+            await update_playlist(row["id"], status="error")
+            stats.errors += 1
+            continue
+
+        if result:
+            stats.created += 1
+        else:
+            stats.errors += 1
+
+    logger.info(f"Плейлисты готовы. {stats}")
+    return stats
+
+
+async def _process_one_playlist(
+    sc_client: SoundCloudClient,
+    row: dict,
+    ym_pl,
+    migration_id: int,
+    track_cache: dict[str, int],
+) -> bool:
+    """
+    Создаёт один плейлист на SoundCloud.
+    Треки берёт из кэша БД; для не найденных делает новый поиск.
+    """
+    sc_track_ids: list[int] = []
+
+    for track in ym_pl.tracks:
+        sc_id = track_cache.get(track.id)
+        if sc_id:
+            sc_track_ids.append(sc_id)
+            continue
+
+        query = f"{track.artists_str} {track.title}"
+        results = await sc_client.search_tracks(query)
+        if not results:
+            continue
+
+        candidates = [
+            TrackCandidate(track_id=t.id, track_url=t.url, artist=t.artist, title=t.title)
+            for t in results
+        ]
+        match = find_best_match(track.artists_str, track.title, candidates)
+        if match and match.matched:
+            sc_track_ids.append(match.track_id)
+            track_cache[track.id] = match.track_id
+
+    if not sc_track_ids:
+        logger.warning(f"Плейлист {row['ym_title']!r}: ни один трек не найден на SC")
+        await update_playlist(row["id"], status="error")
+        return False
+
+    sc_pl = await sc_client.create_playlist(row["ym_title"], sc_track_ids)
+    if sc_pl:
+        await update_playlist(row["id"], status="created", sc_playlist_id=sc_pl.id)
+        logger.info(
+            f"Создан плейлист {row['ym_title']!r}: "
+            f"{len(sc_track_ids)}/{len(ym_pl.tracks)} треков"
+        )
+        return True
+
+    await update_playlist(row["id"], status="error")
+    return False
+
+
+# ── Artists ───────────────────────────────────────────────────────────────────
+
+
+async def migrate_artists(
+    ym_client: YandexMusicClient,
+    sc_client: SoundCloudClient,
+    migration_id: int,
+    progress_callback=None,
+) -> ArtistMigrationStats:
+    """Пайплайн миграции артистов YM → SC."""
+    logger.info("Загружаю лайкнутых артистов из ЯМ...")
+    ym_artists = await ym_client.get_liked_artists()
+
+    if not ym_artists:
+        logger.info("Нет лайкнутых артистов")
+        return ArtistMigrationStats()
+
+    await bulk_insert_artists(
+        migration_id,
+        [{"ym_name": a.name} for a in ym_artists],
+    )
+
+    pending = await get_pending_artists(migration_id)
+    total = len(pending)
+    stats = ArtistMigrationStats(total=total)
+    logger.info(f"Обрабатываю {total} артистов...")
+
+    for i, row in enumerate(pending, start=1):
+        if progress_callback and i % 5 == 0:
+            await progress_callback(i, total, row["ym_name"])
+
+        try:
+            result = await _process_one_artist(sc_client, row)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке артиста {row['ym_name']!r}: {e}")
+            await update_artist(row["id"], status="error")
+            stats.errors += 1
+            continue
+
+        if result == "followed":
+            stats.followed += 1
+        elif result == "not_found":
+            stats.not_found += 1
+        else:
+            stats.errors += 1
+
+    logger.info(f"Артисты готовы. {stats}")
+    return stats
+
+
+async def _process_one_artist(sc_client: SoundCloudClient, row: dict) -> str:
+    ym_name = row["ym_name"]
+    artist_id = row["id"]
+
+    sc_users = await sc_client.search_users(ym_name)
+    if not sc_users:
+        await update_artist(artist_id, status="not_found")
+        return "not_found"
+
+    candidates = [
+        TrackCandidate(
+            track_id=u.id,
+            track_url=u.url,
+            artist=u.username,
+            title="",
+        )
+        for u in sc_users
+    ]
+
+    match = find_best_match(ym_name, ym_name, candidates)
+    if not match or not match.matched:
+        await update_artist(artist_id, status="not_found")
+        return "not_found"
+
+    success = await sc_client.follow_user(match.track_id)
+    if success:
+        await update_artist(
+            artist_id,
+            status="followed",
+            sc_user_id=match.track_id,
+            sc_username=match.cand_artist,
+            match_score=match.score,
+        )
+        return "followed"
+
+    await update_artist(artist_id, status="error")
+    return "error"
+
+
+# ── Entry points ──────────────────────────────────────────────────────────────
+
+
+async def run_spotify_migration(
+    spotify_token: str,
+    soundcloud_token: str,
+    migration_id: int,
+    user_id: str = "cli",
+    mode: str = "tracks",
+    progress_callback=None,
+    playlist_mode: bool = False,
+    track_limit: int | None = None,
+    skip_already_migrated: bool = True,
+    like_tracks: bool = False,
+) -> MigrationStats:
+    """
+    Точка входа для ARQ worker (Spotify → SC).
+    mode: 'tracks' — только треки, 'full' — треки + плейлисты (TODO).
+    """
+    spotify_client = await SpotifyClient(spotify_token).init()
+    sc_client = await SoundCloudClient(soundcloud_token).init()
+
+    try:
+        stats = await migrate_spotify_tracks(
+            spotify_client, sc_client, migration_id, progress_callback,
+            playlist_mode=playlist_mode, track_limit=track_limit,
+            skip_already_migrated=skip_already_migrated,
+            like_tracks=like_tracks,
+        )
+    finally:
+        await spotify_client.close()
+        await sc_client.close()
+
+    return stats
+
 
 async def run_migration(
     yandex_token: str,
     soundcloud_token: str,
     user_id: str = "cli",
-    migrate_playlists: bool = False,
-    migrate_artists: bool = False,
+    do_playlists: bool = False,
+    do_artists: bool = False,
     progress_callback=None,
     on_migration_created=None,
     migration_id: int | None = None,
@@ -459,15 +699,12 @@ async def run_migration(
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
     like_tracks: bool = False,
-) -> tuple[int, "FullMigrationStats"]:
+) -> tuple[int, FullMigrationStats]:
     """
     Точка входа для CLI и бота (YM → SC).
     Инициализирует клиентов, создаёт запись в БД, запускает пайплайн.
     Возвращает (migration_id, FullMigrationStats).
     """
-    from migration.sc_playlists import migrate_playlists as _migrate_playlists
-    from migration.sc_artists import migrate_artists as _migrate_artists
-
     ym_client = await YandexMusicClient(yandex_token, proxy_url=settings.ym_proxy_url or None).init()
     sc_client = await SoundCloudClient(soundcloud_token).init()
 
@@ -489,14 +726,14 @@ async def run_migration(
         )
 
         pl_stats = None
-        if migrate_playlists:
+        if do_playlists:
             logger.info("Запускаю перенос плейлистов...")
-            pl_stats = await _migrate_playlists(ym_client, sc_client, migration_id)
+            pl_stats = await migrate_playlists(ym_client, sc_client, migration_id)
 
         artist_stats = None
-        if migrate_artists:
+        if do_artists:
             logger.info("Запускаю перенос артистов...")
-            artist_stats = await _migrate_artists(ym_client, sc_client, migration_id)
+            artist_stats = await migrate_artists(ym_client, sc_client, migration_id)
 
     finally:
         await sc_client.close()
@@ -506,18 +743,3 @@ async def run_migration(
         playlists=pl_stats,
         artists=artist_stats,
     )
-
-
-@dataclass
-class FullMigrationStats:
-    tracks: MigrationStats
-    playlists: "PlaylistMigrationStats | None" = None
-    artists: "ArtistMigrationStats | None" = None
-
-    def __str__(self) -> str:
-        parts = [str(self.tracks)]
-        if self.playlists:
-            parts.append(str(self.playlists))
-        if self.artists:
-            parts.append(str(self.artists))
-        return "\n".join(parts)

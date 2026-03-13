@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MM-80**, deployed on EU server.
+Current state: **MM-76**, deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:
@@ -255,14 +255,13 @@ core/
     ├── matcher.py                      — Fuzzy matching + Cyrillic transliteration + split_artists
     └── crypto.py                       — Token encryption/decryption (Fernet)
 
-migration/                              — пайплайны по destination; планируется MM-76: sc_* → to_soundcloud.py
-    ├── sc_tracks.py                    — any → SC (треки): YM, Spotify, File источники объединены;
-    │                                     _run_pending_loop, _process_one_track, _create_liked_playlists (playlist_mode)
-    ├── sc_playlists.py                 — YM → SC плейлисты
-    ├── sc_artists.py                   — YM → SC артисты (follows)
+migration/                              — пайплайны по destination (unified to_* naming, MM-76)
+    ├── to_soundcloud.py                — any → SC (треки + плейлисты + артисты): YM, Spotify, File источники;
+    │                                     MigrationStats, PlaylistMigrationStats, ArtistMigrationStats, FullMigrationStats;
+    │                                     _run_pending_loop, _process_one_track, _create_liked_playlists (playlist_mode);
+    │                                     run_migration() (YM→SC CLI/bot entry), run_spotify_migration() (Spotify→SC worker)
     ├── to_yandex.py                    — any → YM лайки (multi-query, fuzzy match, sleep 1.0s)
     └── to_spotify.py                   — any → Spotify лайки + подписки на артистов (auto-refresh token)
-    (MM-76 planned: sc_tracks+sc_playlists+sc_artists → to_soundcloud.py, unified to_* naming)
 
 bot/
     ├── main.py                         — aiogram 3.x entry
@@ -366,7 +365,7 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - dead code removed (MM-75): `GET /import`, `GET /export` (303-заглушки) и `POST /auth/soundcloud` (legacy cookie-flow до MM-52) удалены; `GET /auth` получил `flow_from`/`flow_to` параметры; `POST /auth/yandex` теперь сохраняет токен в БД и восстанавливает флоу после успеха
 - auth refactor (MM-79): `api/routes/auth.py` → `api/routes/bot_auth.py` (internal); новый `api/routes/oauth.py` — все OAuth redirect/callback роуты; state хранится в Redis `oauth_state:{provider}:{state}` TTL 600s (убраны `_ym_state` cookie, `_sc_state`/`_sc_verifier` cookies, `session["spotify_oauth_state"]`); `session["ym_token"]` → `session["ym_connected"]`; `POST /auth/yandex` удалён; после OAuth генерируется short-lived `oauth_code:{code}` (TTL 30s) для MM-81
 - `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
-- migration/ конвенция `sc_*` → SC, `to_*` → YM/Spotify (MM-72); планируется MM-76: слить `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`
+- migration/ unified `to_*` naming (MM-76): `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`; `run_migration()` params renamed `migrate_playlists`/`migrate_artists` → `do_playlists`/`do_artists` to avoid name collision with the functions
 - MM-81 JWT SPA auth: access token = JWT HS256 TTL 15min (in memory), refresh token = opaque hex 64 chars stored encrypted in `UserSession.spa_refresh_token`; exchange flow: OAuth callback → `oauth_code:{code}` Redis TTL 30s → `POST /api/v1/auth/exchange` → JWT pair
 - MM-81 CORS: `CORSMiddleware(allow_credentials=False)` — JWT in `Authorization: Bearer` header, not cookies; origins from `cors_origins` setting (comma-separated)
 - MM-81 `/api/v1/` router always registered (outside `WEB_ENABLED` block); old Jinja2 UI + bot work in parallel during SPA transition (SessionMiddleware removed in Phase 2)

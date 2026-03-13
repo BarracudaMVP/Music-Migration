@@ -1712,7 +1712,7 @@ Telegram-бот, внешние ссылки.
 
 ---
 
-### 🔲 MM-76 — migration/ рефакторинг: sc_* → to_soundcloud.py
+### ✅ MM-76 — migration/ рефакторинг: sc_* → to_soundcloud.py
 
 > Привести конвенцию именования модулей `migration/` к единому стилю `to_*` по аналогии с `to_yandex.py` и `to_spotify.py`.
 
@@ -1724,14 +1724,14 @@ Telegram-бот, внешние ссылки.
 **Решение:** Слить `sc_tracks.py` + `sc_playlists.py` + `sc_artists.py` → `to_soundcloud.py`.
 
 **Задачи:**
-- [ ] Создать `migration/to_soundcloud.py` — объединить все три файла
+- [x] Создать `migration/to_soundcloud.py` — объединить все три файла
   - Секции: `# ── Tracks ──`, `# ── Playlists ──`, `# ── Artists ──`, `# ── Entry points ──`
   - Публичный API: `migrate_tracks()`, `migrate_playlists()`, `migrate_artists()`, `run_migration()`, `run_spotify_migration()`, `migrate_from_file_tracks()`
-- [ ] Обновить импорты в `worker/tasks.py` (все `from migration.sc_*`)
-- [ ] Обновить импорт в `cli.py`
-- [ ] Удалить `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py`
-- [ ] Обновить тесты (`migration.sc_tracks` → `migration.to_soundcloud`)
-- [ ] Обновить CLAUDE.md (architecture diagram)
+- [x] Обновить импорты в `worker/tasks.py` (все `from migration.sc_*`)
+- [x] Обновить импорт в `cli.py`
+- [x] Удалить `sc_tracks.py`, `sc_playlists.py`, `sc_artists.py`
+- [x] Обновить тесты (`migration.sc_tracks` → `migration.to_soundcloud`)
+- [x] Обновить CLAUDE.md (architecture diagram)
 
 **Итоговая структура `migration/`:**
 ```
