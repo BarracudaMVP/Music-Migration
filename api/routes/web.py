@@ -239,37 +239,6 @@ async def flow_rest(
 
 
 # ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-@router.get("/auth", response_class=HTMLResponse)
-async def auth_page(request: Request, error: str = "", flow_from: str = "", flow_to: str = ""):
-    from config import settings as cfg
-
-    user_id = _ensure_user_id(request)
-    if flow_from:
-        request.session["auth_flow_from"] = flow_from
-        request.session["auth_flow_to"] = flow_to
-    db_session = await load_user_session(user_id)
-    ym_done = bool(request.session.get("ym_connected") or (db_session and db_session.get("yandex_token")))
-    spotify_done = bool(
-        request.session.get("spotify_connected")
-        or (db_session and db_session.get("spotify_token"))
-    )
-    sc_done = bool(
-        request.session.get("sc_connected")
-        or (db_session and db_session.get("soundcloud_token"))
-    )
-    return _render("auth.html", request, {
-        "ym_done": ym_done,
-        "spotify_done": spotify_done,
-        "spotify_enabled": bool(cfg.spotify_client_id),
-        "sc_done": sc_done,
-        "sc_enabled": bool(cfg.sc_client_id),
-        "error": error,
-    })
-
-
 # ---------------------------------------------------------------------------
 # Migration
 # ---------------------------------------------------------------------------
@@ -643,7 +612,7 @@ async def history(request: Request):
 
     user_id = _session_user_id(request)
     if not user_id:
-        return RedirectResponse("/auth", status_code=303)
+        return RedirectResponse("/", status_code=303)
 
     async with AsyncSessionLocal() as s:
         result = await s.execute(

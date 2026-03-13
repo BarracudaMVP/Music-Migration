@@ -247,19 +247,7 @@ async def test_flow_rest_ym_connected_via_session(app, mock_arq_pool):
     assert "disabled" not in response.text or "from_connected" not in response.text
 
 
-# ---------------------------------------------------------------------------
-# GET /auth page — no POST /auth/yandex
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_auth_page_returns_200(app, mock_arq_pool):
-    """GET /auth → 200 HTML."""
-    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=None):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.get("/auth")
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
+# GET /auth page removed (MM-75/81) — OAuth is redirect-only machinery, no HTML page
 
 
 @pytest.mark.asyncio
