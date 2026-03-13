@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     sc_client_secret: str = Field(default="")
     sc_redirect_uri: str = Field(default="http://localhost:8000/auth/soundcloud/callback")
 
+    # SPA / CORS (MM-81)
+    cors_origins: str = Field(default="http://localhost:3000")  # comma-separated
+    jwt_secret_key: str = Field(default="change-me-jwt-secret")
+    jwt_access_token_ttl: int = Field(default=900)        # seconds (15 min)
+    jwt_refresh_token_ttl: int = Field(default=2592000)   # seconds (30 days)
+
     # Dev mode (local development only — NEVER enable in production)
     dev_mode: bool = Field(default=False)
 
