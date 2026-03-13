@@ -6,7 +6,7 @@ from loguru import logger
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware import AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
-from api.routes import admin, auth, migrations, reports, services, sessions, web
+from api.routes import admin, bot_auth, migrations, oauth, reports, services, sessions, web
 from config import settings
 from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
@@ -35,9 +35,10 @@ if settings.web_enabled:
     app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
     app.include_router(web.router, tags=["web"])
     app.include_router(admin.router, tags=["admin"])
+    app.include_router(oauth.router, tags=["oauth"])
 
 # Internal API — always available (used by bot and worker)
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(bot_auth.router, prefix="/api/auth", tags=["bot_auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(migrations.router, prefix="/api/migrations", tags=["migrations"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])

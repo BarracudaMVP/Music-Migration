@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MVP9 + MM-71**, deployed on EU server.
+Current state: **MM-80**, deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:

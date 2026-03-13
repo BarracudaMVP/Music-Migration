@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-import uuid
 from typing import Optional
 from urllib.parse import quote
 
@@ -12,6 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
 
+from api.routes.oauth import _ensure_user_id, _session_user_id
 from core.db import (
     create_migration,
     get_migration,
@@ -19,11 +19,7 @@ from core.db import (
     get_tracks_page,
     load_user_session,
     save_user_session,
-    save_yandex_token,
-    save_soundcloud_token,
-    save_spotify_token,
     save_user_lang,
-    delete_user_session,
 )
 from core.services.registry import ServiceRegistry
 from core.soundcloud.client import SoundCloudClient
@@ -82,31 +78,6 @@ _STATUS_LABEL_EN = {
 def _status_label(status: str, lang: str) -> str:
     labels = _STATUS_LABEL_EN if lang == "en" else _STATUS_LABEL_RU
     return labels.get(status, status)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _session_user_id(request: Request) -> str | None:
-    return request.session.get("user_id")
-
-
-def _ensure_user_id(request: Request) -> str:
-    """Return existing or create a new anonymous web user ID.
-
-    In DEV_MODE always returns a fixed 'dev_user' ID so the pre-seeded
-    DB session is picked up automatically on every browser visit.
-    """
-    from config import settings as cfg
-    if cfg.dev_mode:
-        request.session["user_id"] = "dev_user"
-        return "dev_user"
-    uid = request.session.get("user_id")
-    if not uid:
-        uid = f"web_{uuid.uuid4().hex[:12]}"
-        request.session["user_id"] = uid
-    return uid
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +206,7 @@ async def flow_rest(
     def _connected(service_id: str) -> bool:
         if service_id == "yandex_music":
             return bool(
-                request.session.get("ym_token")
+                request.session.get("ym_connected")
                 or (db_session and db_session.get("yandex_token"))
             )
         if service_id == "soundcloud":
@@ -274,14 +245,13 @@ async def flow_rest(
 @router.get("/auth", response_class=HTMLResponse)
 async def auth_page(request: Request, error: str = "", flow_from: str = "", flow_to: str = ""):
     from config import settings as cfg
-    from bot.oauth.yandex import get_auth_url
 
     user_id = _ensure_user_id(request)
     if flow_from:
         request.session["auth_flow_from"] = flow_from
         request.session["auth_flow_to"] = flow_to
     db_session = await load_user_session(user_id)
-    ym_done = bool(request.session.get("ym_token") or (db_session and db_session.get("yandex_token")))
+    ym_done = bool(request.session.get("ym_connected") or (db_session and db_session.get("yandex_token")))
     spotify_done = bool(
         request.session.get("spotify_connected")
         or (db_session and db_session.get("spotify_token"))
@@ -291,301 +261,13 @@ async def auth_page(request: Request, error: str = "", flow_from: str = "", flow
         or (db_session and db_session.get("soundcloud_token"))
     )
     return _render("auth.html", request, {
-        "ym_auth_url": get_auth_url(),
         "ym_done": ym_done,
-        "ym_redirect_configured": bool(cfg.yandex_redirect_uri),
         "spotify_done": spotify_done,
         "spotify_enabled": bool(cfg.spotify_client_id),
         "sc_done": sc_done,
         "sc_enabled": bool(cfg.sc_client_id),
         "error": error,
     })
-
-
-@router.get("/auth/yandex")
-async def auth_yandex_start(request: Request, flow_from: str = "", flow_to: str = ""):
-    """Yandex OAuth web flow — redirect to Yandex (MM-43)."""
-    import secrets
-    from config import settings
-    from bot.oauth.yandex import get_callback_auth_url
-
-    if not settings.yandex_redirect_uri:
-        return RedirectResponse(
-            f"/auth?error={quote('YANDEX_REDIRECT_URI не настроен')}",
-            status_code=303,
-        )
-    _ensure_user_id(request)
-    if flow_from:
-        request.session["auth_flow_from"] = flow_from
-        request.session["auth_flow_to"] = flow_to
-    state = "web_" + secrets.token_urlsafe(16)
-    response = RedirectResponse(get_callback_auth_url(state), status_code=303)
-    response.set_cookie("_ym_state", state, httponly=True, samesite="lax", max_age=600)
-    return response
-
-
-@router.get("/auth/yandex/bot")
-async def auth_yandex_bot_start(request: Request, state: str = ""):
-    """Yandex OAuth bot flow — initiated from Telegram bot link (MM-44)."""
-    from config import settings
-    from bot.oauth.yandex import get_callback_auth_url
-
-    if not settings.yandex_redirect_uri or not state.startswith("bot_"):
-        return RedirectResponse(
-            f"/auth?error={quote('Некорректный запрос авторизации')}",
-            status_code=303,
-        )
-    response = RedirectResponse(get_callback_auth_url(state), status_code=303)
-    response.set_cookie("_ym_state", state, httponly=True, samesite="lax", max_age=600)
-    return response
-
-
-@router.get("/auth/yandex/callback")
-async def auth_yandex_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    """Callback from Yandex OAuth. Handles web (state=web_*) and bot (state=bot_*) flows."""
-    from config import settings
-    from bot.oauth.yandex import exchange_code_callback
-    from core.yandex.client import YandexMusicClient
-
-    if error:
-        return RedirectResponse(
-            f"/auth?error={quote(f'Яндекс отклонил авторизацию: {error}')}",
-            status_code=303,
-        )
-
-    expected_state = request.cookies.get("_ym_state", "")
-    if not state or state != expected_state:
-        return RedirectResponse(
-            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
-            status_code=303,
-        )
-
-    try:
-        token = await exchange_code_callback(code)
-        await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
-    except Exception as e:
-        response = RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
-        response.delete_cookie("_ym_state")
-        return response
-
-    if state.startswith("bot_"):
-        # Save token to Redis for bot polling (TTL 5 min)
-        state_id = state[4:]  # strip "bot_" prefix
-        from api.main import get_arq_pool
-        arq = get_arq_pool()
-        if arq:
-            await arq.setex(f"ym_auth:{state_id}", 300, token)
-        response = HTMLResponse(
-            content=(
-                "<!doctype html><html><head><meta charset=utf-8>"
-                "<title>Авторизация завершена</title>"
-                "<meta name=viewport content='width=device-width,initial-scale=1'>"
-                "<style>body{font-family:sans-serif;text-align:center;padding:3rem;color:#1f2937}"
-                ".ok{font-size:3rem}.msg{margin:1rem 0 2rem;color:#374151}"
-                "a{display:inline-block;background:#6366f1;color:#fff;padding:.75rem 1.5rem;"
-                "border-radius:.75rem;text-decoration:none;font-weight:600}</style></head>"
-                "<body><div class=ok>✓</div>"
-                "<p class=msg>Яндекс Музыка подключена!<br>Вернитесь в Telegram и нажмите <b>✓ Я авторизовался</b>.</p>"
-                "<a href='https://t.me'>Открыть Telegram</a></body></html>"
-            )
-        )
-        response.delete_cookie("_ym_state")
-        return response
-
-    # Web flow: save to session AND DB, redirect back to flow
-    user_id = _ensure_user_id(request)
-    request.session["ym_token"] = token
-    from core.db import save_yandex_token
-    await save_yandex_token(user_id, token)
-    pf = request.session.pop("auth_flow_from", "")
-    pt = request.session.pop("auth_flow_to", "")
-    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
-    response = RedirectResponse(next_url, status_code=303)
-    response.delete_cookie("_ym_state")
-    return response
-
-
-@router.get("/api/auth/yandex/poll/{state_id}")
-async def poll_yandex_bot_token(state_id: str, request: Request):
-    """Internal: bot polls this to get Yandex token after web OAuth (MM-44)."""
-    from api.deps import verify_internal_token
-    from fastapi import Header
-    from api.main import get_arq_pool
-
-    x_internal_token = request.headers.get("x-internal-token", "")
-    await verify_internal_token(x_internal_token)
-
-    arq = get_arq_pool()
-    if not arq:
-        raise HTTPException(status_code=503, detail="Redis unavailable")
-
-    raw = await arq.get(f"ym_auth:{state_id}")
-    if not raw:
-        raise HTTPException(status_code=404, detail="Token not found")
-
-    await arq.delete(f"ym_auth:{state_id}")
-    token = raw.decode() if isinstance(raw, bytes) else raw
-    return {"token": token}
-
-
-@router.post("/auth/yandex", response_class=HTMLResponse)
-async def auth_yandex(request: Request, code: str = Form(...)):
-    user_id = _ensure_user_id(request)
-    try:
-        from bot.oauth.yandex import exchange_code
-        from core.yandex.client import YandexMusicClient
-        from config import settings
-
-        token = await exchange_code(code)
-        client = await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
-        account = client._client.me.account if client._client.me else None
-        login = (
-            getattr(account, "login", None)
-            or getattr(account, "display_name", None)
-            or "пользователь"
-        )
-        request.session["ym_token"] = token
-        request.session["ym_login"] = login
-        await save_yandex_token(user_id, token)
-    except Exception as e:
-        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
-    pf = request.session.pop("auth_flow_from", "")
-    pt = request.session.pop("auth_flow_to", "")
-    if pf:
-        return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}", status_code=303)
-    return RedirectResponse("/auth", status_code=303)
-
-
-@router.get("/auth/soundcloud")
-async def auth_soundcloud_redirect(request: Request, flow_from: str = "", flow_to: str = ""):
-    """Redirect пользователя на страницу авторизации SoundCloud."""
-    from core.soundcloud.oauth import generate_pkce_pair, generate_state, get_auth_url
-    from config import settings
-
-    if not settings.sc_client_id:
-        return RedirectResponse(
-            f"/auth?error={quote('SoundCloud не настроен (отсутствует SC_CLIENT_ID)')}",
-            status_code=303,
-        )
-    _ensure_user_id(request)
-    if flow_from:
-        request.session["auth_flow_from"] = flow_from
-        request.session["auth_flow_to"] = flow_to
-    state = generate_state()
-    code_verifier, code_challenge = generate_pkce_pair()
-    response = RedirectResponse(get_auth_url(state, code_challenge), status_code=303)
-    # Store state + verifier in dedicated cookies (not session) to survive cross-site redirect
-    response.set_cookie("_sc_state", state, httponly=True, samesite="lax", max_age=600)
-    response.set_cookie("_sc_verifier", code_verifier, httponly=True, samesite="lax", max_age=600)
-    return response
-
-
-@router.get("/auth/soundcloud/callback")
-async def auth_soundcloud_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    """Callback от SoundCloud после авторизации пользователя."""
-    from core.soundcloud.oauth import exchange_code
-
-    if error:
-        return RedirectResponse(
-            f"/auth?error={quote(f'SoundCloud отклонил авторизацию: {error}')}",
-            status_code=303,
-        )
-
-    expected_state = request.cookies.get("_sc_state", "")
-    code_verifier = request.cookies.get("_sc_verifier", "")
-    if not state or state != expected_state or not code_verifier:
-        return RedirectResponse(
-            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
-            status_code=303,
-        )
-
-    user_id = _ensure_user_id(request)
-    try:
-        token_data = await exchange_code(code, code_verifier)
-        access_token = token_data["access_token"]
-        # Skip /me validation — SC API returns 403 for unverified apps.
-        # Token validity confirmed by successful code exchange.
-        await save_soundcloud_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
-        request.session["sc_connected"] = True
-    except Exception as e:
-        response = RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
-        response.delete_cookie("_sc_state")
-        response.delete_cookie("_sc_verifier")
-        return response
-
-    pf = request.session.pop("auth_flow_from", "")
-    pt = request.session.pop("auth_flow_to", "")
-    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
-    response = RedirectResponse(next_url, status_code=303)
-    response.delete_cookie("_sc_state")
-    response.delete_cookie("_sc_verifier")
-    return response
-
-
-@router.get("/auth/spotify")
-async def auth_spotify_redirect(request: Request, flow_from: str = "", flow_to: str = ""):
-    """Redirect пользователя на страницу авторизации Spotify."""
-    from core.spotify.oauth import generate_state, get_auth_url
-    from config import settings
-
-    if not settings.spotify_client_id:
-        return RedirectResponse(
-            f"/auth?error={quote('Spotify не настроен (отсутствует SPOTIFY_CLIENT_ID)')}",
-            status_code=303,
-        )
-    _ensure_user_id(request)
-    if flow_from:
-        request.session["auth_flow_from"] = flow_from
-        request.session["auth_flow_to"] = flow_to
-    state = generate_state()
-    request.session["spotify_oauth_state"] = state
-    return RedirectResponse(get_auth_url(state), status_code=303)
-
-
-@router.get("/auth/spotify/callback")
-async def auth_spotify_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    """Callback от Spotify после авторизации пользователя."""
-    from core.spotify.oauth import exchange_code
-    from core.spotify.client import SpotifyClient
-
-    if error:
-        return RedirectResponse(
-            f"/auth?error={quote(f'Spotify отклонил авторизацию: {error}')}",
-            status_code=303,
-        )
-
-    expected_state = request.session.get("spotify_oauth_state")
-    if not state or state != expected_state:
-        return RedirectResponse(
-            f"/auth?error={quote('Ошибка безопасности: state не совпадает')}",
-            status_code=303,
-        )
-    request.session.pop("spotify_oauth_state", None)
-
-    user_id = _ensure_user_id(request)
-    try:
-        token_data = await exchange_code(code)
-        access_token = token_data["access_token"]
-        client = await SpotifyClient(access_token).init()
-        await client.close()
-        await save_spotify_token(user_id, access_token, refresh_token=token_data.get("refresh_token"))
-        request.session["spotify_connected"] = True
-    except Exception as e:
-        return RedirectResponse(f"/auth?error={quote(str(e)[:120])}", status_code=303)
-
-    pf = request.session.pop("auth_flow_from", "")
-    pt = request.session.pop("auth_flow_to", "")
-    next_url = f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/"
-    return RedirectResponse(next_url, status_code=303)
-
-
-@router.post("/auth/logout")
-async def logout(request: Request):
-    user_id = _session_user_id(request)
-    if user_id:
-        await delete_user_session(user_id)
-    request.session.clear()
-    return RedirectResponse("/", status_code=303)
 
 
 # ---------------------------------------------------------------------------

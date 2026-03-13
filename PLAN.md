@@ -1676,11 +1676,18 @@ Telegram-бот, внешние ссылки.
 
 ---
 
-### 🔲 MM-79 — Унификация auth-слоя: вынос в api/routes/auth.py + согласованность паттернов
+### 🔲 MM-79 — Auth refactor: вынос в api/routes/oauth.py + унификация под SPA
 
-> Все OAuth-роуты (`/auth/yandex`, `/auth/soundcloud`, `/auth/spotify`) работают корректно, но живут в перегруженном `web.py` и имеют несогласованные паттерны. Задача — вынести и унифицировать.
+> Подготовка auth-слоя к JWT (MM-81). Все OAuth-роуты выносятся из перегруженного `web.py` в `oauth.py` и унифицируются. **Никаких HTML-страниц для /auth не поднимаем** — OAuth это только redirect-машина, UI живёт в SPA.
+>
+> **Именование файлов (решено):** `api/routes/auth.py` (был internal bot auth) → переименован в `api/routes/bot_auth.py`. Новый `api/routes/oauth.py` — web OAuth redirect/callback. Так оба файла имеют понятное назначение.
 
-**Текущие несогласованности:**
+**Принцип: безболезненный переход**
+- Старый веб-UI и бот продолжают работать **без изменений** на всём протяжении MM-79
+- `SessionMiddleware` остаётся (убирается только в MM-81 Фаза 2)
+- Новые паттерны вводятся параллельно, старые удаляются только после проверки
+
+**Текущие несогласованности (исправляем):**
 
 | Аспект | YM | Spotify | SoundCloud |
 |---|---|---|---|
@@ -1690,19 +1697,16 @@ Telegram-бот, внешние ссылки.
 | Куда идут ошибки | `/auth?error=` | `/auth?error=` | `/auth?error=` |
 
 **Задачи:**
-- [ ] Создать `api/routes/auth.py` — перенести туда все роуты `/auth/*` и `/api/auth/*` из `web.py`
+- [ ] Создать `api/routes/auth.py` — перенести все `/auth/*` и `/api/auth/*` из `web.py`
 - [ ] Зарегистрировать `auth_router` в `api/main.py`
-- [ ] Унифицировать session-ключ после авторизации: использовать `session["{svc}_connected"] = True` для всех сервисов (YM: убрать `session["ym_token"]` = raw token → заменить на `session["ym_connected"] = True`, токен только в БД)
-- [ ] Вынести bot-логику из `auth_yandex_callback` в отдельный `GET /auth/yandex/bot-callback` — чтобы web-callback был чистым
-- [ ] Стандартизировать ошибки: редирект на `/?error=...` вместо `/auth?error=...` (пользователь не всегда на `/auth`)
-- [ ] Обновить все места, которые читают `session["ym_token"]` напрямую (проверить `flow_rest`, `auth_page`, `migrate`)
+- [ ] Унифицировать state storage: все три провайдера хранят state в Redis (TTL 10 мин), убрать cookies + session для state
+- [ ] Унифицировать session после успеха: `session["{svc}_connected"] = True` для всех (YM: убрать `session["ym_token"]` = raw → токен только в БД)
+- [ ] Вынести bot-логику YM из callback → отдельный `GET /auth/yandex/bot` (чистый web-callback)
+- [ ] Стандартизировать ошибки: callback редиректит на `/?error=...` (не `/auth?error=...`)
+- [ ] Убрать `POST /auth/yandex` + форму ручного ввода кода (в проде redirect всегда работает; дев-режим — DEV_MODE)
+- [ ] Подготовить callback к code-exchange: после сохранения токена в БД → генерировать short-lived code (Redis TTL 30s) — **нужен для MM-81**, но сам редирект пока остаётся на `/` (не на SPA)
+- [ ] Обновить все места, читающие `session["ym_token"]` напрямую (`flow_rest`, `migrate`, `auth_page`)
 - [ ] Обновить тесты
-
-**На обсуждение:** Убрать ручной ввод кода YM (`POST /auth/yandex` + форма в `auth.html`)?
-- В продакшне `YANDEX_REDIRECT_URI` настроен — callback работает, форма никогда не показывается
-- В дев-окружении без redirect URI форма нужна, но это edge case
-- Если убрать: `GET /auth` остаётся только для показа ошибок OAuth (`/auth?error=...`), форму можно убрать из `auth.html`
-- Решение принять в рамках MM-79
 
 **Файлы:** `api/routes/web.py` → `api/routes/auth.py`, `api/main.py`, тесты
 
@@ -1838,6 +1842,120 @@ Nginx требует SSL-сертификаты → сложно поднять 
 - `model_validator` в `config.py`: если `WEB_BASE_URL` или `API_BASE_URL` указывает на не-localhost домен — `dev_mode` принудительно сбрасывается в `False`, даже если в `.env` стоит `true`. Таким образом случайная копия `.env.dev` на прод не активирует dev mode.
 
 **Файлы:** `config.py`, `api/routes/web.py`, `api/main.py`, `docker-compose.dev.yml`, `.env.dev`, `.gitignore`, `LOCAL_SETUP.md`, `tests/test_dev_mode.py`
+
+---
+
+### 🔲 MM-81 — SPA: JWT auth + /api/v1/ layer
+
+> Добавить JWT-аутентификацию и публичный JSON API для отдельного SPA-фронтенда. Переход **безболезненный и поэтапный**: старый веб-UI (Jinja2+HTMX) и Telegram-бот продолжают работать параллельно на всём протяжении задачи. `SessionMiddleware` убирается только в Фазе 2 — после того как SPA полностью готов.
+
+**Требует завершения MM-79** (auth callbacks уже генерируют short-lived code).
+
+**Принципы:**
+- Никаких HTML-страниц для /auth — OAuth это redirect-машина, UI авторизации в SPA
+- Старый веб-UI не ломается ни на одном шаге
+- JWT в `Authorization: Bearer`, не в cookies → CORS без `allow_credentials`
+- Refresh token хранится в БД (зашифрованный Fernet), access token — только в памяти SPA
+
+**Решение по Admin panel (зафиксировано):**
+- Сейчас (MM-79/81): Jinja2 `/admin/*` **не трогаем** — работает параллельно с SPA
+- Переход к SPA admin делается в рамках MM-65 (настройки в БД)
+- Схема: `POST /api/v1/admin/login { password }` → JWT с `role: "admin"` → SPA показывает admin-раздел (Вариант A: единый SPA, роль из JWT)
+- `ADMIN_PASSWORD` из env остаётся, меняется только транспорт (form → JSON)
+- После MM-65: Jinja2 admin (`api/routes/admin.py` + `api/templates/admin/`) удаляется
+
+---
+
+**Фаза 1 — Параллельный запуск (бэкенд)**
+
+- [ ] Добавить CORS middleware в `api/main.py`:
+  ```python
+  allow_origins = settings.cors_origins  # новый env CORS_ORIGINS
+  allow_credentials = False
+  allow_methods = ["GET", "POST", "DELETE", "OPTIONS"]
+  allow_headers = ["Authorization", "Content-Type"]
+  ```
+- [ ] Добавить `CORS_ORIGINS` в `config.py` (default: `http://localhost:3000`)
+- [ ] Создать `api/security.py`: `create_access_token()`, `create_refresh_token()`, `decode_token()`, `get_current_user: Depends`
+  - access token: JWT, TTL 15 мин, payload `{ sub: user_id }`
+  - refresh token: opaque random string, TTL 30 дней, хранится в `UserSession.spa_refresh_token` (зашифрованный)
+- [ ] Добавить поле `spa_refresh_token` в `UserSession` + alembic-миграция
+- [ ] Создать `api/routes/api_v1.py` с роутером `/api/v1/`:
+
+  **Auth:**
+  ```
+  POST /api/v1/auth/exchange      { code } → { access_token, refresh_token, expires_in }
+  POST /api/v1/auth/refresh       { refresh_token } → { access_token, expires_in }
+  POST /api/v1/auth/logout        Bearer → 204 (инвалидирует refresh token в БД)
+  GET  /api/v1/auth/me            Bearer → { user_id, ym_connected, sc_connected, spotify_connected, lang }
+  ```
+
+  **OAuth start (редиректы, без Bearer):**
+  ```
+  GET  /api/v1/auth/yandex/start?redirect_uri=...    → 302 oauth.yandex.ru
+  GET  /api/v1/auth/spotify/start?redirect_uri=...   → 302 accounts.spotify.com
+  GET  /api/v1/auth/soundcloud/start?redirect_uri=... → 302 api.soundcloud.com/oauth/authorize
+  ```
+  `redirect_uri` — куда вернуть SPA после OAuth (валидируется по whitelist из `CORS_ORIGINS`)
+
+  **Services:**
+  ```
+  GET  /api/v1/services           → [{ id, name, capabilities }]
+  GET  /api/v1/services/matrix    → [{ from, to }]
+  ```
+
+  **Migrations:**
+  ```
+  POST /api/v1/migrations              Bearer, JSON body → { migration_id }
+  GET  /api/v1/migrations              Bearer → [{ id, from_service, to_service, status, created_at, stats }]
+  GET  /api/v1/migrations/{id}         Bearer → { migration, stats, current_track, eta }
+  GET  /api/v1/migrations/{id}/tracks  Bearer, ?status=&page= → { tracks, total, pages }
+  GET  /api/v1/migrations/{id}/export  Bearer, ?fmt=csv|json → FileResponse
+  ```
+
+  **SSE прогресс (вместо polling):**
+  ```
+  GET  /api/v1/migrations/{id}/stream  Bearer → text/event-stream (каждые 1s: stats + current_track)
+  ```
+
+- [ ] Зарегистрировать `api_v1_router` в `api/main.py` (всегда, вне `WEB_ENABLED`)
+- [ ] `POST /api/v1/migrations` принимает JSON (аналог `POST /migrate` form-data):
+  ```json
+  {
+    "from_service": "yandex_music",
+    "to_service": "soundcloud",
+    "content_types": ["tracks"],
+    "limit": null
+  }
+  ```
+  Для file import: multipart (file + остальные поля как form)
+- [ ] Обновить тесты: добавить тесты на JWT flow + все `/api/v1/` endpoints
+
+**Фаза 2 — SPA production-ready (после готовности фронтенда)**
+
+- [ ] Убедиться, что все экраны SPA работают через `/api/v1/`
+- [ ] Настроить nginx: `/` → SPA static files, `/api/*` → FastAPI proxy
+- [ ] `WEB_ENABLED=false` → отключить старый Jinja2 UI (бот и воркер продолжают работать)
+- [ ] Убрать `SessionMiddleware` из `api/main.py`
+- [ ] Обновить `docker-compose.yml`: добавить `frontend` сервис (nginx static)
+- [ ] Обновить деплой-скрипты
+
+**Фаза 3 — Cleanup (опционально, после стабилизации SPA)**
+
+- [ ] Удалить `api/templates/`, `api/routes/web.py`
+- [ ] Удалить `WEB_ENABLED` из конфига (больше не нужен)
+- [ ] Удалить HTMX-фрагменты `/api/flow/*` (заменены SPA логикой)
+- [ ] Обновить CLAUDE.md, тесты
+
+**Новые env vars:**
+```env
+CORS_ORIGINS=http://localhost:3000,https://musicmigration.site
+JWT_SECRET_KEY=          # отдельный от SECRET_KEY (generate: openssl rand -hex 32)
+JWT_ACCESS_TOKEN_TTL=900  # секунды (15 мин)
+JWT_REFRESH_TOKEN_TTL=2592000  # секунды (30 дней)
+```
+
+**Файлы:** `api/security.py` (новый), `api/routes/api_v1.py` (новый), `api/main.py`, `config.py`, `core/db/models.py`, `core/db/crud.py`, alembic миграция, тесты
 
 ---
 
