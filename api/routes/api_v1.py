@@ -1,17 +1,20 @@
 """Public JSON API v1 for SPA frontend (MM-81).
 
-All endpoints return JSON. Auth via Bearer JWT (except OAuth start redirects).
+All endpoints return JSON. Auth via Bearer JWT (except OAuth redirects/callbacks).
 Parallel to old Jinja2 web UI — both work simultaneously during transition.
 
 Routes:
-  POST /api/v1/auth/exchange          exchange oauth_code → {access_token, refresh_token}
-  POST /api/v1/auth/refresh           refresh_token → {access_token}
-  POST /api/v1/auth/logout            invalidate refresh_token
-  GET  /api/v1/auth/me                current user info
+  POST /api/v1/auth/exchange               exchange oauth_code → {access_token, refresh_token}
+  POST /api/v1/auth/refresh                refresh_token → {access_token}
+  POST /api/v1/auth/logout                 invalidate refresh_token
+  GET  /api/v1/auth/me                     current user info
 
-  GET  /api/v1/auth/yandex/start      redirect → /auth/yandex (OAuth start)
-  GET  /api/v1/auth/spotify/start     redirect → /auth/spotify
-  GET  /api/v1/auth/soundcloud/start  redirect → /auth/soundcloud
+  GET  /api/v1/auth/yandex                 redirect → Yandex OAuth provider
+  GET  /api/v1/auth/yandex/callback        Yandex OAuth callback
+  GET  /api/v1/auth/spotify                redirect → Spotify OAuth provider
+  GET  /api/v1/auth/spotify/callback       Spotify OAuth callback
+  GET  /api/v1/auth/soundcloud             redirect → SoundCloud OAuth provider (PKCE)
+  GET  /api/v1/auth/soundcloud/callback    SoundCloud OAuth callback
 
   GET  /api/v1/services               list services
   GET  /api/v1/services/matrix        transfer matrix
@@ -37,6 +40,12 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from api.routes.oauth import (
+    _ensure_user_id,
+    _issue_oauth_code,
+    _state_get,
+    _state_save,
+)
 from api.security import create_access_token, create_refresh_token, get_current_user
 from core.db import (
     create_migration,
@@ -48,7 +57,10 @@ from core.db import (
     get_user_migrations,
     load_user_session,
     revoke_spa_refresh_token,
+    save_soundcloud_token,
     save_spa_refresh_token,
+    save_spotify_token,
+    save_yandex_token,
 )
 from core.services.registry import ServiceRegistry
 
@@ -155,42 +167,175 @@ async def get_me(user_id: str = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# Auth — OAuth start redirects (no Bearer needed — browser navigates here)
+# Auth — OAuth start + callbacks (no Bearer — browser navigates here)
 # ---------------------------------------------------------------------------
 
 
-@router.get("/auth/yandex/start")
-async def yandex_start(redirect_uri: str = "", flow_from: str = "", flow_to: str = ""):
-    """Redirect browser to Yandex OAuth. After callback SPA exchanges oauth_code for JWT."""
-    params = []
-    if flow_from:
-        params.append(f"flow_from={quote(flow_from)}")
-    if flow_to:
-        params.append(f"flow_to={quote(flow_to)}")
-    qs = "?" + "&".join(params) if params else ""
-    return RedirectResponse(f"/auth/yandex{qs}", status_code=303)
+@router.get("/auth/yandex")
+async def yandex_oauth_start(request: Request, flow_from: str = "", flow_to: str = ""):
+    """Redirect browser to Yandex OAuth provider."""
+    import uuid
+    from bot.oauth.yandex import get_callback_auth_url
+    from config import settings
+
+    if not settings.yandex_redirect_uri:
+        return RedirectResponse(
+            f"/?error={quote('YANDEX_REDIRECT_URI не настроен')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = f"web_{uuid.uuid4().hex[:16]}"
+    await _state_save("ym", state, {"flow_from": flow_from, "flow_to": flow_to})
+    return RedirectResponse(get_callback_auth_url(state), status_code=303)
 
 
-@router.get("/auth/spotify/start")
-async def spotify_start(redirect_uri: str = "", flow_from: str = "", flow_to: str = ""):
-    params = []
-    if flow_from:
-        params.append(f"flow_from={quote(flow_from)}")
-    if flow_to:
-        params.append(f"flow_to={quote(flow_to)}")
-    qs = "?" + "&".join(params) if params else ""
-    return RedirectResponse(f"/auth/spotify{qs}", status_code=303)
+@router.get("/auth/yandex/callback")
+async def yandex_oauth_callback(
+    request: Request, code: str = "", state: str = "", error: str = ""
+):
+    """Callback from Yandex OAuth (web flow only; bot flow stays at /auth/yandex/bot)."""
+    from bot.oauth.yandex import exchange_code_callback
+    from config import settings
+    from core.yandex.client import YandexMusicClient
+
+    if error:
+        return RedirectResponse(
+            f"/?error={quote(f'Яндекс отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+    payload = await _state_get("ym", state)
+    if payload is None:
+        return RedirectResponse(
+            f"/?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+    try:
+        token = await exchange_code_callback(code)
+        await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
+    except Exception as e:
+        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+
+    user_id = _ensure_user_id(request)
+    await save_yandex_token(user_id, token)
+    request.session["ym_connected"] = True
+    await _issue_oauth_code(user_id)
+
+    pf = payload.get("flow_from", "")
+    pt = payload.get("flow_to", "")
+    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
 
 
-@router.get("/auth/soundcloud/start")
-async def soundcloud_start(redirect_uri: str = "", flow_from: str = "", flow_to: str = ""):
-    params = []
-    if flow_from:
-        params.append(f"flow_from={quote(flow_from)}")
-    if flow_to:
-        params.append(f"flow_to={quote(flow_to)}")
-    qs = "?" + "&".join(params) if params else ""
-    return RedirectResponse(f"/auth/soundcloud{qs}", status_code=303)
+@router.get("/auth/spotify")
+async def spotify_oauth_start(request: Request, flow_from: str = "", flow_to: str = ""):
+    """Redirect browser to Spotify OAuth provider."""
+    from config import settings
+    from core.spotify.oauth import generate_state, get_auth_url
+
+    if not settings.spotify_client_id:
+        return RedirectResponse(
+            f"/?error={quote('Spotify не настроен (отсутствует SPOTIFY_CLIENT_ID)')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = generate_state()
+    await _state_save("sp", state, {"flow_from": flow_from, "flow_to": flow_to})
+    return RedirectResponse(get_auth_url(state), status_code=303)
+
+
+@router.get("/auth/spotify/callback")
+async def spotify_oauth_callback(
+    request: Request, code: str = "", state: str = "", error: str = ""
+):
+    """Callback from Spotify OAuth."""
+    from core.spotify.client import SpotifyClient
+    from core.spotify.oauth import exchange_code
+
+    if error:
+        return RedirectResponse(
+            f"/?error={quote(f'Spotify отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+    payload = await _state_get("sp", state)
+    if payload is None:
+        return RedirectResponse(
+            f"/?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+    user_id = _ensure_user_id(request)
+    try:
+        token_data = await exchange_code(code)
+        client = await SpotifyClient(token_data["access_token"]).init()
+        await client.close()
+        await save_spotify_token(
+            user_id,
+            token_data["access_token"],
+            refresh_token=token_data.get("refresh_token"),
+        )
+        request.session["spotify_connected"] = True
+    except Exception as e:
+        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+
+    await _issue_oauth_code(user_id)
+    pf = payload.get("flow_from", "")
+    pt = payload.get("flow_to", "")
+    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+
+
+@router.get("/auth/soundcloud")
+async def soundcloud_oauth_start(request: Request, flow_from: str = "", flow_to: str = ""):
+    """Redirect browser to SoundCloud OAuth (PKCE flow)."""
+    from config import settings
+    from core.soundcloud.oauth import generate_pkce_pair, generate_state, get_auth_url
+
+    if not settings.sc_client_id:
+        return RedirectResponse(
+            f"/?error={quote('SoundCloud не настроен (отсутствует SC_CLIENT_ID)')}",
+            status_code=303,
+        )
+    _ensure_user_id(request)
+    state = generate_state()
+    code_verifier, code_challenge = generate_pkce_pair()
+    await _state_save(
+        "sc", state,
+        {"code_verifier": code_verifier, "flow_from": flow_from, "flow_to": flow_to},
+    )
+    return RedirectResponse(get_auth_url(state, code_challenge), status_code=303)
+
+
+@router.get("/auth/soundcloud/callback")
+async def soundcloud_oauth_callback(
+    request: Request, code: str = "", state: str = "", error: str = ""
+):
+    """Callback from SoundCloud OAuth."""
+    from core.soundcloud.oauth import exchange_code
+
+    if error:
+        return RedirectResponse(
+            f"/?error={quote(f'SoundCloud отклонил авторизацию: {error}')}",
+            status_code=303,
+        )
+    payload = await _state_get("sc", state)
+    if payload is None or not payload.get("code_verifier"):
+        return RedirectResponse(
+            f"/?error={quote('Ошибка безопасности: state не совпадает')}",
+            status_code=303,
+        )
+    user_id = _ensure_user_id(request)
+    try:
+        token_data = await exchange_code(code, payload["code_verifier"])
+        await save_soundcloud_token(
+            user_id,
+            token_data["access_token"],
+            refresh_token=token_data.get("refresh_token"),
+        )
+        request.session["sc_connected"] = True
+    except Exception as e:
+        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+
+    await _issue_oauth_code(user_id)
+    pf = payload.get("flow_from", "")
+    pt = payload.get("flow_to", "")
+    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
 
 
 # ---------------------------------------------------------------------------

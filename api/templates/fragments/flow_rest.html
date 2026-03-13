@@ -48,18 +48,13 @@
         <span class="text-xs font-semibold text-green-700">{{ t('auth_status_connected') }}</span>
         {% else %}
           {% if from_service == 'yandex_music' %}
-            {% if ym_redirect_configured %}
-            <a href="/auth/yandex?flow_from={{ from_service }}&flow_to={{ to_service }}"
-               class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
-            {% else %}
-            <a href="/auth?flow_from={{ from_service }}&flow_to={{ to_service }}"
-               class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
-            {% endif %}
+          <a href="/api/v1/auth/yandex?flow_from={{ from_service }}&flow_to={{ to_service }}"
+             class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
           {% elif from_service == 'spotify' %}
-          <a href="/auth/spotify?flow_from={{ from_service }}&flow_to={{ to_service }}"
+          <a href="/api/v1/auth/spotify?flow_from={{ from_service }}&flow_to={{ to_service }}"
              class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition font-medium">{{ t('auth_spotify_btn') }}</a>
           {% elif from_service == 'soundcloud' %}
-          <a href="/auth/soundcloud?flow_from={{ from_service }}&flow_to={{ to_service }}"
+          <a href="/api/v1/auth/soundcloud?flow_from={{ from_service }}&flow_to={{ to_service }}"
              class="text-xs bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 transition font-medium">{{ t('auth_sc_oauth_btn') }}</a>
           {% endif %}
         {% endif %}
@@ -77,18 +72,13 @@
         <span class="text-xs font-semibold text-green-700">{{ t('auth_status_connected') }}</span>
         {% else %}
           {% if to_service == 'yandex_music' %}
-            {% if ym_redirect_configured %}
-            <a href="/auth/yandex?flow_from={{ from_service }}&flow_to={{ to_service }}"
-               class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
-            {% else %}
-            <a href="/auth?flow_from={{ from_service }}&flow_to={{ to_service }}"
-               class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
-            {% endif %}
+          <a href="/api/v1/auth/yandex?flow_from={{ from_service }}&flow_to={{ to_service }}"
+             class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition font-medium">{{ t('auth_yandex_btn') }}</a>
           {% elif to_service == 'spotify' %}
-          <a href="/auth/spotify?flow_from={{ from_service }}&flow_to={{ to_service }}"
+          <a href="/api/v1/auth/spotify?flow_from={{ from_service }}&flow_to={{ to_service }}"
              class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition font-medium">{{ t('auth_spotify_btn') }}</a>
           {% elif to_service == 'soundcloud' %}
-          <a href="/auth/soundcloud?flow_from={{ from_service }}&flow_to={{ to_service }}"
+          <a href="/api/v1/auth/soundcloud?flow_from={{ from_service }}&flow_to={{ to_service }}"
              class="text-xs bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 transition font-medium">{{ t('auth_sc_oauth_btn') }}</a>
           {% endif %}
         {% endif %}
