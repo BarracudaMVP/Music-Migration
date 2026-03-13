@@ -28,6 +28,10 @@ from core.db.crud import (
     load_user_session,
     set_user_role,
     delete_user_session,
+    save_spa_refresh_token,
+    get_user_id_by_spa_refresh_token,
+    revoke_spa_refresh_token,
+    get_user_migrations,
 )
 
 __all__ = [
@@ -56,4 +60,8 @@ __all__ = [
     "load_user_session",
     "set_user_role",
     "delete_user_session",
+    "save_spa_refresh_token",
+    "get_user_id_by_spa_refresh_token",
+    "revoke_spa_refresh_token",
+    "get_user_migrations",
 ]

@@ -423,6 +423,68 @@ async def delete_user_session(user_id: str) -> None:
         await session.commit()
 
 
+async def save_spa_refresh_token(user_id: str, refresh_token: str) -> None:
+    """Сохраняет SPA refresh token (зашифрованный) в UserSession (MM-81)."""
+    async with AsyncSessionLocal() as session:
+        stmt = _dialect_insert(UserSession).values(
+            user_id=user_id,
+            yandex_token="",
+            soundcloud_token="",
+            spa_refresh_token=encrypt_token(refresh_token),
+        ).on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={"spa_refresh_token": encrypt_token(refresh_token)},
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def get_user_id_by_spa_refresh_token(refresh_token: str) -> str | None:
+    """Находит user_id по SPA refresh token. Возвращает None если не найден (MM-81)."""
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(
+            select(UserSession.user_id, UserSession.spa_refresh_token)
+            .where(UserSession.spa_refresh_token.isnot(None))
+        )
+        for user_id, enc_token in rows:
+            if decrypt_token(enc_token) == refresh_token:
+                return user_id
+        return None
+
+
+async def revoke_spa_refresh_token(user_id: str) -> None:
+    """Удаляет SPA refresh token (logout) (MM-81)."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserSession)
+            .where(UserSession.user_id == user_id)
+            .values(spa_refresh_token=None)
+        )
+        await session.commit()
+
+
+async def get_user_migrations(user_id: str) -> list[dict]:
+    """Возвращает все миграции пользователя, новые сначала (MM-81)."""
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(
+            select(Migration)
+            .where(Migration.user_id == user_id)
+            .order_by(Migration.created_at.desc())
+        )
+        return [
+            {
+                "id": m.id,
+                "user_id": m.user_id,
+                "from_service": m.from_service,
+                "to_service": m.to_service,
+                "status": m.status,
+                "user_migration_number": m.user_migration_number,
+                "created_at": m.created_at,
+            }
+            for m in rows.scalars()
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -2,11 +2,12 @@
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware import AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
-from api.routes import admin, bot_auth, migrations, oauth, reports, services, sessions, web
+from api.routes import admin, api_v1, bot_auth, migrations, oauth, reports, services, sessions, web
 from config import settings
 from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
@@ -24,6 +25,18 @@ if settings.dev_mode:
     )
 
 app = FastAPI(title="Music Migration API", version="9.0.0")
+
+# CORS — allow SPA frontend origins (JWT in Authorization header, not cookies)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins.split(","),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Public JSON API v1 for SPA frontend (MM-81)
+app.include_router(api_v1.router, tags=["api_v1"])
 
 # Web UI + Admin — optional, disabled when WEB_ENABLED=false
 if settings.web_enabled:

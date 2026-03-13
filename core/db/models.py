@@ -34,6 +34,7 @@ class UserSession(Base):
     soundcloud_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str] = mapped_column(String, nullable=False, server_default="user")
     lang: Mapped[str] = mapped_column(String, nullable=False, server_default="ru")
+    spa_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # MM-81: encrypted opaque token
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
