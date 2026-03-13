@@ -159,27 +159,38 @@ async def test_issue_oauth_code_stores_user_id(mock_arq_pool):
 # Yandex OAuth start
 # ---------------------------------------------------------------------------
 
+# Old /auth/yandex, /auth/soundcloud, /auth/spotify routes moved to /api/v1/auth/* (MM-81)
+
 @pytest.mark.asyncio
-async def test_auth_yandex_start_no_redirect_uri(app, mock_arq_pool):
-    """GET /auth/yandex without YANDEX_REDIRECT_URI → redirect /?error=..."""
+async def test_old_auth_yandex_is_gone(app, mock_arq_pool):
+    """GET /auth/yandex → 404 (route moved to /api/v1/auth/yandex)."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/auth/yandex", follow_redirects=False)
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_auth_yandex_v1_no_redirect_uri(app, mock_arq_pool):
+    """GET /api/v1/auth/yandex without YANDEX_REDIRECT_URI → redirect /?error=..."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
         with patch("config.settings.yandex_redirect_uri", ""):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.get("/auth/yandex", follow_redirects=False)
+                response = await client.get("/api/v1/auth/yandex", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/?error=")
 
 
 @pytest.mark.asyncio
-async def test_auth_yandex_start_redirects_to_yandex(app, mock_arq_pool):
-    """GET /auth/yandex with YANDEX_REDIRECT_URI → redirect to Yandex OAuth."""
+async def test_auth_yandex_v1_redirects_to_yandex(app, mock_arq_pool):
+    """GET /api/v1/auth/yandex with YANDEX_REDIRECT_URI → redirect to Yandex OAuth."""
     mock_arq_pool.setex = AsyncMock()
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
         with patch("config.settings.yandex_redirect_uri", "https://example.com/callback"):
             with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
                 with patch("bot.oauth.yandex.get_callback_auth_url", return_value="https://oauth.yandex.ru/authorize?state=web_xxx"):
                     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                        response = await client.get("/auth/yandex", follow_redirects=False)
+                        response = await client.get("/api/v1/auth/yandex", follow_redirects=False)
     assert response.status_code == 303
     assert "oauth.yandex.ru" in response.headers["location"]
 
@@ -189,12 +200,12 @@ async def test_auth_yandex_start_redirects_to_yandex(app, mock_arq_pool):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_auth_soundcloud_start_no_client_id(app, mock_arq_pool):
-    """GET /auth/soundcloud without SC_CLIENT_ID → redirect /?error=..."""
+async def test_auth_soundcloud_v1_no_client_id(app, mock_arq_pool):
+    """GET /api/v1/auth/soundcloud without SC_CLIENT_ID → redirect /?error=..."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
         with patch("config.settings.sc_client_id", ""):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.get("/auth/soundcloud", follow_redirects=False)
+                response = await client.get("/api/v1/auth/soundcloud", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/?error=")
 
@@ -204,12 +215,12 @@ async def test_auth_soundcloud_start_no_client_id(app, mock_arq_pool):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_auth_spotify_start_no_client_id(app, mock_arq_pool):
-    """GET /auth/spotify without SPOTIFY_CLIENT_ID → redirect /?error=..."""
+async def test_auth_spotify_v1_no_client_id(app, mock_arq_pool):
+    """GET /api/v1/auth/spotify without SPOTIFY_CLIENT_ID → redirect /?error=..."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
         with patch("config.settings.spotify_client_id", ""):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.get("/auth/spotify", follow_redirects=False)
+                response = await client.get("/api/v1/auth/spotify", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/?error=")
 

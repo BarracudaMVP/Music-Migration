@@ -230,7 +230,6 @@ async def flow_rest(
         "content_types": content_types,
         "from_connected": _connected(from_service),
         "to_connected": _connected(to_service),
-        "ym_redirect_configured": bool(cfg.yandex_redirect_uri),
         "spotify_enabled": bool(cfg.spotify_client_id),
         "sc_enabled": bool(cfg.sc_client_id),
         "is_from_file": is_from_file,

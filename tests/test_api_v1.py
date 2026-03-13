@@ -239,62 +239,68 @@ async def test_logout_valid_token(app, mock_arq_pool):
 
 
 # ---------------------------------------------------------------------------
-# OAuth start redirects
+# OAuth start routes (now canonical — no /start suffix)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_yandex_start_redirect(app, mock_arq_pool):
+async def test_yandex_oauth_no_redirect_uri(app, mock_arq_pool):
+    """/api/v1/auth/yandex without YANDEX_REDIRECT_URI → /?error="""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            follow_redirects=False,
-        ) as client:
-            response = await client.get("/api/v1/auth/yandex/start")
+        with patch("config.settings.yandex_redirect_uri", ""):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                response = await client.get("/api/v1/auth/yandex")
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/auth/yandex")
+    assert response.headers["location"].startswith("/?error=")
 
 
 @pytest.mark.asyncio
-async def test_spotify_start_redirect(app, mock_arq_pool):
+async def test_yandex_oauth_redirects_to_provider(app, mock_arq_pool):
+    """/api/v1/auth/yandex with config → redirect to Yandex OAuth."""
+    mock_arq_pool.setex = AsyncMock()
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            follow_redirects=False,
-        ) as client:
-            response = await client.get("/api/v1/auth/spotify/start")
+        with patch("config.settings.yandex_redirect_uri", "https://example.com/callback"):
+            with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+                with patch("bot.oauth.yandex.get_callback_auth_url", return_value="https://oauth.yandex.ru/authorize?state=web_xxx"):
+                    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                        response = await client.get("/api/v1/auth/yandex")
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/auth/spotify")
+    assert "oauth.yandex.ru" in response.headers["location"]
 
 
 @pytest.mark.asyncio
-async def test_soundcloud_start_redirect(app, mock_arq_pool):
+async def test_spotify_oauth_no_client_id(app, mock_arq_pool):
+    """/api/v1/auth/spotify without SPOTIFY_CLIENT_ID → /?error="""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            follow_redirects=False,
-        ) as client:
-            response = await client.get("/api/v1/auth/soundcloud/start")
+        with patch("config.settings.spotify_client_id", ""):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                response = await client.get("/api/v1/auth/spotify")
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/auth/soundcloud")
+    assert response.headers["location"].startswith("/?error=")
 
 
 @pytest.mark.asyncio
-async def test_yandex_start_passes_flow_params(app, mock_arq_pool):
+async def test_soundcloud_oauth_no_client_id(app, mock_arq_pool):
+    """/api/v1/auth/soundcloud without SC_CLIENT_ID → /?error="""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            follow_redirects=False,
-        ) as client:
-            response = await client.get("/api/v1/auth/yandex/start?flow_from=yandex_music&flow_to=soundcloud")
+        with patch("config.settings.sc_client_id", ""):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                response = await client.get("/api/v1/auth/soundcloud")
     assert response.status_code == 303
-    loc = response.headers["location"]
-    assert "flow_from=" in loc
-    assert "flow_to=" in loc
+    assert response.headers["location"].startswith("/?error=")
+
+
+@pytest.mark.asyncio
+async def test_old_start_routes_gone(app, mock_arq_pool):
+    """/api/v1/auth/yandex/start etc. removed — 404."""
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+            r1 = await client.get("/api/v1/auth/yandex/start")
+            r2 = await client.get("/api/v1/auth/spotify/start")
+            r3 = await client.get("/api/v1/auth/soundcloud/start")
+    assert r1.status_code == 404
+    assert r2.status_code == 404
+    assert r3.status_code == 404
 
 
 # ---------------------------------------------------------------------------
