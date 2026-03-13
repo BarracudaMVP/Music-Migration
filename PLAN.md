@@ -1915,7 +1915,22 @@ Nginx требует SSL-сертификаты → сложно поднять 
 - [x] `POST /api/v1/migrations` принимает JSON body (`StartMigrationRequest`)
 - [x] Обновить тесты: 23 новых теста в `tests/test_api_v1.py`, итого 205 passed
 
-**Фаза 2 — SPA production-ready (после готовности фронтенда)**
+**Фаза 2 — Перенос OAuth callbacks + SPA production-ready (после готовности фронтенда)**
+
+- [ ] **Перенести OAuth callbacks под `/api/v1/`** (сейчас `/auth/yandex/callback` и т.д.):
+  - Перенести роуты из `oauth.py` в `api_v1.py` (или оставить в `oauth.py`, но зарегистрировать под `/api/v1/`):
+    ```
+    GET /api/v1/auth/yandex           → redirect to Yandex OAuth provider
+    GET /api/v1/auth/yandex/callback  → callback, save token, issue oauth_code
+    GET /api/v1/auth/spotify          → redirect to Spotify
+    GET /api/v1/auth/spotify/callback
+    GET /api/v1/auth/soundcloud       → redirect to SoundCloud PKCE
+    GET /api/v1/auth/soundcloud/callback
+    ```
+  - Удалить `/api/v1/auth/yandex/start` (больше не нужен — start и есть `/api/v1/auth/yandex`)
+  - **Обновить у провайдеров** зарегистрированные Redirect URI (см. инструкцию ниже)
+  - **Обновить `.env`** на EU сервере: `YANDEX_REDIRECT_URI`, `SPOTIFY_REDIRECT_URI`, `SC_REDIRECT_URI`
+  - Обновить `config.py` — поля `*_redirect_uri` используются в oauth.py при старте OAuth
 
 - [ ] Убедиться, что все экраны SPA работают через `/api/v1/`
 - [ ] Настроить nginx: `/` → SPA static files, `/api/*` → FastAPI proxy
@@ -1930,6 +1945,41 @@ Nginx требует SSL-сертификаты → сложно поднять 
 - [ ] Удалить `WEB_ENABLED` из конфига (больше не нужен)
 - [ ] Удалить HTMX-фрагменты `/api/flow/*` (заменены SPA логикой)
 - [ ] Обновить CLAUDE.md, тесты
+
+---
+
+### Инструкция: перенос Redirect URI под `/api/v1/` (Фаза 2)
+
+**Что менять у провайдеров:**
+
+#### Yandex
+1. Открыть [oauth.yandex.ru](https://oauth.yandex.ru) → твоё приложение → Redirect URIs
+2. Заменить `https://musicmigration.site/auth/yandex/callback`
+   → `https://musicmigration.site/api/v1/auth/yandex/callback`
+
+#### Spotify
+1. Открыть [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → твоё приложение → Edit Settings → Redirect URIs
+2. Заменить `https://musicmigration.site/auth/spotify/callback`
+   → `https://musicmigration.site/api/v1/auth/spotify/callback`
+
+#### SoundCloud
+1. Открыть [soundcloud.com/you/apps](https://soundcloud.com/you/apps) → твоё приложение
+2. Заменить `https://musicmigration.site/auth/soundcloud/callback`
+   → `https://musicmigration.site/api/v1/auth/soundcloud/callback`
+
+**Что менять в `.env` на EU сервере:**
+```env
+YANDEX_REDIRECT_URI=https://musicmigration.site/api/v1/auth/yandex/callback
+SPOTIFY_REDIRECT_URI=https://musicmigration.site/api/v1/auth/spotify/callback
+SC_REDIRECT_URI=https://musicmigration.site/api/v1/auth/soundcloud/callback
+```
+
+**Порядок действий (zero-downtime):**
+1. Добавить новые URI у провайдеров (не удаляя старые — провайдеры обычно разрешают несколько)
+2. Задеплоить код с новыми роутами
+3. Обновить `.env`, перезапустить `docker compose up -d`
+4. Убедиться что OAuth работает по новым путям
+5. Удалить старые URI у провайдеров
 
 **Новые env vars:**
 ```env
