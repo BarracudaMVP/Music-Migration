@@ -1845,7 +1845,7 @@ Nginx требует SSL-сертификаты → сложно поднять 
 
 ---
 
-### 🔲 MM-81 — SPA: JWT auth + /api/v1/ layer
+### ✅ MM-81 Фаза 1 / 🔲 Фаза 2-3 — SPA: JWT auth + /api/v1/ layer
 
 > Добавить JWT-аутентификацию и публичный JSON API для отдельного SPA-фронтенда. Переход **безболезненный и поэтапный**: старый веб-UI (Jinja2+HTMX) и Telegram-бот продолжают работать параллельно на всём протяжении задачи. `SessionMiddleware` убирается только в Фазе 2 — после того как SPA полностью готов.
 
@@ -1866,21 +1866,14 @@ Nginx требует SSL-сертификаты → сложно поднять 
 
 ---
 
-**Фаза 1 — Параллельный запуск (бэкенд)**
+**Фаза 1 — Параллельный запуск (бэкенд)** ✅ _2026-03-13_
 
-- [ ] Добавить CORS middleware в `api/main.py`:
-  ```python
-  allow_origins = settings.cors_origins  # новый env CORS_ORIGINS
-  allow_credentials = False
-  allow_methods = ["GET", "POST", "DELETE", "OPTIONS"]
-  allow_headers = ["Authorization", "Content-Type"]
-  ```
-- [ ] Добавить `CORS_ORIGINS` в `config.py` (default: `http://localhost:3000`)
-- [ ] Создать `api/security.py`: `create_access_token()`, `create_refresh_token()`, `decode_token()`, `get_current_user: Depends`
-  - access token: JWT, TTL 15 мин, payload `{ sub: user_id }`
-  - refresh token: opaque random string, TTL 30 дней, хранится в `UserSession.spa_refresh_token` (зашифрованный)
-- [ ] Добавить поле `spa_refresh_token` в `UserSession` + alembic-миграция
-- [ ] Создать `api/routes/api_v1.py` с роутером `/api/v1/`:
+- [x] Добавить CORS middleware в `api/main.py` (`cors_origins`, `allow_credentials=False`)
+- [x] Добавить настройки в `config.py`: `cors_origins`, `jwt_secret_key`, `jwt_access_token_ttl`, `jwt_refresh_token_ttl`
+- [x] Создать `api/security.py`: `create_access_token()` (JWT HS256), `create_refresh_token()` (opaque hex), `decode_access_token()`, `get_current_user` FastAPI dep
+- [x] Добавить поле `spa_refresh_token` в `UserSession` + alembic-миграция `j0k1l2m3n4o5`
+- [x] `core/db/crud.py`: `save_spa_refresh_token`, `get_user_id_by_spa_refresh_token`, `revoke_spa_refresh_token`, `get_user_migrations`
+- [x] Создать `api/routes/api_v1.py` с роутером `/api/v1/`:
 
   **Auth:**
   ```
@@ -1918,18 +1911,9 @@ Nginx требует SSL-сертификаты → сложно поднять 
   GET  /api/v1/migrations/{id}/stream  Bearer → text/event-stream (каждые 1s: stats + current_track)
   ```
 
-- [ ] Зарегистрировать `api_v1_router` в `api/main.py` (всегда, вне `WEB_ENABLED`)
-- [ ] `POST /api/v1/migrations` принимает JSON (аналог `POST /migrate` form-data):
-  ```json
-  {
-    "from_service": "yandex_music",
-    "to_service": "soundcloud",
-    "content_types": ["tracks"],
-    "limit": null
-  }
-  ```
-  Для file import: multipart (file + остальные поля как form)
-- [ ] Обновить тесты: добавить тесты на JWT flow + все `/api/v1/` endpoints
+- [x] Зарегистрировать `api_v1_router` в `api/main.py` (всегда, вне `WEB_ENABLED`)
+- [x] `POST /api/v1/migrations` принимает JSON body (`StartMigrationRequest`)
+- [x] Обновить тесты: 23 новых теста в `tests/test_api_v1.py`, итого 205 passed
 
 **Фаза 2 — SPA production-ready (после готовности фронтенда)**
 

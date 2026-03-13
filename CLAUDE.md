@@ -191,14 +191,16 @@ cli.py                                  — CLI migration runner
 api/
     ├── main.py                         — FastAPI entry, router registration (web+admin gated by WEB_ENABLED)
     ├── middleware.py                   — AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
+    ├── security.py                     — JWT utils (MM-81): create_access_token (HS256), create_refresh_token, decode_access_token, get_current_user FastAPI dep
     ├── routes/
+    │   ├── api_v1.py                   — Public JSON API for SPA (MM-81): /api/v1/auth/*, /api/v1/services, /api/v1/migrations/* (Bearer JWT)
     │   ├── web.py                      — Web UI: /, /auth (error display), /migrate, /migrate/{id}/tracks,
     │   │                                  /history, /set-lang, /api/flow/* (Jinja2+HTMX)
     │   ├── oauth.py                    — OAuth redirect/callback: /auth/yandex, /auth/soundcloud,
     │   │                                  /auth/spotify (all providers), /auth/logout,
     │   │                                  /api/auth/yandex/poll/{state_id} (bot polling)
     │   │                                  State in Redis oauth_state:{provider}:{state} TTL 600s
-    │   │                                  Short-lived oauth_code:{code} TTL 30s (for MM-81 JWT)
+    │   │                                  Short-lived oauth_code:{code} TTL 30s → SPA exchanges via /api/v1/auth/exchange
     │   ├── bot_auth.py                 — Internal bot/worker auth: POST /api/auth/yandex/token,
     │   │                                  POST /api/auth/soundcloud/validate (X-Internal-Token)
     │   ├── migrations.py               — REST: POST /migrations, GET /migrations/{id}
@@ -365,3 +367,8 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - auth refactor (MM-79): `api/routes/auth.py` → `api/routes/bot_auth.py` (internal); новый `api/routes/oauth.py` — все OAuth redirect/callback роуты; state хранится в Redis `oauth_state:{provider}:{state}` TTL 600s (убраны `_ym_state` cookie, `_sc_state`/`_sc_verifier` cookies, `session["spotify_oauth_state"]`); `session["ym_token"]` → `session["ym_connected"]`; `POST /auth/yandex` удалён; после OAuth генерируется short-lived `oauth_code:{code}` (TTL 30s) для MM-81
 - `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
 - migration/ конвенция `sc_*` → SC, `to_*` → YM/Spotify (MM-72); планируется MM-76: слить `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`
+- MM-81 JWT SPA auth: access token = JWT HS256 TTL 15min (in memory), refresh token = opaque hex 64 chars stored encrypted in `UserSession.spa_refresh_token`; exchange flow: OAuth callback → `oauth_code:{code}` Redis TTL 30s → `POST /api/v1/auth/exchange` → JWT pair
+- MM-81 CORS: `CORSMiddleware(allow_credentials=False)` — JWT in `Authorization: Bearer` header, not cookies; origins from `cors_origins` setting (comma-separated)
+- MM-81 `/api/v1/` router always registered (outside `WEB_ENABLED` block); old Jinja2 UI + bot work in parallel during SPA transition (SessionMiddleware removed in Phase 2)
+- `get_user_id_by_spa_refresh_token` does linear scan of user_sessions + Fernet decrypt compare (no index on refresh token — acceptable for current user count)
+- Test patch targets for `/api/v1/` routes: use `api.routes.api_v1.func_name` (not `core.db.crud.func_name`) since functions are imported at module load time
