@@ -1845,7 +1845,7 @@ Nginx требует SSL-сертификаты → сложно поднять 
 
 ---
 
-### ✅ MM-81 Фаза 1 / 🔲 Фаза 2-3 — SPA: JWT auth + /api/v1/ layer
+### ✅ MM-81 — SPA: JWT auth + /api/v1/ layer (Фаза 1 + 2)
 
 > Добавить JWT-аутентификацию и публичный JSON API для отдельного SPA-фронтенда. Переход **безболезненный и поэтапный**: старый веб-UI (Jinja2+HTMX) и Telegram-бот продолжают работать параллельно на всём протяжении задачи. `SessionMiddleware` убирается только в Фазе 2 — после того как SPA полностью готов.
 
@@ -1915,35 +1915,21 @@ Nginx требует SSL-сертификаты → сложно поднять 
 - [x] `POST /api/v1/migrations` принимает JSON body (`StartMigrationRequest`)
 - [x] Обновить тесты: 23 новых теста в `tests/test_api_v1.py`, итого 205 passed
 
-**Фаза 2 — Перенос OAuth callbacks + SPA production-ready (после готовности фронтенда)**
+**Фаза 1 ✅** — JWT auth, `/api/v1/` роутер, `spa_refresh_token` в БД, 23 теста
+**Фаза 2 ✅** — OAuth start/callback перенесены под `/api/v1/auth/*`, redirect URI обновлены у провайдеров и в `.env`, задеплоено
 
-- [ ] **Перенести OAuth callbacks под `/api/v1/`** (сейчас `/auth/yandex/callback` и т.д.):
-  - Перенести роуты из `oauth.py` в `api_v1.py` (или оставить в `oauth.py`, но зарегистрировать под `/api/v1/`):
-    ```
-    GET /api/v1/auth/yandex           → redirect to Yandex OAuth provider
-    GET /api/v1/auth/yandex/callback  → callback, save token, issue oauth_code
-    GET /api/v1/auth/spotify          → redirect to Spotify
-    GET /api/v1/auth/spotify/callback
-    GET /api/v1/auth/soundcloud       → redirect to SoundCloud PKCE
-    GET /api/v1/auth/soundcloud/callback
-    ```
-  - Удалить `/api/v1/auth/yandex/start` (больше не нужен — start и есть `/api/v1/auth/yandex`)
-  - **Обновить у провайдеров** зарегистрированные Redirect URI (см. инструкцию ниже)
-  - **Обновить `.env`** на EU сервере: `YANDEX_REDIRECT_URI`, `SPOTIFY_REDIRECT_URI`, `SC_REDIRECT_URI`
-  - Обновить `config.py` — поля `*_redirect_uri` используются в oauth.py при старте OAuth
+---
 
-- [ ] Убедиться, что все экраны SPA работают через `/api/v1/`
-- [ ] Настроить nginx: `/` → SPA static files, `/api/*` → FastAPI proxy
-- [ ] `WEB_ENABLED=false` → отключить старый Jinja2 UI (бот и воркер продолжают работать)
+### 🔲 MM-82 — Удаление Jinja2 UI (после готовности SPA)
+
+> Финальный cleanup после того как SPA-фронтенд задеплоен и стабилен.
+
+- [ ] `WEB_ENABLED=false` в `.env` на EU сервере → отключить Jinja2 UI (бот и API продолжают работать)
 - [ ] Убрать `SessionMiddleware` из `api/main.py`
+- [ ] Удалить `api/templates/`, `api/routes/web.py`, `api/routes/oauth.py` (бот-роуты перенести в `bot_auth.py`)
+- [ ] Удалить HTMX-фрагменты: `api/routes/web.py` → `GET /api/flow/*` (заменены SPA)
+- [ ] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py` и `api/middleware.py`
 - [ ] Обновить `docker-compose.yml`: добавить `frontend` сервис (nginx static)
-- [ ] Обновить деплой-скрипты
-
-**Фаза 3 — Cleanup (опционально, после стабилизации SPA)**
-
-- [ ] Удалить `api/templates/`, `api/routes/web.py`
-- [ ] Удалить `WEB_ENABLED` из конфига (больше не нужен)
-- [ ] Удалить HTMX-фрагменты `/api/flow/*` (заменены SPA логикой)
 - [ ] Обновить CLAUDE.md, тесты
 
 ---
