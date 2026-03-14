@@ -166,7 +166,11 @@ class SpotifyClient:
             json={"ids": [track_id]},
         ) as resp:
             ok = resp.status in (200, 201)
-            logger.debug(f"[spotify] like track_id={track_id} → {resp.status} ({'ok' if ok else 'fail'})")
+            if not ok:
+                body = await resp.text()
+                logger.warning(f"[spotify] like track_id={track_id} → {resp.status}: {body}")
+            else:
+                logger.debug(f"[spotify] like track_id={track_id} → {resp.status} ok")
             return ok
 
     async def search_artists(self, query: str, limit: int = 10) -> list[SpotifyArtist]:

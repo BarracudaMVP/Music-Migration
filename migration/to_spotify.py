@@ -26,7 +26,7 @@ from core.db import (
     update_artist,
 )
 from core.spotify.client import SpotifyClient
-from core.matcher import find_best_match, split_artists, TrackCandidate
+from core.matcher import find_best_match, split_artists, transliterate_variants, TrackCandidate
 
 # Pause between Spotify write operations to avoid rate limiting
 _SPOTIFY_WRITE_SLEEP = 0.5
@@ -124,6 +124,8 @@ async def _run_pending_tracks_loop(
         if result == "liked":
             stats.liked += 1
             logger.debug(f"[{i}/{total}] OK: {track_str}")
+        elif result == "error":
+            stats.errors += 1
         else:
             stats.not_found += 1
             logger.debug(f"[{i}/{total}] not found: {track_str}")
@@ -202,6 +204,17 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
     # Multi-query strategy: one search per individual artist
     artists = split_artists(src_artist)
     queries = [f"{a} {src_title}" for a in artists]
+
+    # Transliterated variants: Cyrillic artist names may be indexed under Latin spelling on Spotify
+    # (e.g. "Баста" → "Basta", "Моргенштерн" → "Morgenshtern")
+    seen_queries = set(queries)
+    for a in artists:
+        for variant in transliterate_variants(a):
+            if variant != a:
+                q = f"{variant} {src_title}"
+                if q not in seen_queries:
+                    queries.append(q)
+                    seen_queries.add(q)
 
     if len(queries) > 1:
         results_list = await asyncio.gather(
