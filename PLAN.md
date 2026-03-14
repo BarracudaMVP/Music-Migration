@@ -2178,3 +2178,18 @@ VK_ACCESS_TOKEN=     # для CLI-режима (опц.)
 
 ---
 
+## Spotify Dev Mode — обходной путь (запасной план)
+
+Extended Quota Mode недоступен (требует регистрации компании).
+Текущий воркараунд: добавлять пользователей вручную в Dashboard → Settings → User Management (лимит 25).
+
+Если ручное управление станет неудобным — реализовать **Playwright-автоматизацию** добавления/удаления пользователей из allowlist:
+
+- [ ] `scripts/spotify_allowlist.py` — Playwright-скрипт: логин в Spotify Developer Dashboard, добавление/удаление email из allowlist
+- [ ] Команды: `add <email>`, `remove <email>`, `list`
+- [ ] Опционально: интеграция с БД — автодобавление при первом OAuth пользователя
+
+> ⚠️ Технически нарушает Spotify ToS — использовать осознанно.
+
+---
+
