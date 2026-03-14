@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     sc_playlist_batch_size: int = Field(default=500)   # макс. треков в одном SC-плейлисте при playlist_mode
     match_threshold: float = Field(default=75.0)
     match_uncertain_floor: float = Field(default=60.0)
+    search_limit: int = Field(default=5)               # кандидатов на трек при поиске на целевой платформе
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="pretty")  # "pretty" = colored stderr (dev), "json" = JSON stdout (Docker)
 

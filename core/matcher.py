@@ -314,6 +314,8 @@ def find_best_match(
         if score > best_score:
             best_score = score
             best_candidate = cand
+            if score == 100.0:
+                break  # perfect match — no need to check remaining candidates
 
     if best_candidate is None:
         return None

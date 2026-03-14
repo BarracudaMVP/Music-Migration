@@ -12,11 +12,10 @@ from loguru import logger
 
 import aiohttp
 
+from config import settings as _settings
 from core.soundcloud.models import SCTrack, SCUser, SCPlaylist
 
 _BASE_URL = "https://api.soundcloud.com"
-# Кол-во результатов поиска для выбора кандидатов
-_SEARCH_LIMIT = 10
 
 
 class RateLimitError(Exception):
@@ -117,7 +116,7 @@ class SoundCloudClient:
     async def search_tracks(self, query: str) -> list[SCTrack]:
         """Ищет треки по запросу через официальный SC API (GET /tracks)."""
         self._ensure_init()
-        params: dict = {"q": query, "limit": _SEARCH_LIMIT}
+        params: dict = {"q": query, "limit": _settings.search_limit}
         logger.debug(f"[sc] search query={query!r} → GET /tracks?{urlencode(params)}")
         try:
             data = await self._get("/tracks", params=params)

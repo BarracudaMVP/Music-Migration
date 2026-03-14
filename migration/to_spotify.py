@@ -25,13 +25,12 @@ from core.db import (
     get_pending_artists,
     update_artist,
 )
+from config import settings as _settings
 from core.spotify.client import SpotifyClient
 from core.matcher import find_best_match, split_artists, transliterate_variants, TrackCandidate
 
 # Pause between Spotify write operations to avoid rate limiting
 _SPOTIFY_WRITE_SLEEP = 0.5
-# Number of search results to consider per query
-_SEARCH_LIMIT = 10
 
 
 @dataclass
@@ -218,10 +217,10 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
 
     if len(queries) > 1:
         results_list = await asyncio.gather(
-            *[client.search_tracks(q, limit=_SEARCH_LIMIT) for q in queries]
+            *[client.search_tracks(q, limit=_settings.search_limit) for q in queries]
         )
     else:
-        results_list = [await client.search_tracks(queries[0], limit=_SEARCH_LIMIT)]
+        results_list = [await client.search_tracks(queries[0], limit=_settings.search_limit)]
 
     # Deduplicate by Spotify track ID
     all_candidates: dict[str, TrackCandidate] = {}
@@ -239,7 +238,7 @@ async def _process_one_track(client: SpotifyClient, row: dict) -> str:
 
     # Fallback: title-only search
     if not candidates:
-        fallback = await client.search_tracks(src_title, limit=_SEARCH_LIMIT)
+        fallback = await client.search_tracks(src_title, limit=_settings.search_limit)
         candidates = [
             TrackCandidate(
                 track_id=hash(t.id) & 0x7FFFFFFF,
