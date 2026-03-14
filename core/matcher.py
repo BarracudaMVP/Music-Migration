@@ -98,6 +98,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 import iuliia
+from loguru import logger
 from rapidfuzz import fuzz
 
 from config import settings
@@ -249,7 +250,7 @@ class MatchResult:
 # ---------------------------------------------------------------------------
 
 _SPLIT_RE = re.compile(
-    r"\s+(?:feat\.?|ft\.?|featuring|при\s+уч\.?|при\s+участии|&|x)\s+",
+    r"\s*,\s*|\s+(?:feat\.?|ft\.?|featuring|при\s+уч\.?|при\s+участии|&|x)\s+",
     re.IGNORECASE,
 )
 
@@ -306,6 +307,10 @@ def find_best_match(
 
     for cand in candidates:
         score = score_track_match(source_artist, source_title, cand.artist, cand.title)
+        logger.debug(
+            f"[match] {source_artist!r} — {source_title!r} | "
+            f"cand: {cand.artist!r} — {cand.title!r} | score={score:.1f}"
+        )
         if score > best_score:
             best_score = score
             best_candidate = cand

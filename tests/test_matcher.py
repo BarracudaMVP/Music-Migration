@@ -56,6 +56,18 @@ class TestSplitArtists:
         assert split_artists("A Ft. B") == ["A", "B"]
         assert split_artists("Артист При Участии Другой") == ["Артист", "Другой"]
 
+    def test_comma_separator(self):
+        """Comma-separated artists (YM adapter format) should be split."""
+        assert split_artists("A$THMA BOYS, Ваня Дмитриенко") == ["A$THMA BOYS", "Ваня Дмитриенко"]
+        assert split_artists("Artist A, Artist B, Artist C") == ["Artist A", "Artist B", "Artist C"]
+        assert split_artists("Solo Artist") == ["Solo Artist"]
+
+    def test_comma_and_feat(self):
+        """Mix of comma and feat. separators."""
+        result = split_artists("A, B feat. C")
+        assert "A" in result
+        assert "B" in result
+
 
 # ---------------------------------------------------------------------------
 # normalize()
