@@ -161,14 +161,15 @@ class SpotifyClient:
         return result
 
     async def like_track(self, track_id: str) -> bool:
-        """Save track to user's Liked Songs (PUT /me/tracks)."""
+        """Save track to user's Liked Songs via PUT /me/library (new endpoint)."""
         self._ensure_init()
-        logger.debug(f"[spotify] like track_id={track_id} → PUT /me/tracks")
+        uri = f"spotify:track:{track_id}"
+        logger.debug(f"[spotify] like track_id={track_id} → PUT /me/library")
         async with self._session.put(  # type: ignore[union-attr]
-            f"{_BASE}/me/tracks",
-            json={"ids": [track_id]},
+            f"{_BASE}/me/library",
+            params={"uris": uri},
         ) as resp:
-            ok = resp.status in (200, 201)
+            ok = resp.status == 200
             if not ok:
                 body = await resp.text()
                 logger.warning(f"[spotify] like track_id={track_id} → {resp.status}: {body}")
