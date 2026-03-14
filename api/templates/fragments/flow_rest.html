@@ -96,8 +96,8 @@
       <select name="track_limit"
         class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50">
         <option value="0">{{ t('index_limit_all') }}</option>
+        <option value="5">{{ t('index_limit_first').format(n=5) }}</option>
         <option value="50">{{ t('index_limit_first').format(n=50) }}</option>
-        <option value="100">{{ t('index_limit_first').format(n=100) }}</option>
         <option value="500">{{ t('index_limit_first').format(n=500) }}</option>
       </select>
 
