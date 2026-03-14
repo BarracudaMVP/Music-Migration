@@ -2043,6 +2043,15 @@ Node.js локально не нужен — `node_modules` живут в Docker
 - [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
 - [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
 
+**⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
+
+- [x] **[КРИТИЧНО] OAuth code не передаётся в redirect** — `code = await _issue_oauth_code(user_id)` + redirect на `{WEB_BASE_URL}/auth/callback?code={code}&...`. Покрыто тестами.
+- [x] **[КРИТИЧНО] OAuth start URL mismatch** — убран `/start` суффикс в `frontend/src/api/auth.ts`.
+- [ ] **[ВЫСОКИЙ] File→XX через SPA невозможно** — `POST /api/v1/migrations` принимает JSON-тело, нет поддержки файла. Нужен multipart endpoint или отдельный `POST /api/v1/migrations/upload`.
+- [ ] **[СРЕДНИЙ] Нет cancel для пользователя** — только `POST /admin/migrations/{id}/cancel`. Добавить `POST /api/v1/migrations/{id}/cancel` (с проверкой owner).
+- [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
+- [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
+
 ---
 
 ### 🔲 MM-82 — Удаление Jinja2 UI (после готовности SPA)

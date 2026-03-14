@@ -218,11 +218,14 @@ async def yandex_oauth_callback(
     user_id = _ensure_user_id(request)
     await save_yandex_token(user_id, token)
     request.session["ym_connected"] = True
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
 
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 @router.get("/auth/spotify")
@@ -275,10 +278,13 @@ async def spotify_oauth_callback(
     except Exception as e:
         return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
 
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 @router.get("/auth/soundcloud")
@@ -332,10 +338,13 @@ async def soundcloud_oauth_callback(
     except Exception as e:
         return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
 
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

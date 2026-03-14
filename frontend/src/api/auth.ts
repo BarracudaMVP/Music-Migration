@@ -52,5 +52,5 @@ export function getOAuthStartUrl(service: string, flowFrom?: string, flowTo?: st
   if (flowFrom) params.set('flow_from', flowFrom)
   if (flowTo) params.set('flow_to', flowTo)
   const qs = params.toString()
-  return `/api/v1/auth/${service}/start${qs ? `?${qs}` : ''}`
+  return `/api/v1/auth/${service}${qs ? `?${qs}` : ''}`
 }
