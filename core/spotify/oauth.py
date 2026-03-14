@@ -31,6 +31,7 @@ def get_auth_url(state: str) -> str:
         "scope": _SCOPES,
         "redirect_uri": settings.spotify_redirect_uri,
         "state": state,
+        "show_dialog": "true",  # force re-consent so scopes are always up to date
     }
     return f"{_AUTH_URL}?{urlencode(params)}"
 

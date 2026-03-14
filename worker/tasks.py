@@ -167,7 +167,8 @@ async def run_spotify_write_job(
                     from core.spotify.oauth import refresh_access_token
                     refreshed = await refresh_access_token(spotify_refresh_token)
                     access_token = refreshed["access_token"]
-                    logger.info(f"[job] Refreshed Spotify access token for migration #{migration_id}")
+                    granted_scope = refreshed.get("scope", "—")
+                    logger.info(f"[job] Refreshed Spotify token for migration #{migration_id}, scope: {granted_scope}")
                 except Exception as e:
                     logger.warning(f"[job] Could not refresh Spotify token: {e}, using existing token")
 
