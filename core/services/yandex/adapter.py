@@ -13,14 +13,14 @@ class YandexMusicAdapter(MusicServiceAdapter):
         | Capability.WRITE_LIKED_TRACKS
     )
 
-    async def fetch_liked_tracks(self, token: str) -> list[dict]:
+    async def fetch_liked_tracks(self, token: str, limit: int | None = None) -> list[dict]:
         from config import settings
         from core.yandex.client import YandexMusicClient
 
         client = await YandexMusicClient(
             token, proxy_url=settings.ym_proxy_url or None
         ).init()
-        tracks = await client.get_liked_tracks()
+        tracks = await client.get_liked_tracks(limit=limit)
         return [
             {"artist": ", ".join(t.artists), "title": t.title}
             for t in tracks

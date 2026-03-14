@@ -93,9 +93,9 @@ class YandexMusicClient:
     # Лайкнутые треки
     # ------------------------------------------------------------------
 
-    async def get_liked_tracks(self) -> list[YMTrack]:
+    async def get_liked_tracks(self, limit: int | None = None) -> list[YMTrack]:
         """
-        Возвращает все лайкнутые треки пользователя.
+        Возвращает лайкнутые треки пользователя (до limit штук, если задан).
         Загружает метаданные батчами по _BATCH_SIZE.
         """
         self._ensure_init()
@@ -111,6 +111,8 @@ class YandexMusicClient:
         # TracksList содержит TrackShort (только id + album_id).
         # Собираем пары (track_id, album_id) для батч-запроса.
         track_shorts = tracks_list.tracks or []
+        if limit:
+            track_shorts = track_shorts[:limit]
         total = len(track_shorts)
         logger.info(f"Найдено {total} лайкнутых треков, загружаю метаданные...")
 

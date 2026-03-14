@@ -24,7 +24,7 @@ class MusicServiceAdapter(ABC):
     def can(self, cap: Capability) -> bool:
         return bool(self.capabilities & cap)
 
-    async def fetch_liked_tracks(self, token: str) -> list[dict]:
+    async def fetch_liked_tracks(self, token: str, limit: int | None = None) -> list[dict]:
         """Fetch liked tracks and return [{artist, title}] for direct export.
         Override in adapters that have EXPORT_TRACKS capability."""
         raise NotImplementedError(f"{self.__class__.__name__} does not support EXPORT_TRACKS")

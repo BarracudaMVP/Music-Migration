@@ -14,12 +14,12 @@ class SpotifyAdapter(MusicServiceAdapter):
         | Capability.WRITE_LIKED_ARTISTS
     )
 
-    async def fetch_liked_tracks(self, token: str) -> list[dict]:
+    async def fetch_liked_tracks(self, token: str, limit: int | None = None) -> list[dict]:
         from core.spotify.client import SpotifyClient
 
         client = await SpotifyClient(token).init()
         try:
-            tracks = await client.get_liked_tracks()
+            tracks = await client.get_liked_tracks(limit=limit)
         finally:
             await client.close()
         return [{"artist": t.artists_str, "title": t.title} for t in tracks]

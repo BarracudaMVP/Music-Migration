@@ -62,9 +62,7 @@ async def run_yandex_migration_job(
                 # Fetch source tracks via the appropriate adapter
                 from core.services.registry import ServiceRegistry
                 adapter = ServiceRegistry.get(from_service)
-                tracks_data = await adapter.fetch_liked_tracks(source_token)
-                if track_limit:
-                    tracks_data = tracks_data[:track_limit]
+                tracks_data = await adapter.fetch_liked_tracks(source_token, limit=track_limit)
                 logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
             ym_client = await YandexMusicClient(
@@ -183,9 +181,7 @@ async def run_spotify_write_job(
                 # Fetch source tracks via adapter
                 from core.services.registry import ServiceRegistry
                 adapter = ServiceRegistry.get(from_service)
-                tracks_data = await adapter.fetch_liked_tracks(source_token)
-                if track_limit:
-                    tracks_data = tracks_data[:track_limit]
+                tracks_data = await adapter.fetch_liked_tracks(source_token, limit=track_limit)
                 logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
                 # Fetch artists if adapter implements fetch_liked_artists

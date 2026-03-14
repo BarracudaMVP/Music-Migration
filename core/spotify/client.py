@@ -43,7 +43,7 @@ class SpotifyClient:
     # Лайкнутые треки
     # ------------------------------------------------------------------
 
-    async def get_liked_tracks(self) -> list[SpotifyTrack]:
+    async def get_liked_tracks(self, limit: int | None = None) -> list[SpotifyTrack]:
         self._ensure_init()
         tracks: list[SpotifyTrack] = []
         url = f"{_BASE}/me/tracks"
@@ -56,6 +56,9 @@ class SpotifyClient:
                 raw = item.get("track")
                 if raw and not raw.get("is_local"):
                     tracks.append(self._convert_track(raw))
+                    if limit and len(tracks) >= limit:
+                        logger.info(f"Spotify: загружено {len(tracks)} лайкнутых треков (лимит)")
+                        return tracks
             url = data.get("next") or ""
             params = {}
             await asyncio.sleep(0.1)
