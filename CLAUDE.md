@@ -137,16 +137,20 @@ ALLOWED_USERS=             # Comma-separated Telegram user IDs (empty = open to 
 # Yandex OAuth
 YANDEX_CLIENT_ID=          # From oauth.yandex.ru app
 YANDEX_CLIENT_SECRET=      # From oauth.yandex.ru app
+YANDEX_REDIRECT_URI=       # e.g. https://yourdomain.com/api/v1/auth/yandex/callback (MM-43/81)
 YANDEX_TOKEN=              # Direct token for CLI mode only
 YM_PROXY_URL=              # SOCKS5 proxy for Yandex API (e.g. socks5://user:pass@host:port)
 
 # Spotify OAuth (MM-22)
 SPOTIFY_CLIENT_ID=         # From developer.spotify.com app
 SPOTIFY_CLIENT_SECRET=     # From developer.spotify.com app
-SPOTIFY_REDIRECT_URI=      # e.g. https://yourdomain.com/auth/spotify/callback
+SPOTIFY_REDIRECT_URI=      # e.g. https://yourdomain.com/api/v1/auth/spotify/callback
 
-# SoundCloud
-SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...)
+# SoundCloud (MM-52)
+SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...) — legacy, prefer OAuth below
+SC_CLIENT_ID=              # From soundcloud.com/you/apps
+SC_CLIENT_SECRET=          # From soundcloud.com/you/apps
+SC_REDIRECT_URI=           # e.g. https://yourdomain.com/api/v1/auth/soundcloud/callback
 SC_RATE_LIMIT_SLEEP=2.0    # Delay between SoundCloud write ops (seconds)
 SC_PLAYLIST_BATCH_SIZE=500 # Max tracks per SoundCloud playlist in playlist_mode
 
@@ -164,9 +168,18 @@ API_INTERNAL_TOKEN=        # Shared secret for bot↔API calls
 SECRET_KEY=                # SessionMiddleware secret (generate with: python -c "import secrets; print(secrets.token_hex(32))")
 ADMIN_PASSWORD=            # Admin UI password
 
+# SPA / JWT auth (MM-81)
+CORS_ORIGINS=http://localhost:3000  # comma-separated allowed origins for /api/v1/ (add prod domain)
+JWT_SECRET_KEY=            # generate: openssl rand -hex 32 (separate from SECRET_KEY)
+JWT_ACCESS_TOKEN_TTL=900   # seconds (15 min)
+JWT_REFRESH_TOKEN_TTL=2592000  # seconds (30 days)
+
 # Web access control (MM-31)
-WEB_ENABLED=true           # false = disable web UI and admin (API/bot still work)
+WEB_ENABLED=true           # false = disable web UI and admin (API/bot still work); /api/v1/ always on
 WEB_ALLOWED_IPS=           # comma-separated IPs allowed to access web UI; empty = allow all
+
+# Dev mode (MM-80) — local development only
+DEV_MODE=false             # true = _ensure_user_id() returns "dev_user"; auto-disabled on non-localhost domains
 
 # Misc
 MATCH_THRESHOLD=95.0       # Minimum fuzzy match score for "matched" (0–100)
@@ -317,7 +330,7 @@ After completing **every task** (MM-XX), write and run tests:
 2. Run `.venv/Scripts/pytest tests/` — must pass (133+ tests)
 3. If the task adds no new business logic — at minimum a smoke test that the new parameter flows through correctly
 
-Rule: **no task is considered done until `pytest tests/` passes.**
+Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 
 ## Key Patterns
 
@@ -335,15 +348,15 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - `_SEARCH_LIMIT = 10` in SoundCloudClient for better candidate coverage
 - `setup_logger(service)` in `core/logger.py` — call once per entry point; stdout JSON sink for Promtail, stderr colored for dev
 - Monitoring stack is opt-in: `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d`
-- Bot FSM flow: `AuthFlow.selecting_from` → choose source (YM/Spotify) → token collection → `AuthFlow.confirming` (mode: tracks/full) → `AuthFlow.selecting_limit` (All/50/100/500) → start
+- Bot FSM flow: `AuthFlow.selecting_from` → choose source (YM/Spotify) → `AuthFlow.selecting_to` → token collection → `AuthFlow.confirming` (mode: tracks/full) → `AuthFlow.selecting_limit` (All/50/100/500) → start
 - Bot Spotify path: requires `spotify_token` already in DB session (set via web UI OAuth); bot shows web link if missing
 - `api/routes/migrations.py` routes based on `to_service`: `yandex_music` → `run_yandex_migration_job`, `spotify` → `run_spotify_write_job`, default SC → `run_migration_job` or `run_spotify_migration_job`
 - `spotify_refresh_token` saved in DB (encrypted) during OAuth; `run_spotify_write_job` auto-refreshes before starting migration
 - `soundcloud_refresh_token` saved in DB (encrypted) during SC OAuth (MM-52); `_refresh_sc_token_if_needed()` in `worker/tasks.py` auto-refreshes in all SC-destination jobs
-- SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to web `/auth/soundcloud` instead of asking for cookie token
+- SC OAuth env vars: `SC_CLIENT_ID`, `SC_CLIENT_SECRET`, `SC_REDIRECT_URI`; when `sc_client_id` is set, bot redirects to `/api/v1/auth/soundcloud/start` instead of asking for cookie token
 - SC search uses official `api.soundcloud.com/tracks` (not api-v2), auth via `Authorization: OAuth {token}` (per SC docs — not Bearer); no `client_id` param; `soundcloud-v2` library removed (used invalid hardcoded client_id → 403)
 - SC `/me` returns 403 for unverified apps — expected; `_ensure_init()` checks only `self._session is None`
-- `save_yandex_token(user_id, token)` in `core/db/crud.py` — upsert only YM field (doesn't touch SC/Spotify); called from `auth_yandex_callback` web flow to persist token to DB
+- `save_yandex_token(user_id, token)` in `core/db/crud.py` — upsert only YM field (doesn't touch SC/Spotify); called from `auth_yandex_callback` in `api/routes/oauth.py` to persist token to DB
 - YM `init()` raises `ValueError` if uid cannot be obtained (expired token); `_fetch_uid_from_yandex_id` logs HTTP status+body on failure
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
@@ -352,7 +365,7 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
 - Web UI stepwise flow (MM-49): `GET /api/flow/to-step?from=X` → HTMX карточки TO; `GET /api/flow/rest?from=X&to=Y` → content types + auth status + settings; `_SERVICE_ICONS` dict в `api/routes/web.py` передаётся через `_render()` в каждый шаблон
 - `POST /migrate` читает `content_types[]` (multiple checkbox) через `request.form().getlist()`; вычисляет `mode=full|tracks` для совместимости с worker'ами
-- OAuth callbacks сохраняют `auth_flow_from`/`auth_flow_to` в session; после успешной авторизации редиректят на `/?pf=...&pt=...` для восстановления флоу
+- OAuth callbacks (web.py/Jinja2 flow) сохраняют `auth_flow_from`/`auth_flow_to` в session; редиректят на `/?pf=...&pt=...` для восстановления флоу
 - `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
 - File import/export unified in main flow (MM-67): `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
@@ -360,10 +373,9 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)
 - `score_track_match(source_artist, source_title, cand_artist, cand_title)` и `find_best_match(source_artist, source_title, ...)` — параметры переименованы из `ym_*`/`sc_*` в универсальные (MM-68); `TrackCandidate` — generic кандидат для любой целевой платформы (переименован из `SCCandidate`)
 - auth-gate (MM-70): кнопка submit в `flow_rest.html` disabled когда нужные сервисы не авторизованы; пикер файла и dropdown формата в одной строке с кнопкой (компактный inline layout)
-- dead code removed (MM-71): `POST /import/preview`, `POST /import/start`, `POST /export/start` удалены; шаблоны `import.html`, `export.html`, `fragments/import_preview.html` удалены; `scripts/entrypoint.sh` (перенесён из корня)
-- dev mode (MM-80): `DEV_MODE=true` активирует: `_ensure_user_id()` возвращает фиксированный `"dev_user"` → приложение подхватывает `UserSession` из БД (сидируется вручную); `guard_dev_mode` `model_validator` в `config.py` автоматически сбрасывает `dev_mode=False` если `WEB_BASE_URL`/`API_BASE_URL` указывает на не-localhost домен (защита от случайного продовского деплоя); `docker-compose.dev.yml` — standalone стек без nginx/bot/worker; `.env.dev` — шаблон без реальных секретов (коммитится в git); `LOCAL_SETUP.md` — инструкция
-- dead code removed (MM-75): `GET /import`, `GET /export` (303-заглушки) и `POST /auth/soundcloud` (legacy cookie-flow до MM-52) удалены; `GET /auth` получил `flow_from`/`flow_to` параметры; `POST /auth/yandex` теперь сохраняет токен в БД и восстанавливает флоу после успеха
-- auth refactor (MM-79): `api/routes/auth.py` → `api/routes/bot_auth.py` (internal); новый `api/routes/oauth.py` — все OAuth redirect/callback роуты; state хранится в Redis `oauth_state:{provider}:{state}` TTL 600s (убраны `_ym_state` cookie, `_sc_state`/`_sc_verifier` cookies, `session["spotify_oauth_state"]`); `session["ym_token"]` → `session["ym_connected"]`; `POST /auth/yandex` удалён; после OAuth генерируется short-lived `oauth_code:{code}` (TTL 30s) для MM-81
+- `scripts/entrypoint.sh` — Docker entry для api: `alembic upgrade head` → uvicorn; при `DEV_MODE=true` также запускает `scripts/seed_dev.py`
+- dev mode (MM-80): `DEV_MODE=true` активирует: `_ensure_user_id()` возвращает фиксированный `"dev_user"`; `scripts/seed_dev.py` сидирует `UserSession(user_id='dev_user')` с фейковыми токенами (запускается из `entrypoint.sh` при `DEV_MODE=true`); `guard_dev_mode` `model_validator` в `config.py` автоматически сбрасывает `dev_mode=False` если `WEB_BASE_URL`/`API_BASE_URL` указывает на не-localhost домен; `docker-compose.dev.yml` — standalone стек без nginx/bot/worker; `.env.dev` — шаблон без реальных секретов (коммитится в git); `LOCAL_SETUP.md` — инструкция
+- OAuth routing (MM-79): `api/routes/oauth.py` — все OAuth redirect/callback (`/auth/yandex`, `/auth/spotify`, `/auth/soundcloud`, `/auth/logout`, `/api/auth/yandex/poll/{state}`); `api/routes/bot_auth.py` — internal bot auth; state в Redis `oauth_state:{provider}:{state}` TTL 600s; после OAuth → short-lived `oauth_code:{code}` (TTL 30s) → SPA обменивает на JWT через `POST /api/v1/auth/exchange`; callback routes также зарегистрированы на `/api/v1/auth/*/callback`
 - `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
 - migration/ unified `to_*` naming (MM-76): `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`; `run_migration()` params renamed `migrate_playlists`/`migrate_artists` → `do_playlists`/`do_artists` to avoid name collision with the functions
 - MM-81 JWT SPA auth: access token = JWT HS256 TTL 15min (in memory), refresh token = opaque hex 64 chars stored encrypted in `UserSession.spa_refresh_token`; exchange flow: OAuth callback → `oauth_code:{code}` Redis TTL 30s → `POST /api/v1/auth/exchange` → JWT pair
@@ -371,3 +383,5 @@ Rule: **no task is considered done until `pytest tests/` passes.**
 - MM-81 `/api/v1/` router always registered (outside `WEB_ENABLED` block); old Jinja2 UI + bot work in parallel during SPA transition (SessionMiddleware removed in Phase 2)
 - `get_user_id_by_spa_refresh_token` does linear scan of user_sessions + Fernet decrypt compare (no index on refresh token — acceptable for current user count)
 - Test patch targets for `/api/v1/` routes: use `api.routes.api_v1.func_name` (not `core.db.crud.func_name`) since functions are imported at module load time
+- MM-83 SPA OAuth callback redirect (bugfix): `api_v1.py` callbacks capture `code = await _issue_oauth_code(user_id)` and redirect to `{WEB_BASE_URL}/auth/callback?code={code}&flow_from=...&flow_to=...`; `WEB_BASE_URL=http://localhost:3000` in dev; SPA route `/auth/callback` exchanges code for JWT via `POST /api/v1/auth/exchange`
+- MM-83 SPA frontend: `frontend/` — Vite + React 19 + TypeScript + React Router v6; Vite proxy `/api` → `http://api:8000` (dev only, replaces nginx in prod); `docker-compose.dev.yml` runs `frontend` service on port 3000 with `node_modules` in Docker volume

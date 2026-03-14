@@ -2,6 +2,11 @@
 from arq.connections import RedisSettings
 
 from config import settings
+from core.services.registry import ServiceRegistry
+from core.services.yandex.adapter import YandexMusicAdapter
+from core.services.soundcloud.adapter import SoundCloudAdapter
+from core.services.spotify.adapter import SpotifyAdapter
+from core.services.file.adapter import FileAdapter
 from worker.tasks import (
     run_migration_job,
     run_file_migration_job,
@@ -11,7 +16,13 @@ from worker.tasks import (
 )
 
 
+async def startup(ctx: dict) -> None:
+    for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter(), SpotifyAdapter()]:
+        ServiceRegistry.register(adapter)
+
+
 class WorkerSettings:
+    on_startup = startup
     functions = [
         run_migration_job,
         run_file_migration_job,

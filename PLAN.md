@@ -19,27 +19,30 @@
 ## Архитектура
 
 ```
-┌─────────────────────┐     ┌──────────────────────────────────────┐
-│   Telegram Bot      │     │   Web UI (Jinja2 + HTMX)             │
-│   (aiogram 3.x)     │     │   / /migrate /history /admin         │
-│   FSM: пошаговый    │     │   /auth/* /api/flow/* (HTMX)         │
-└──────────┬──────────┘     └─────────────────┬────────────────────┘
-           │ HTTP (internal API)               │ HTTP
-           └───────────────────┬───────────────┘
-                               ▼
-              ┌────────────────────────────────┐
-              │         FastAPI Server          │
-              │  /api/*  /auth/*  /admin/*      │
-              │  Middleware: IP whitelist,       │
-              │  AllowedUsers, RateLimit         │
-              └────────┬───────────────────────┘
+┌─────────────────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
+│   Telegram Bot      │  │  Web UI (Jinja2 + HTMX)  │  │   SPA Frontend         │
+│   (aiogram 3.x)     │  │  / /migrate /history     │  │   (React/Vue/etc.)     │
+│   FSM: пошаговый    │  │  /auth/* /api/flow/*     │  │   localhost:3000 / CDN │
+└──────────┬──────────┘  └─────────────┬────────────┘  └──────────┬─────────────┘
+           │ HTTP (internal API)        │ HTTP                      │ HTTP (JWT Bearer)
+           └────────────────┬──────────┘                           │
+                            ▼                                       │
+              ┌─────────────────────────────────────────────────────┤
+              │              FastAPI Server                          │
+              │  /api/v1/*   — SPA JSON API (JWT, always on)        │
+              │  /auth/*     — OAuth redirect/callback (oauth.py)   │
+              │  /api/*      — Internal (bot, worker)               │
+              │  /admin/*    — Admin UI (gated by WEB_ENABLED)      │
+              │  Middleware: CORS, IP whitelist, AllowedUsers, Rate  │
+              └────────┬────────────────────────────────────────────┘
                        │
-            ┌──────────┼───────────┐
-            ▼          ▼           ▼
+            ┌──────────┼────────────┐
+            ▼          ▼            ▼
       [PostgreSQL]   [Redis]   [Sessions]
-       (tokens,     (ARQ jobs,  (cookies)
-        migrations,  progress,
-        tracks)      rate limit)
+       (tokens,     (ARQ jobs,  (cookies — Jinja2 only)
+        migrations,  OAuth state, spa_refresh_token in DB)
+        tracks)      progress,
+                     rate limit)
                        │
                        ▼
           ┌────────────────────────┐
@@ -55,12 +58,15 @@
          ▼             ▼              ▼
   ┌─────────────┐ ┌──────────┐ ┌──────────────┐
   │ YM Adapter  │ │SC Adapter│ │Spotify Adapt.│  + FileAdapter
-  │ (RU proxy   │ │(EU server│ │(OAuth +       │    (CSV/JSON)
+  │ (RU proxy   │ │(OAuth,   │ │(OAuth +       │    (CSV/JSON)
   │  socks5://) │ │playlist) │ │ auto-refresh) │
   └──────┬──────┘ └────┬─────┘ └──────┬───────┘
          │             │              │
          ▼             ▼              ▼
   api.music.yandex  api.soundcloud.com  api.spotify.com
+
+DEV_MODE=true: _ensure_user_id() → "dev_user" (seed via scripts/seed_dev.py)
+               auto-disabled if WEB_BASE_URL points to non-localhost domain
 ```
 
 ---
@@ -72,13 +78,13 @@ Capability:
   READ_LIKED_TRACKS      WRITE_LIKED_TRACKS
   READ_PLAYLISTS         WRITE_PLAYLISTS
   READ_LIKED_ARTISTS     WRITE_LIKED_ARTISTS
-  EXPORT_FILE            IMPORT_FILE
+  EXPORT_TRACKS
 
-Сервисы (текущее состояние, MM-38 + MM-39 + MM-52 + MM-54 реализованы):
+Сервисы (текущее состояние, MM-76 + MM-81):
   yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS
   soundcloud:     READ_LIKED_TRACKS, WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
                   (OAuth Authorization Code Flow, api.soundcloud.com, Authorization: OAuth {token})
-  file_csv:       EXPORT_FILE, IMPORT_FILE  ← будет переименован в "file" в MM-69
+  file:           EXPORT_TRACKS, WRITE_LIKED_TRACKS  (MM-69: переименован с "file_csv"; CSV/JSON import+export)
   spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS
 ```
 
@@ -454,14 +460,14 @@ Grafana: http://localhost:3000 (admin / $GRAFANA_PASSWORD)
 
 ---
 
-### 🔲 MM-30 — README
+### ✅ MM-30 — README
 
-- [ ] Описание сервиса (что делает, кому нужен)
-- [ ] Инструкция по запуску через docker-compose (prod)
-- [ ] Переменные окружения (.env)
-- [ ] Telegram-бот — как найти, команды
-- [ ] Веб-интерфейс — разделы и функции
-- [ ] FAQ: как получить токены, что делать если трек не найден
+- [x] Описание сервиса (что делает, кому нужен)
+- [x] Инструкция по запуску через docker-compose (prod)
+- [x] Переменные окружения (.env)
+- [x] Telegram-бот — как найти, команды
+- [x] Веб-интерфейс — разделы и функции
+- [x] FAQ: как получить токены, что делать если трек не найден
 
 ---
 
@@ -1676,42 +1682,6 @@ Telegram-бот, внешние ссылки.
 
 ---
 
-### ✅ MM-79 — Auth refactor: вынос в api/routes/oauth.py + унификация под SPA
-
-> Подготовка auth-слоя к JWT (MM-81). Все OAuth-роуты выносятся из перегруженного `web.py` в `oauth.py` и унифицируются. **Никаких HTML-страниц для /auth не поднимаем** — OAuth это только redirect-машина, UI живёт в SPA.
->
-> **Именование файлов (решено):** `api/routes/auth.py` (был internal bot auth) → переименован в `api/routes/bot_auth.py`. Новый `api/routes/oauth.py` — web OAuth redirect/callback. Так оба файла имеют понятное назначение.
-
-**Принцип: безболезненный переход**
-- Старый веб-UI и бот продолжают работать **без изменений** на всём протяжении MM-79
-- `SessionMiddleware` остаётся (убирается только в MM-81 Фаза 2)
-- Новые паттерны вводятся параллельно, старые удаляются только после проверки
-
-**Текущие несогласованности (исправляем):**
-
-| Аспект | YM | Spotify | SoundCloud |
-|---|---|---|---|
-| State storage | cookie `_ym_state` | session `spotify_oauth_state` | cookie `_sc_state` + `_sc_verifier` |
-| После успеха в сессии | `session["ym_token"]` = raw token | `session["spotify_connected"] = True` | `session["sc_connected"] = True` |
-| Bot-логика в callback | ✅ смешана с web-флоу | — | — |
-| Куда идут ошибки | `/auth?error=` | `/auth?error=` | `/auth?error=` |
-
-**Задачи:**
-- [ ] Создать `api/routes/auth.py` — перенести все `/auth/*` и `/api/auth/*` из `web.py`
-- [ ] Зарегистрировать `auth_router` в `api/main.py`
-- [ ] Унифицировать state storage: все три провайдера хранят state в Redis (TTL 10 мин), убрать cookies + session для state
-- [ ] Унифицировать session после успеха: `session["{svc}_connected"] = True` для всех (YM: убрать `session["ym_token"]` = raw → токен только в БД)
-- [ ] Вынести bot-логику YM из callback → отдельный `GET /auth/yandex/bot` (чистый web-callback)
-- [ ] Стандартизировать ошибки: callback редиректит на `/?error=...` (не `/auth?error=...`)
-- [ ] Убрать `POST /auth/yandex` + форму ручного ввода кода (в проде redirect всегда работает; дев-режим — DEV_MODE)
-- [ ] Подготовить callback к code-exchange: после сохранения токена в БД → генерировать short-lived code (Redis TTL 30s) — **нужен для MM-81**, но сам редирект пока остаётся на `/` (не на SPA)
-- [ ] Обновить все места, читающие `session["ym_token"]` напрямую (`flow_rest`, `migrate`, `auth_page`)
-- [ ] Обновить тесты
-
-**Файлы:** `api/routes/web.py` → `api/routes/auth.py`, `api/main.py`, тесты
-
----
-
 ### ✅ MM-76 — migration/ рефакторинг: sc_* → to_soundcloud.py
 
 > Привести конвенцию именования модулей `migration/` к единому стилю `to_*` по аналогии с `to_yandex.py` и `to_spotify.py`.
@@ -1786,6 +1756,36 @@ migration/
 
 ---
 
+### ✅ MM-79 — Auth refactor: вынос в api/routes/oauth.py + унификация под SPA
+
+> Подготовка auth-слоя к JWT (MM-81). Все OAuth-роуты выносятся из перегруженного `web.py` в `oauth.py` и унифицируются. OAuth это только redirect-машина, UI авторизации — в SPA.
+>
+> **Именование:** `api/routes/auth.py` → `api/routes/bot_auth.py` (internal bot auth). Новый `api/routes/oauth.py` — все OAuth redirect/callback роуты.
+
+**Что исправлено:**
+
+До MM-79 state и session хранились несогласованно:
+
+| Аспект | Было (несогласованно) | Стало |
+|---|---|---|
+| State storage | cookie `_ym_state` / session `spotify_oauth_state` / cookie `_sc_state` | Redis `oauth_state:{provider}:{state}` TTL 600s |
+| После успеха | `session["ym_token"]` = raw token | `session["ym_connected"] = True` (токен только в БД) |
+| Куда идут ошибки | `/auth?error=` | `/?error=...` |
+
+**Что сделано:**
+- [x] `api/routes/oauth.py` создан — все OAuth роуты из `web.py` вынесены
+- [x] `api/routes/auth.py` → `api/routes/bot_auth.py`; зарегистрирован в `api/main.py`
+- [x] State storage унифицирован: Redis TTL 600s для всех трёх провайдеров
+- [x] `session["ym_token"]` удалён → `session["ym_connected"] = True`
+- [x] `POST /auth/yandex` (форма ручного ввода кода) удалён
+- [x] Short-lived `oauth_code:{code}` (Redis TTL 30s) после успешного OAuth для MM-81
+- [x] `_ensure_user_id` / `_session_user_id` перенесены в `oauth.py`, `web.py` импортирует оттуда
+- [x] Тесты: 16 новых тестов `tests/test_oauth.py`, 182 passed
+
+**Файлы:** `api/routes/oauth.py` (создан), `api/routes/bot_auth.py` (из auth.py), `api/routes/web.py`, `api/main.py`, `api/templates/auth.html`, `tests/test_oauth.py`
+
+---
+
 ## Риски и митигации
 
 | Риск | Митигация |
@@ -1796,8 +1796,10 @@ migration/
 | Yandex Music недоступен с EU IP | SOCKS5 прокси через RU сервер ✅ |
 | SoundCloud недоступен с RU IP | Воркер на EU сервере |
 | 20-30 параллельных пользователей | arq max_jobs, asyncpg pool, per-user rate limit |
-| Истёкший токен во время миграции | Проверка при старте + graceful fail |
-| SC токен (cookie) — короткий срок | Уведомление + инструкция по обновлению |
+| Истёкший токен во время миграции | auto-refresh в воркере (MM-52 SC + MM-39 Spotify) ✅ |
+| ~~SC токен (cookie) — короткий срок~~ | ~~Уведомление + инструкция по обновлению~~ — **неактуально**: заменён официальным OAuth (MM-52) |
+| JWT refresh token утечка | Fernet-шифрование в БД; отзыв через `revoke_spa_refresh_token`; TTL 30 дней |
+| DEV_MODE случайно включён на проде | `guard_dev_mode` validator в config.py — автосброс если URL не localhost ✅ |
 
 ---
 
@@ -1918,6 +1920,112 @@ Nginx требует SSL-сертификаты → сложно поднять 
 **Фаза 1 ✅** — JWT auth, `/api/v1/` роутер, `spa_refresh_token` в БД, 23 теста
 **Фаза 2 ✅** — OAuth start/callback перенесены под `/api/v1/auth/*`, redirect URI обновлены у провайдеров и в `.env`, задеплоено
 
+#### Инструкция: перенос Redirect URI под `/api/v1/` (Фаза 2)
+
+**Что менять у провайдеров:**
+
+**Yandex:** [oauth.yandex.ru](https://oauth.yandex.ru) → приложение → Redirect URIs
+- старый: `https://musicmigration.site/auth/yandex/callback`
+- новый: `https://musicmigration.site/api/v1/auth/yandex/callback`
+
+**Spotify:** [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → Edit Settings → Redirect URIs
+- старый: `https://musicmigration.site/auth/spotify/callback`
+- новый: `https://musicmigration.site/api/v1/auth/spotify/callback`
+
+**SoundCloud:** [soundcloud.com/you/apps](https://soundcloud.com/you/apps) → приложение
+- старый: `https://musicmigration.site/auth/soundcloud/callback`
+- новый: `https://musicmigration.site/api/v1/auth/soundcloud/callback`
+
+**Что менять в `.env` на EU сервере:**
+```env
+YANDEX_REDIRECT_URI=https://musicmigration.site/api/v1/auth/yandex/callback
+SPOTIFY_REDIRECT_URI=https://musicmigration.site/api/v1/auth/spotify/callback
+SC_REDIRECT_URI=https://musicmigration.site/api/v1/auth/soundcloud/callback
+CORS_ORIGINS=http://localhost:3000,https://musicmigration.site
+JWT_SECRET_KEY=          # generate: openssl rand -hex 32 (отдельный от SECRET_KEY)
+JWT_ACCESS_TOKEN_TTL=900
+JWT_REFRESH_TOKEN_TTL=2592000
+```
+
+**Порядок действий (zero-downtime):**
+1. Добавить новые URI у провайдеров (не удаляя старые — большинство провайдеров разрешают несколько)
+2. Задеплоить код с новыми роутами
+3. Обновить `.env`, перезапустить `docker compose up -d`
+4. Убедиться что OAuth работает по новым путям
+5. Удалить старые URI у провайдеров
+
+---
+
+### 🔲 MM-83 — React SPA: скаффолдинг + базовая навигация
+
+> Создать React-фронтенд в `frontend/` на Vite + React + TypeScript + plain CSS.
+> Фронтенд работает параллельно с Jinja2 UI (бэкенд не меняется).
+> Ветка: `feature/spa`
+
+**Стек:**
+- Vite 8 + React 19 + TypeScript
+- React Router v6 (`BrowserRouter`)
+- Plain CSS (CSS-переменные, тёмная тема)
+- Нет Tailwind, нет TanStack Query (добавим позже при необходимости)
+
+**Прокси:** `vite.config.ts` — `/api/*` → `http://localhost:8000`
+
+**Структура `frontend/src/`:**
+```
+api/
+  client.ts       — fetch wrapper, JWT Bearer, ApiError
+  auth.ts         — exchangeCode, refreshAccessToken, logout, getOAuthStartUrl
+  services.ts     — fetchServices, fetchMatrix
+  migrations.ts   — startMigration, getMigrationStatus, getMigrations
+pages/
+  HomePage.tsx
+  AuthCallbackPage.tsx  — OAuth code → JWT exchange
+  MigratePage.tsx
+  ProgressPage.tsx
+  HistoryPage.tsx
+App.tsx           — Routes
+main.tsx          — BrowserRouter entry
+index.css         — базовый CSS (тёмная тема)
+```
+
+**Роуты:**
+- `/` — выбор сервисов (HomePage)
+- `/auth/callback?code=...` — OAuth callback (AuthCallbackPage)
+- `/migrate?from=X&to=Y` — настройка + запуск (MigratePage)
+- `/migrate/:id/progress` — прогресс (ProgressPage)
+- `/history` — история (HistoryPage)
+
+**Запуск:**
+```bash
+docker compose -f docker-compose.dev.yml up --build   # порт 3000
+```
+Node.js локально не нужен — `node_modules` живут в Docker volume.
+
+**Задачи:**
+- [x] Scaffolding: `npm create vite@latest frontend -- --template react-ts`
+- [x] Установить `react-router-dom`
+- [x] `vite.config.ts`: proxy `/api` → `localhost:8000`, port 3000
+- [x] `api/` слой: client, auth, services, migrations
+- [x] Страницы-заглушки для всех роутов
+- [x] Базовый CSS (тёмная тема, CSS-переменные)
+- [x] `main.tsx`: обернуть в `BrowserRouter`
+- [x] `.gitignore`: исключить `frontend/node_modules/`, `frontend/dist/`
+- [x] `LOCAL_SETUP.md`: инструкция по запуску фронтенда
+- [ ] HomePage: выбор from/to сервисов (карточки), кнопки OAuth
+- [ ] MigratePage: подтверждение, content types, запуск миграции
+- [ ] ProgressPage: polling статуса, прогресс-бар
+- [ ] HistoryPage: список миграций
+- [ ] AuthCallbackPage: обмен code → JWT + redirect
+
+**⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
+
+- [x] **[КРИТИЧНО] OAuth code не передаётся в redirect** — `code = await _issue_oauth_code(user_id)` + redirect на `{WEB_BASE_URL}/auth/callback?code={code}&...`. Покрыто тестами.
+- [x] **[КРИТИЧНО] OAuth start URL mismatch** — убран `/start` суффикс в `frontend/src/api/auth.ts`.
+- [ ] **[ВЫСОКИЙ] File→XX через SPA невозможно** — `POST /api/v1/migrations` принимает JSON-тело, нет поддержки файла. Нужен multipart endpoint или отдельный `POST /api/v1/migrations/upload`.
+- [ ] **[СРЕДНИЙ] Нет cancel для пользователя** — только `POST /admin/migrations/{id}/cancel`. Добавить `POST /api/v1/migrations/{id}/cancel` (с проверкой owner).
+- [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
+- [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
+
 ---
 
 ### 🔲 MM-82 — Удаление Jinja2 UI (после готовности SPA)
@@ -1927,55 +2035,146 @@ Nginx требует SSL-сертификаты → сложно поднять 
 - [ ] `WEB_ENABLED=false` в `.env` на EU сервере → отключить Jinja2 UI (бот и API продолжают работать)
 - [ ] Убрать `SessionMiddleware` из `api/main.py`
 - [ ] Удалить `api/templates/`, `api/routes/web.py`, `api/routes/oauth.py` (бот-роуты перенести в `bot_auth.py`)
-- [ ] Удалить HTMX-фрагменты: `api/routes/web.py` → `GET /api/flow/*` (заменены SPA)
+- [ ] Удалить HTMX-фрагменты: `GET /api/flow/*` (заменены SPA)
 - [ ] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py` и `api/middleware.py`
 - [ ] Обновить `docker-compose.yml`: добавить `frontend` сервис (nginx static)
 - [ ] Обновить CLAUDE.md, тесты
 
 ---
 
-### Инструкция: перенос Redirect URI под `/api/v1/` (Фаза 2)
+### 🔲 MM-84 — VK Музыка: интеграция (чтение + запись лайков)
 
-**Что менять у провайдеров:**
+> Двунаправленная интеграция с ВКонтакте Музыкой.
+> Ветка: `mm-84-vk-music`
 
-#### Yandex
-1. Открыть [oauth.yandex.ru](https://oauth.yandex.ru) → твоё приложение → Redirect URIs
-2. Заменить `https://musicmigration.site/auth/yandex/callback`
-   → `https://musicmigration.site/api/v1/auth/yandex/callback`
+#### Контекст (результаты ресерча)
 
-#### Spotify
-1. Открыть [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → твоё приложение → Edit Settings → Redirect URIs
-2. Заменить `https://musicmigration.site/auth/spotify/callback`
-   → `https://musicmigration.site/api/v1/auth/spotify/callback`
+**VK Audio API требует партнёрского статуса** — `audio.*` методы возвращают error 201 (Access denied) для обычных приложений. Доступ выдаётся VK отдельно после рассмотрения заявки.
 
-#### SoundCloud
-1. Открыть [soundcloud.com/you/apps](https://soundcloud.com/you/apps) → твоё приложение
-2. Заменить `https://musicmigration.site/auth/soundcloud/callback`
-   → `https://musicmigration.site/api/v1/auth/soundcloud/callback`
+**Авторизация — два сценария (зависит от одобрения VK):**
 
-**Что менять в `.env` на EU сервере:**
-```env
-YANDEX_REDIRECT_URI=https://musicmigration.site/api/v1/auth/yandex/callback
-SPOTIFY_REDIRECT_URI=https://musicmigration.site/api/v1/auth/spotify/callback
-SC_REDIRECT_URI=https://musicmigration.site/api/v1/auth/soundcloud/callback
+**Сценарий A (целевой): собственное приложение с официальным audio-доступом**
+- Регистрируем приложение на vk.com/apps → получаем `VK_CLIENT_ID` + `VK_CLIENT_SECRET`
+- Подаём заявку на доступ к Audio API (support.vk.com или раздел прав в настройках приложения)
+- При одобрении: стандартный **Authorization Code Flow** со scope `audio+offline`
+- OAuth endpoint: `https://oauth.vk.com/authorize`, token: `https://oauth.vk.com/token`
+- Пользователь авторизуется через привычный VK OAuth popup — никаких костылей
+- **Новые env:** `VK_CLIENT_ID`, `VK_CLIENT_SECRET`, `VK_REDIRECT_URI`
+
+**Сценарий Б (fallback): Kate Mobile credentials**
+- Используем публичные credentials Kate Mobile (`client_id=2685278`) — стандарт в экосистеме
+- Password grant: пользователь вводит телефон+пароль → получаем token
+- Или: пользователь сам получает token и вставляет вручную (как SC cookie до MM-52)
+- Риск: VK может отозвать Kate Mobile access в любой момент
+- **Реализовать как fallback**, если Сценарий A не одобрят
+
+**Реализуем Сценарий A сразу** (код чище, OAuth как у Spotify/SC). Сценарий Б — только если VK откажет.
+
+**Ограничения (оба сценария):**
+- `audio.createPlaylist` (создание плейлиста) — только если VK явно одобрит; **пока не реализуем**
+- Нет ISRC → матчинг по artist + title + duration
+- Rate limit: ≤1 req/s (официально 3 req/s, на практике безопаснее 1 req/s)
+
+#### Capability flags
+
+```
+VKMusicAdapter:
+  READ_LIKED_TRACKS       ✓   audio.get (owner_id, count up to 6000)
+  READ_PLAYLISTS          ✓   audio.getPlaylists + audio.get(album_id=...)
+  WRITE_LIKED_TRACKS      ✓   audio.search + audio.add
+  WRITE_PLAYLISTS         ✗   partner-only, не реализуем
+  WRITE_LIKED_ARTISTS     ✗   нет концепции "подписки на артиста" в VK Audio API
+  EXPORT                  ✓   через FileAdapter
 ```
 
-**Порядок действий (zero-downtime):**
-1. Добавить новые URI у провайдеров (не удаляя старые — провайдеры обычно разрешают несколько)
-2. Задеплоить код с новыми роутами
-3. Обновить `.env`, перезапустить `docker compose up -d`
-4. Убедиться что OAuth работает по новым путям
-5. Удалить старые URI у провайдеров
+#### Матрица переносов (добавить в Transfer Matrix)
 
-**Новые env vars:**
-```env
-CORS_ORIGINS=http://localhost:3000,https://musicmigration.site
-JWT_SECRET_KEY=          # отдельный от SECRET_KEY (generate: openssl rand -hex 32)
-JWT_ACCESS_TOKEN_TTL=900  # секунды (15 мин)
-JWT_REFRESH_TOKEN_TTL=2592000  # секунды (30 дней)
+```
+FROM \ TO  | VK Музыка
+-----------|----------
+ЯМ         |     ✓  (треки)
+Spotify    |     ✓  (треки)
+File       |     ✓  (треки)
+SoundCloud |     ✓  (треки)
+
+VK Музыка → ЯМ, Spotify, SoundCloud, File — все направления ✓
 ```
 
-**Файлы:** `api/security.py` (новый), `api/routes/api_v1.py` (новый), `api/main.py`, `config.py`, `core/db/models.py`, `core/db/crud.py`, alembic миграция, тесты
+#### Структура файлов
+
+```
+core/vk/
+  client.py        — VKMusicClient: get_liked_tracks(), get_playlists(), search_track(), add_track()
+  models.py        — VKTrack(id, owner_id, artist, title, duration, access_key), VKPlaylist
+core/services/vk/
+  adapter.py       — VKMusicAdapter: READ_LIKED_TRACKS | READ_PLAYLISTS | WRITE_LIKED_TRACKS | EXPORT
+migration/
+  to_vk.py         — any → VK лайки (search + add, sleep 1.0s, fuzzy match)
+worker/tasks.py    — run_vk_migration_job (any → VK)
+api/routes/
+  web.py           — добавить VK в auth flow (вставка токена, как SC cookie)
+  api_v1.py        — поддержка vk_token в /api/v1/auth/me и /api/v1/migrations
+config.py          — VK_ACCESS_TOKEN (для CLI), VK_KATE_USER_AGENT
+```
+
+#### Авторизация (два варианта)
+
+**Вариант A — Authorization Code Flow (бэкенд-редирект, как Spotify/SC):**
+1. Кнопка «Войти через VK» → redirect на `https://oauth.vk.com/authorize?client_id=...&scope=audio,offline&response_type=code&redirect_uri=...`
+2. VK → callback `/api/v1/auth/vk/callback?code=...` → обмен code → access_token → JWT
+
+**Вариант B — VK ID Widget (встроенный виджет, лучше для SPA):**
+- VK одобрил приложение + предоставил возможность встроить виджет авторизации
+- JS SDK: `<script src="https://vk.com/js/api/openapi.js">`
+- `VK.init({ apiId: VK_CLIENT_ID })` → `VK.Auth.login(callback, scope)` → получаем `access_token` прямо в браузере без редиректа
+- Токен отправляется на бэкенд `POST /api/v1/auth/vk/token {access_token}` → валидация → JWT
+- **Преимущество:** пользователь не покидает SPA, нативный VK попап
+- **Новый бэкенд endpoint:** `POST /api/v1/auth/vk/token` — принимает access_token от виджета, валидирует через `users.get`, сохраняет, возвращает JWT
+
+**Реализуем оба:** виджет — основной путь в SPA, redirect — fallback и для Jinja2 UI.
+
+#### Ключевые технические детали
+
+- `audio.get`: `owner_id` = user_id (отрицательный для групп), `count` (max ~6000), `offset`
+- `audio.search`: `q="{artist} {title}"`, `count=10`, сортировка по релевантности
+- `audio.add`: `audio_id` + `owner_id` + опционально `access_key` (для треков из чужих библиотек)
+- track dedup key: `f"{owner_id}_{id}"` (аналог sc_id)
+- Duration matching: ±5 секунд от оригинала — дополнительный критерий после fuzzy match
+- `vk_api_url = "https://api.vk.com/method/"`, `v = "5.131"`
+- User-Agent: `KateMobileAndroid/56 lite-460 (Android 4.4.2; SDK 19; x86; unknown Android SDK built for x86; en)`
+- Sleep между write ops: 1.0s (аналог YM)
+
+#### Зависимости
+
+```
+vkpymusic>=3.5.1   # либо прямые запросы через aiohttp (без лишних зависимостей)
+```
+Если `vkpymusic` не поддерживает async нативно → использовать `asyncio.to_thread` или писать клиент напрямую через `aiohttp`.
+
+#### Новые env-переменные
+
+```env
+VK_CLIENT_ID=        # из vk.com/apps (настройки приложения)
+VK_CLIENT_SECRET=    # из vk.com/apps
+VK_REDIRECT_URI=     # https://yourdomain.com/api/v1/auth/vk/callback
+VK_ACCESS_TOKEN=     # для CLI-режима (опц.)
+```
+
+#### Задачи
+
+- [ ] `core/vk/models.py` — `VKTrack`, `VKPlaylist`
+- [ ] `core/vk/client.py` — `VKMusicClient`: `init()`, `get_liked_tracks()`, `get_playlists()`, `search_track()`, `add_track()` (async через aiohttp, Kate Mobile UA)
+- [ ] `core/services/vk/adapter.py` — `VKMusicAdapter` (READ_LIKED_TRACKS | READ_PLAYLISTS | WRITE_LIKED_TRACKS | EXPORT)
+- [ ] `migration/to_vk.py` — `run_migration()`: любой источник → VK лайки (fuzzy match + duration check + audio.add)
+- [ ] `worker/tasks.py` — `run_vk_migration_job`
+- [ ] `api/routes/oauth.py` — VK OAuth redirect/callback (`GET /auth/vk`, `GET /api/v1/auth/vk/callback`) — Authorization Code Flow
+- [ ] `api/routes/api_v1.py` — `POST /api/v1/auth/vk/token` (виджет: принять access_token от JS SDK, валидировать через `users.get`, сохранить, вернуть JWT); `vk_token` в `/auth/me`; поддержка `from_service=vk_music` / `to_service=vk_music` в `POST /api/v1/migrations`
+- [ ] SPA: VK ID Widget в `HomePage.tsx` — подключить VK OpenAPI JS SDK, `VK.Auth.login()` → `POST /api/v1/auth/vk/token`
+- [ ] `config.py` — `vk_access_token`, `vk_kate_user_agent`
+- [ ] `core/db/models.py` + alembic — `UserSession.vk_token`
+- [ ] `core/db/crud.py` — `save_vk_token`, `get_vk_token`
+- [ ] Тесты: клиент (mock aiohttp), adapter capabilities, migration pipeline
+- [ ] CLAUDE.md, PLAN.md, progress.md обновить
 
 ---
 
