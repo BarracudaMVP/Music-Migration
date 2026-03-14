@@ -2178,6 +2178,44 @@ VK_ACCESS_TOKEN=     # для CLI-режима (опц.)
 
 ---
 
+### ✅ MM-85 — Spotify продакшн-фиксы + оптимизации матчинга
+
+#### Проблемы
+
+1. `like_track` → 403 Forbidden на `PUT /me/tracks` (deprecated endpoint)
+2. Ошибки 403 засчитывались как `not_found` в статистике
+3. Поиск на Spotify не находил треки для артистов с кириллическим именем (Баста → Basta)
+4. Fetch всех треков перед срезом по лимиту — лишние запросы
+5. `_SEARCH_LIMIT` захардкожен, нельзя настроить без кода
+6. Матчинг проверял всех кандидатов даже после идеального совпадения (score=100)
+
+#### Решения
+
+- [x] `like_track` → новый `PUT /me/library?uris=spotify:track:{id}` (не deprecated)
+- [x] `_run_pending_tracks_loop`: `elif result == "error": stats.errors += 1` (отдельно от not_found)
+- [x] `_process_one_track`: добавлены транслитерированные варианты имён артистов в поисковые запросы (`transliterate_variants`)
+- [x] `get_liked_tracks(limit)` в YM и Spotify клиентах — останавливает пагинацию/батч при достижении лимита
+- [x] `SEARCH_LIMIT` → `settings.search_limit` (env: `SEARCH_LIMIT`, default 5)
+- [x] `find_best_match`: `break` при `score == 100.0` — не проверяет остальных кандидатов
+- [x] UI: добавлена опция 5 треков (для тестирования), убрана 100
+- [x] Логирование scope в refresh_access_token для диагностики
+- [x] `like_track`: логирует тело ответа при не-200 (WARNING уровень)
+
+#### Файлы
+
+- `core/spotify/client.py` — новый эндпоинт, лимит пагинации, логирование ошибок
+- `core/yandex/client.py` — `get_liked_tracks(limit)`
+- `core/services/yandex/adapter.py`, `core/services/spotify/adapter.py` — пробрасывают limit
+- `core/services/base.py` — сигнатура `fetch_liked_tracks(token, limit=None)`
+- `core/soundcloud/client.py` — `search_limit` из settings
+- `core/matcher.py` — early exit на score=100
+- `migration/to_spotify.py` — stats fix, transliterate_variants, settings.search_limit
+- `config.py` — `search_limit: int = Field(default=5)`
+- `worker/tasks.py` — передаёт limit в fetch, логирует scope
+- `api/templates/fragments/flow_rest.html` — опция 5 треков
+
+---
+
 ## Spotify Dev Mode — обходной путь (запасной план)
 
 Extended Quota Mode недоступен (требует регистрации компании).

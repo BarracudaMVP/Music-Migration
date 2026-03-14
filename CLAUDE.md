@@ -359,6 +359,12 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - `save_yandex_token(user_id, token)` in `core/db/crud.py` — upsert only YM field (doesn't touch SC/Spotify); called from `auth_yandex_callback` in `api/routes/oauth.py` to persist token to DB
 - YM `init()` raises `ValueError` if uid cannot be obtained (expired token); `_fetch_uid_from_yandex_id` logs HTTP status+body on failure
 - Spotify track IDs are strings → dedup key uses `hash(id) & 0x7FFFFFFF`; ID stored in `sc_url` field for the actual like call
+- Spotify `like_track` uses `PUT /me/library?uris=spotify:track:{id}` (new non-deprecated endpoint); old `PUT /me/tracks` returned 403 in dev mode
+- `get_liked_tracks(limit)` in YM and Spotify clients stops pagination early when limit is reached (no full fetch before slice)
+- `settings.search_limit` (env: `SEARCH_LIMIT`, default 5) controls candidate count per search query for both Spotify and SC destinations
+- `find_best_match` breaks immediately on `score == 100.0` — no need to check remaining candidates
+- `transliterate_variants(artist)` used in `to_spotify._process_one_track` to add Latin search queries for Cyrillic artist names (e.g. Баста → Basta)
+- Spotify dev mode: max 25 allowlisted users in Dashboard → Settings → User Management; Playwright automation planned as fallback (see PLAN.md)
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
 - SC write endpoints: `PUT /me/track_likes/{id}`, `POST /playlists`, `PUT /me/followings/{id}` — all correct; Authorization Code Flow grants write access without explicit scope declarations
