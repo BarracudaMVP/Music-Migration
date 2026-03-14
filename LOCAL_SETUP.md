@@ -1,6 +1,6 @@
 # Local Development Setup
 
-Guide for running Music Migration locally — e.g. for frontend work on templates.
+Guide for running Music Migration locally — backend API + React SPA frontend.
 
 ## Prerequisites
 
@@ -16,7 +16,13 @@ cd Music-Migration
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Open http://localhost:8000
+Open http://localhost:3000 — React SPA (Vite dev server).
+
+The stack starts:
+- `postgres` — database
+- `redis` — job queue
+- `api` — FastAPI backend on port 8000
+- `frontend` — Vite dev server on port 3000 (proxies `/api/*` → `api:8000`)
 
 ## Seed the dev user (once)
 
@@ -48,11 +54,11 @@ all services authenticated. No special routes, no cookie tricks.
 
 | Feature | Works locally |
 |---------|--------------|
-| Web UI navigation (all pages) | ✅ |
-| HTMX fragments (service cards, auth status) | ✅ |
+| SPA navigation (all pages) | ✅ |
+| `/api/v1/services` — service list + auth status | ✅ |
 | Auth gate (button enabled/disabled) | ✅ (after seed) |
 | History page | ✅ (empty until migrations run) |
-| Admin UI at /admin | ✅ (password: `admin`) |
+| Admin UI at /admin (Jinja2, legacy) | ✅ (password: `admin`) |
 | Real OAuth (Yandex / Spotify / SC) | ❌ (callback URL mismatch) |
 | Actual migration jobs | ❌ (worker not running, fake tokens) |
 
@@ -63,8 +69,14 @@ are shown in colored output.
 
 ## Dev stack
 
-`docker-compose.dev.yml` runs only: `postgres` + `redis` + `api` (port 8000).
+`docker-compose.dev.yml` runs: `postgres` + `redis` + `api` (port 8000) + `frontend` (port 3000).
 Not started: `nginx`, `bot`, `worker`.
+
+Frontend container uses a named volume `frontend_node_modules` so `node_modules`
+lives inside Docker — no need to install Node.js locally.
+Source files in `./frontend/` are bind-mounted for instant HMR.
+
+Production build: `npm run build` → `frontend/dist/` (served by nginx in prod).
 
 ## Stopping
 

@@ -54,6 +54,10 @@ htmlcov/
 # Claude memory (заметки ИИ-ассистента, не для версионирования)
 memory/
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # Docker
 *.override.yml
 
