@@ -7,7 +7,7 @@
 
 ## Стек
 
-- **API**: FastAPI + Jinja2 + HTMX
+- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83, в процессе)
 - **БД**: PostgreSQL + SQLAlchemy 2.x async + Alembic
 - **Очередь**: arq (Redis)
 - **Бот**: aiogram 3.x
@@ -80,12 +80,13 @@ Capability:
   READ_LIKED_ARTISTS     WRITE_LIKED_ARTISTS
   EXPORT_TRACKS
 
-Сервисы (текущее состояние, MM-76 + MM-81):
+Сервисы (текущее состояние, MM-76 + MM-81 + MM-85):
   yandex_music:   READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS
   soundcloud:     READ_LIKED_TRACKS, WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
                   (OAuth Authorization Code Flow, api.soundcloud.com, Authorization: OAuth {token})
   file:           EXPORT_TRACKS, WRITE_LIKED_TRACKS  (MM-69: переименован с "file_csv"; CSV/JSON import+export)
   spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS
+                  (WRITE_PLAYLISTS — планируется в MM-89; dev mode: max 25 пользователей в allowlist)
 ```
 
 ```
@@ -2228,6 +2229,129 @@ Extended Quota Mode недоступен (требует регистрации 
 - [ ] Опционально: интеграция с БД — автодобавление при первом OAuth пользователя
 
 > ⚠️ Технически нарушает Spotify ToS — использовать осознанно.
+
+---
+
+### MM-86 — Ресёрч аналогов: фичи и подходы
+
+**Цель**: изучить конкурентов, найти идеи для улучшения сервиса.
+
+#### Что исследовать
+
+- [ ] Составить список сервисов-аналогов (Soundiiz, TuneMyMusic, Stamp, SongShift, FreeYourMusic и др.)
+- [ ] Для каждого: поддерживаемые платформы, ограничения бесплатного тарифа, UX-отличия
+- [ ] Что переносят помимо лайков: плейлисты, подписки на артистов, история прослушиваний, рейтинги
+- [ ] Как решают проблему дев-режима Spotify (если решают)
+- [ ] Уникальные фичи: мёрж библиотек, дедупликация, автосинхронизация, статистика матчинга
+- [ ] Сформировать список идей для бэклога
+
+#### Файлы
+
+- `memory/research_competitors.md` — результаты ресёрча (не коммитить в публичный репо)
+
+---
+
+### MM-87 — Рефакторинг адаптеров: адаптеры как единственная точка взаимодействия с сервисами
+
+**Цель**: пайплайны `migration/to_*.py` не должны знать о деталях конкретных платформ. Вся логика взаимодействия — поиск, запись, создание плейлиста — живёт в адаптере. Пайплайн работает только через интерфейс `MusicServiceAdapter`.
+
+#### Контекст
+
+Система флагов `Capability` уже существует в `core/services/base.py` (`READ_LIKED_TRACKS`, `WRITE_LIKED_TRACKS`, `WRITE_PLAYLISTS` и др.). Адаптеры уже объявляют свои возможности. Нужно:
+1. Расширить ABC write-методами
+2. Реализовать их в адаптерах
+3. Переписать пайплайны через адаптер вместо прямых вызовов клиентов
+
+#### Возможности разных сервисов
+
+| Адаптер | READ | WRITE_LIKED_TRACKS | WRITE_PLAYLISTS | WRITE_LIKED_ARTISTS |
+|---|---|---|---|---|
+| YandexMusic | ✓ | ✓ | — | — |
+| Spotify | ✓ | ✓ | ✓ | ✓ |
+| SoundCloud | ✓ | playlist_mode | ✓ | ✓ |
+| File | ✓ | — | — | — |
+
+Фронт и бэк должны ограничивать доступные переносы на основе `adapter.can(Capability.X)` — не хардкодить логику под каждый сервис.
+
+#### Что сделать
+
+- [ ] `MusicServiceAdapter` (base.py) — добавить абстрактные write-методы: `search_track()`, `write_track()`, `create_playlist()`, `add_tracks_to_playlist()`, `follow_artist()` — дефолт `NotImplementedError`; `can()` уже есть
+- [ ] Реализовать write-методы в `YandexMusicAdapter`, `SpotifyAdapter`, `SoundCloudAdapter`
+- [ ] `FileAdapter` — write-методы не нужны, capabilities не меняются
+- [ ] `migration/to_soundcloud.py`, `to_yandex.py`, `to_spotify.py` — переписать через `adapter.search_track()` / `adapter.write_track()` и т.д.; пайплайн не импортирует конкретные клиенты
+- [ ] Единый `_process_one_track(dest_adapter, track, ...)` — убрать дублирование между пайплайнами
+- [ ] `ServiceRegistry` / `api/routes/` — `services/matrix` строится из `Capability` флагов, не из захардкоженного словаря
+- [ ] Фронт (SPA) — `GET /api/v1/services/matrix` отражает реальные возможности адаптеров; UI скрывает недоступные пары
+- [ ] Обновить тесты: mock на уровне адаптера, а не клиента
+
+#### Файлы
+
+- `core/services/base.py` — расширить ABC
+- `core/services/yandex/adapter.py`, `soundcloud/adapter.py`, `spotify/adapter.py` — write-методы
+- `migration/to_soundcloud.py`, `to_yandex.py`, `to_spotify.py` — упростить через адаптер
+- `api/routes/services.py` — matrix из capabilities
+- `tests/` — обновить/добавить тесты
+
+---
+
+### MM-89 — Spotify: режим создания плейлиста вместо (или вместе с) лайками треков
+
+**Цель**: при миграции в Spotify давать пользователю выбор — лайкать треки в коллекцию (текущее поведение) или создавать плейлист с найденными треками. Оба режима должны работать.
+
+#### Мотивация
+
+Текущий режим лайкает треки напрямую в `Liked Songs`. Многие пользователи предпочитают получить отдельный плейлист — не засорять коллекцию, легче проверить результат, можно поделиться.
+
+#### Что сделать
+
+- [ ] `SpotifyClient` — `create_playlist(name, public=False)` + `add_tracks_to_playlist(playlist_id, track_uris)` (батч по 100 — лимит Spotify API)
+- [ ] `migration/to_spotify.py` — добавить `playlist_mode: bool` параметр (аналогично SC); если `True` — собирает `spotify:track:{id}`, в конце создаёт плейлист и добавляет треки; если `False` — текущее поведение (like)
+- [ ] Возвращать `playlist_url` в результате миграции (аналогично MM-88)
+- [ ] Воркер `run_spotify_write_job` — принимает `playlist_mode`, `playlist_name` (default: `"YM Liked"` / имя источника)
+- [ ] API — `POST /migrations` + `POST /api/v1/migrations`: новый параметр `spotify_playlist_mode: bool` (default `false`)
+- [ ] Веб UI (SPA + Jinja2) — чекбокс / toggle в настройках миграции → Spotify: "Создать плейлист" vs "Добавить в коллекцию"
+- [ ] Бот — inline кнопки выбора режима в шаге подтверждения (аналогично выбору треки/полная библиотека)
+- [ ] Тесты: оба режима, `create_playlist`, батчинг треков
+
+#### Файлы
+
+- `core/spotify/client.py` — `create_playlist`, `add_tracks_to_playlist`
+- `migration/to_spotify.py` — `playlist_mode` ветка
+- `worker/tasks.py` — пробросить параметр + вернуть `playlist_url`
+- `api/routes/migrations.py`, `api/routes/api_v1.py` — новый параметр, ответ с `playlist_url`
+- `api/templates/fragments/flow_rest.html` — UI опция
+- `bot/handlers/migration.py` — выбор режима
+- `tests/`
+
+---
+
+### MM-88 — Spotify: обход ограничений через бот-пользователя (плейлист-шаринг)
+
+**Цель**: обойти лимит 25 пользователей в dev-режиме Spotify — вместо лайка треков на аккаунте пользователя, создавать плейлист от имени бот-аккаунта и отдавать пользователю ссылку.
+
+#### Идея
+
+1. Бот-аккаунт Spotify (`SPOTIFY_BOT_TOKEN`) авторизован один раз, имеет доступ к API без ограничений dev-режима
+2. При миграции → Spotify: создаём публичный плейлист на боте, добавляем треки туда
+3. Пользователю отправляется ссылка на плейлист (Telegram / веб) — он открывает и сохраняет себе вручную или через "Follow"
+4. Опционально: автоматически добавлять плейлист в библиотеку пользователя через `PUT /users/{user_id}/playlists` (если пользователь тоже авторизован)
+
+#### Что сделать
+
+- [ ] `SPOTIFY_BOT_TOKEN` / `SPOTIFY_BOT_REFRESH_TOKEN` в config.py + .env
+- [ ] `SpotifyClient.create_playlist(name, track_ids)` — создание публичного плейлиста
+- [ ] Новый режим в `migration/to_spotify.py`: `playlist_mode=True` → собирает треки → `SpotifyClient(bot_token).create_playlist(...)` → возвращает URL
+- [ ] Передача URL пользователю: в ответе API (`playlist_url`), в боте (сообщение), в веб-UI (результат)
+- [ ] Тесты: `create_playlist`, маршрутизация режима
+
+#### Файлы
+
+- `config.py` — новые env vars
+- `core/spotify/client.py` — `create_playlist`, `add_tracks_to_playlist`
+- `migration/to_spotify.py` — playlist_mode
+- `worker/tasks.py` — передать bot_token + вернуть playlist_url
+- `api/routes/migrations.py` — включить playlist_url в ответ
+- `bot/handlers/migration.py`, `api/templates/result.html` — отобразить ссылку
 
 ---
 
