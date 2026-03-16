@@ -233,3 +233,35 @@ async def test_set_user_role(db):
     await set_user_role("web_role", "admin")
     session = await load_user_session("web_role")
     assert session["role"] == "admin"
+
+
+# ---------------------------------------------------------------------------
+# MM-90: get_track_stats_batch
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_track_stats_batch_returns_per_migration(db):
+    from core.db.crud import get_track_stats_batch, bulk_insert_tracks, create_migration
+
+    mid1 = await create_migration("batch_u1")
+    mid2 = await create_migration("batch_u2")
+    await bulk_insert_tracks(mid1, [
+        {"ym_id": "a1", "ym_artist": "A", "ym_title": "T1", "ym_album": ""},
+        {"ym_id": "a2", "ym_artist": "A", "ym_title": "T2", "ym_album": ""},
+    ])
+    await bulk_insert_tracks(mid2, [
+        {"ym_id": "b1", "ym_artist": "B", "ym_title": "T3", "ym_album": ""},
+    ])
+
+    result = await get_track_stats_batch([mid1, mid2])
+    assert mid1 in result
+    assert mid2 in result
+    assert result[mid1].get("pending", 0) == 2
+    assert result[mid2].get("pending", 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_track_stats_batch_empty(db):
+    from core.db.crud import get_track_stats_batch
+    result = await get_track_stats_batch([])
+    assert result == {}
