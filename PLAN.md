@@ -2325,6 +2325,45 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-90 — SC like_track: исправлен эндпоинт (405 → POST /likes/tracks/{urn})
+
+**Проблема:** `PUT /me/track_likes/{id}` возвращал HTTP 405 "unknown route" — эндпоинт не существует.
+
+**Причина:** задокументированный в CLAUDE.md эндпоинт не соответствует официальной документации SC.
+По [SC Open API docs](https://developers.soundcloud.com/docs/api/explorer/open-api#/likes/post_likes_tracks__track_urn_)
+правильный эндпоинт: `POST /likes/tracks/{track_urn}`, где URN = `soundcloud:tracks:{track_id}`.
+
+**Что исправлено:**
+- [x] `core/soundcloud/client.py` — `like_track()`: `PUT /me/track_likes/{id}` → `POST /likes/tracks/soundcloud:tracks:{id}`; `_put()` → `_post()`
+- [x] `CLAUDE.md` — обновлён задокументированный эндпоинт
+
+**Файлы:** `core/soundcloud/client.py`, `CLAUDE.md`
+
+---
+
+### 🔲 MM-91 — Rate limiting: защита API от флуда
+
+**Контекст:** Сейчас ограничена только частота запуска миграций (10/час per user_id, Redis).
+Все остальные эндпоинты — `/api/v1/`, OAuth, HTMX-поллинг — без ограничений.
+
+**Два уровня защиты:**
+
+**Уровень 1 — Nginx** (первый рубеж, только прод):
+- [ ] `nginx/nginx.conf` — `limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s`
+- [ ] `/api/v1/` — `limit_req zone=api burst=20 nodelay`
+- [ ] `/api/v1/auth/exchange` + `/api/v1/auth/refresh` — отдельная зона `2r/s` (брутфорс кодов)
+- [ ] 429 response с `Retry-After` заголовком
+
+**Уровень 2 — FastAPI middleware** (работает и без nginx, для dev):
+- [ ] Добавить `slowapi` в `requirements.txt`
+- [ ] `api/main.py` — `Limiter(key_func=get_remote_address)` + `SlowAPIMiddleware`
+- [ ] Декораторы `@limiter.limit("30/minute")` на тяжёлые эндпоинты: `GET /api/v1/migrations/{id}`, `GET /api/v1/migrations/{id}/tracks`
+- [ ] Декоратор `@limiter.limit("5/minute")` на `/api/v1/auth/exchange`, `/api/v1/auth/refresh`
+
+**Файлы:** `nginx/nginx.conf`, `api/main.py`, `requirements.txt`
+
+---
+
 ### MM-88 — Spotify: обход ограничений через бот-пользователя (плейлист-шаринг)
 
 **Цель**: обойти лимит 25 пользователей в dev-режиме Spotify — вместо лайка треков на аккаунте пользователя, создавать плейлист от имени бот-аккаунта и отдавать пользователю ссылку.

@@ -171,16 +171,17 @@ class SoundCloudClient:
         """Лайкает трек. Возвращает True при успехе. Ждёт при 429.
         Поднимает LikeNotSupportedError при 404 (токен не поддерживает прямые лайки)."""
         self._ensure_init()
-        url = f"/me/track_likes/{track_id}"
-        logger.debug(f"[sc] like track_id={track_id} → PUT {url}")
+        urn = f"soundcloud:tracks:{track_id}"
+        url = f"/likes/tracks/{urn}"
+        logger.debug(f"[sc] like track_id={track_id} → POST {url}")
         try:
-            await self._put(url)
+            await self._post(url)
             logger.debug(f"[sc] like track_id={track_id} → ok")
             return True
         except RateLimitError as e:
             await self._wait_rate_limit(e.reset_time)
             try:
-                await self._put(url)
+                await self._post(url)
                 logger.debug(f"[sc] like track_id={track_id} → ok (retry)")
                 return True
             except LikeNotSupportedError:

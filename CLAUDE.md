@@ -367,7 +367,7 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - Spotify dev mode: max 25 allowlisted users in Dashboard → Settings → User Management; Playwright automation planned as fallback (see PLAN.md)
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
-- SC write endpoints: `PUT /me/track_likes/{id}`, `POST /playlists`, `PUT /me/followings/{id}` — all correct; Authorization Code Flow grants write access without explicit scope declarations
+- SC write endpoints: `POST /likes/tracks/soundcloud:tracks:{id}`, `POST /playlists`, `PUT /me/followings/{id}` — Authorization Code Flow grants write access without explicit scope declarations
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
 - Web UI stepwise flow (MM-49): `GET /api/flow/to-step?from=X` → HTMX карточки TO; `GET /api/flow/rest?from=X&to=Y` → content types + auth status + settings; `_SERVICE_ICONS` dict в `api/routes/web.py` передаётся через `_render()` в каждый шаблон
 - `POST /migrate` читает `content_types[]` (multiple checkbox) через `request.form().getlist()`; вычисляет `mode=full|tracks` для совместимости с worker'ами
