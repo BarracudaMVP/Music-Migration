@@ -2463,6 +2463,29 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### 🔲 MM-96 — Фикс like_track → not-authenticated для →YM миграций
+
+**Баг:** При миграции в Яндекс Музыку `POST /users/{uid}/likes/tracks/add-multiple` возвращает 403 `{'name': 'not-authenticated', 'message': ''}`. `init()` проходит успешно (uid получен через Yandex ID API), но write-операция падает.
+
+**Исследовано и исключено:**
+- Прокси работает — `SocksProxyRequest._request_wrapper` создаёт `ProxyConnector` per-request для ВСЕХ запросов
+- Заголовок `Authorization: OAuth {token}` передаётся корректно (через `self.headers` → `Request.post` → kwargs)
+- Формат track_id правильный — `str(track.id)` (числовой ID); `user_id` передаётся явно
+
+**Причина:** В `bot/oauth/yandex.py` строка 17 документировано: `"Права: login:info + Яндекс.Музыка (все на чтение)"`. OAuth-приложение на `oauth.yandex.ru` настроено только с **read**-правами. Write-endpoint требует write-скоупа — отсюда 403.
+
+**Шаги фикса:**
+
+- [ ] На `oauth.yandex.ru` добавить write-право для Яндекс.Музыки в настройках приложения
+- [ ] Пользователь должен пройти re-auth (старый токен write-скоуп не получит ретроактивно)
+- [ ] Обновить комментарий в `bot/oauth/yandex.py:17` — убрать `(все на чтение)`, указать что нужны и read, и write права
+- [ ] `core/yandex/proxy_request.py:56` — логировать HTTP-статус отдельно: `UnauthorizedError(f"HTTP {resp.status}: {message}")`
+- [ ] `core/yandex/client.py:240` — отдельно ловить `UnauthorizedError` в `like_track` → WARNING с подсказкой про re-auth вместо generic ERROR
+
+**Файлы:** `core/yandex/client.py:240`, `core/yandex/proxy_request.py:56`, `bot/oauth/yandex.py:17`
+
+---
+
 ### 🔲 MM-95 — Яндекс Музыка: режим создания плейлиста
 
 **Контекст:** Миграция → YM сейчас только лайкает треки. Нет режима плейлиста (аналогично SC `playlist_mode`). Галочка "Проставить лайки" для YM скрыта в UI (MM-94) именно потому что второго режима нет.
@@ -2487,4 +2510,5 @@ Extended Quota Mode недоступен (требует регистрации 
 **Файлы:** `core/yandex/client.py`, `migration/to_yandex.py`, `worker/tasks.py`, `api/routes/web.py`, `api/templates/fragments/flow_rest.html`
 
 ---
+
 
