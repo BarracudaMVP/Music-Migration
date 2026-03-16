@@ -197,6 +197,8 @@ async def migrations_list(request: Request, status: str = "", user_id: str = "")
         {
             "id": m.id,
             "user_id": m.user_id,
+            "from_service": m.from_service or "",
+            "to_service": m.to_service or "",
             "status": m.status,
             "status_label": _STATUS_LABEL.get(m.status, m.status),
             "created_at": m.created_at,
@@ -251,7 +253,7 @@ async def migration_detail(request: Request, migration_id: int, track_status: st
             "tracks": tracks,
             "stats": stats,
             "filter_status": track_status,
-            "track_status_options": ["pending", "liked", "not_found", "error"],
+            "track_status_options": ["pending", "liked", "in_playlist", "not_found", "error"],
         },
     )
 

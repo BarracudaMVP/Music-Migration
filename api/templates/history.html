@@ -5,7 +5,7 @@
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_title') }}</h1>
   <a href="/"
-    class="inline-flex items-center gap-1 bg-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition font-medium">
+    class="inline-flex items-center gap-1.5 bg-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition font-medium">
     {{ t('history_new_btn') }}
   </a>
 </div>
@@ -20,9 +20,19 @@
         <span class="text-xs font-bold text-indigo-500">#{{ m.user_migration_number or m.id }}</span>
       </div>
       <div class="min-w-0">
-        <div class="text-sm font-medium text-gray-700 truncate">{{ t('history_transfer') }} #{{ m.user_migration_number or m.id }}</div>
-        <div class="text-xs text-gray-400">
-          {{ m.created_at.strftime('%d.%m.%Y %H:%M') if m.created_at else '' }}
+        <!-- From → To services -->
+        <div class="flex items-center gap-1.5 text-sm font-medium text-gray-700 truncate">
+          <span class="text-base leading-none">{{ service_icons.get(m.from_service, '') | safe }}</span>
+          <span class="text-gray-400 text-xs">→</span>
+          <span class="text-base leading-none">{{ service_icons.get(m.to_service, '') | safe }}</span>
+          <span class="text-gray-500 text-xs truncate">{{ m.from_name }} → {{ m.to_name }}</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+          <span>{{ m.created_at.strftime('%d.%m.%Y %H:%M') if m.created_at else '' }}</span>
+          {% if m.total_count > 0 %}
+          <span class="text-gray-300">·</span>
+          <span class="text-green-600 font-medium">{{ m.success_count }}/{{ m.total_count }}</span>
+          {% endif %}
         </div>
       </div>
     </div>

@@ -3,7 +3,20 @@
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl sm:text-2xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration.user_migration_number or migration_id }}</span></h1>
+  <div>
+    <h1 class="text-xl sm:text-2xl font-bold">
+      {{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration.user_migration_number or migration_id }}</span>
+    </h1>
+    {% if migration.from_service or migration.to_service %}
+    <div class="flex items-center gap-1.5 mt-1 text-sm text-gray-500">
+      <span class="text-base leading-none">{{ service_icons.get(migration.from_service or '', '') | safe }}</span>
+      <span>{{ t('svc_' ~ (migration.from_service or 'file')) }}</span>
+      <span class="text-gray-300">→</span>
+      <span class="text-base leading-none">{{ service_icons.get(migration.to_service or '', '') | safe }}</span>
+      <span>{{ t('svc_' ~ (migration.to_service or 'soundcloud')) }}</span>
+    </div>
+    {% endif %}
+  </div>
   <a href="/history" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('progress_back') }}</a>
 </div>
 

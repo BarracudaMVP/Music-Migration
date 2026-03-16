@@ -11,6 +11,14 @@
 <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex items-start justify-between gap-4">
   <div class="space-y-1 text-sm">
     <div><span class="text-gray-400">Пользователь:</span> <span class="font-mono">{{ migration.user_id }}</span></div>
+    {% if migration.from_service or migration.to_service %}
+    <div>
+      <span class="text-gray-400">Откуда → Куда:</span>
+      <span class="font-mono">{{ migration.from_service or '?' }}</span>
+      <span class="text-gray-400 mx-1">→</span>
+      <span class="font-mono">{{ migration.to_service or '?' }}</span>
+    </div>
+    {% endif %}
     <div><span class="text-gray-400">Статус:</span>
       <span class="font-medium {% if migration.status == 'done' %}text-green-600{% elif migration.status == 'failed' %}text-red-600{% elif migration.status == 'running' %}text-indigo-600{% else %}text-gray-500{% endif %}">
         {{ status_label }}
@@ -44,11 +52,23 @@
 {% if stats %}
 <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
   <h2 class="font-semibold mb-3 text-sm">Статистика треков</h2>
-  <div class="flex gap-6 text-sm">
+  <div class="flex gap-6 text-sm flex-wrap">
     {% for s, cnt in stats.items() %}
     <div>
-      <div class="text-2xl font-bold {% if s == 'liked' %}text-green-600{% elif s == 'not_found' %}text-orange-500{% elif s == 'error' %}text-red-500{% else %}text-gray-600{% endif %}">{{ cnt }}</div>
-      <div class="text-gray-400 capitalize">{{ s }}</div>
+      <div class="text-2xl font-bold
+        {% if s == 'liked' %}text-green-600
+        {% elif s == 'in_playlist' %}text-teal-600
+        {% elif s == 'not_found' %}text-orange-500
+        {% elif s == 'error' %}text-red-500
+        {% else %}text-gray-600{% endif %}">{{ cnt }}</div>
+      <div class="text-gray-400 capitalize text-xs mt-0.5">
+        {% if s == 'liked' %}Лайкнут
+        {% elif s == 'in_playlist' %}В плейлисте
+        {% elif s == 'not_found' %}Не найден
+        {% elif s == 'error' %}Ошибка
+        {% elif s == 'pending' %}В очереди
+        {% else %}{{ s }}{% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -56,11 +76,16 @@
 {% endif %}
 
 <!-- Track filter -->
-<form method="get" class="flex gap-2 mb-3">
+<form method="get" class="flex gap-2 mb-3 flex-wrap">
   {% for s in track_status_options %}
   <a href="?track_status={{ s }}"
     class="px-3 py-1 rounded-full text-xs border {% if filter_status == s %}bg-gray-800 text-white border-gray-800{% else %}border-gray-300 text-gray-600 hover:border-gray-500{% endif %}">
-    {{ s }}
+    {% if s == 'liked' %}Лайкнут
+    {% elif s == 'in_playlist' %}В плейлисте
+    {% elif s == 'not_found' %}Не найден
+    {% elif s == 'error' %}Ошибка
+    {% elif s == 'pending' %}В очереди
+    {% else %}{{ s }}{% endif %}
   </a>
   {% endfor %}
   {% if filter_status %}
@@ -79,8 +104,8 @@
         <th class="px-4 py-2">Исполнитель</th>
         <th class="px-4 py-2">Трек</th>
         <th class="px-4 py-2">Статус</th>
-        <th class="px-4 py-2">Score</th>
-        <th class="px-4 py-2">SC</th>
+        <th class="px-4 py-2">Точность</th>
+        <th class="px-4 py-2">Ссылка</th>
       </tr>
     </thead>
     <tbody>
@@ -89,8 +114,18 @@
         <td class="px-4 py-1.5 text-gray-700">{{ t.ym_artist }}</td>
         <td class="px-4 py-1.5">{{ t.ym_title }}</td>
         <td class="px-4 py-1.5">
-          <span class="{% if t.status == 'liked' %}text-green-600{% elif t.status == 'not_found' %}text-orange-500{% elif t.status == 'error' %}text-red-500{% else %}text-gray-400{% endif %} capitalize">
-            {{ t.status }}
+          <span class="text-xs
+            {% if t.status == 'liked' %}text-green-600
+            {% elif t.status == 'in_playlist' %}text-teal-600
+            {% elif t.status == 'not_found' %}text-orange-500
+            {% elif t.status == 'error' %}text-red-500
+            {% else %}text-gray-400{% endif %}">
+            {% if t.status == 'liked' %}Лайкнут
+            {% elif t.status == 'in_playlist' %}В плейлисте
+            {% elif t.status == 'not_found' %}Не найден
+            {% elif t.status == 'error' %}Ошибка
+            {% elif t.status == 'pending' %}В очереди
+            {% else %}{{ t.status }}{% endif %}
           </span>
         </td>
         <td class="px-4 py-1.5 font-mono text-xs text-gray-400">
@@ -98,7 +133,13 @@
         </td>
         <td class="px-4 py-1.5">
           {% if t.sc_url %}
-          <a href="{{ t.sc_url }}" target="_blank" class="text-indigo-600 hover:underline text-xs">↗</a>
+            {% if migration.to_service == 'spotify' %}
+            <a href="https://open.spotify.com/track/{{ t.sc_url }}" target="_blank" class="text-indigo-600 hover:underline text-xs">↗ Spotify</a>
+            {% elif migration.to_service == 'yandex_music' %}
+            <a href="https://music.yandex.ru/track/{{ t.sc_url }}" target="_blank" class="text-indigo-600 hover:underline text-xs">↗ YM</a>
+            {% else %}
+            <a href="{{ t.sc_url }}" target="_blank" class="text-indigo-600 hover:underline text-xs">↗ SC</a>
+            {% endif %}
           {% else %}—{% endif %}
         </td>
       </tr>

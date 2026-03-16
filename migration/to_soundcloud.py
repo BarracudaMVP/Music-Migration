@@ -47,16 +47,22 @@ from core.matcher import find_best_match, split_artists, TrackCandidate
 @dataclass
 class MigrationStats:
     total: int = 0
-    liked: int = 0
+    liked: int = 0          # напрямую лайкнуто через like_track API
+    in_playlist: int = 0    # добавлено в плейлист (playlist_mode или fallback)
     not_found: int = 0
     errors: int = 0
     uncertain: int = 0  # найдены, но score ниже порога — сохранены в not_found
     skipped: int = 0   # уже перенесены в предыдущих запусках — пропущены
 
+    @property
+    def success(self) -> int:
+        """Суммарно успешно перенесено (лайки + плейлист)."""
+        return self.liked + self.in_playlist
+
     def __str__(self) -> str:
         parts = (
             f"Всего: {self.total} | "
-            f"Перенесено: {self.liked} | "
+            f"Перенесено: {self.success} (лайков: {self.liked}, в плейлист: {self.in_playlist}) | "
             f"Не найдено: {self.not_found} | "
             f"Сомнительных: {self.uncertain} | "
             f"Ошибок: {self.errors}"
@@ -297,9 +303,12 @@ async def _run_pending_loop(
 
         if result == "liked":
             stats.liked += 1
-            if sc_id:  # collect for playlist (either playlist_mode or like_tracks fallback)
+            logger.debug(f"[{i}/{total}] OK (liked): {track_str}")
+        elif result == "in_playlist":
+            stats.in_playlist += 1
+            if sc_id:  # collect for playlist creation
                 collected_ids.append(sc_id)
-            logger.debug(f"[{i}/{total}] OK: {track_str}")
+            logger.debug(f"[{i}/{total}] OK (playlist): {track_str}")
         elif result == "uncertain":
             stats.uncertain += 1
             logger.debug(f"[{i}/{total}] uncertain: {track_str}")
@@ -402,6 +411,7 @@ async def _process_one_track(
         return "not_found", None
 
     if like_tracks:
+        # like_tracks=True → пробуем прямой лайк; при 404 — fallback в плейлист
         try:
             success = await sc_client.like_track(match.track_id)
             if success:
@@ -412,7 +422,7 @@ async def _process_one_track(
                     sc_url=match.track_url,
                     match_score=match.score,
                 )
-                return "liked", None
+                return "liked", None  # напрямую лайкнут, в плейлист не добавлять
             else:
                 await update_track(track_id, status="error")
                 return "error", None
@@ -420,23 +430,25 @@ async def _process_one_track(
             logger.info(f"[match] like_track 404 → fallback to playlist для {ym_artist} — {ym_title}")
             await update_track(
                 track_id,
-                status="liked",
+                status="in_playlist",
                 sc_id=match.track_id,
                 sc_url=match.track_url,
                 match_score=match.score,
             )
-            return "liked", match.track_id
+            return "in_playlist", match.track_id
 
     if playlist_mode:
+        # playlist_mode=True → только плейлист, лайк не вызывается
         await update_track(
             track_id,
-            status="liked",
+            status="in_playlist",
             sc_id=match.track_id,
             sc_url=match.track_url,
             match_score=match.score,
         )
-        return "liked", match.track_id
+        return "in_playlist", match.track_id
 
+    # Ни like_tracks ни playlist_mode — пробуем прямой лайк без плейлиста
     success = await sc_client.like_track(match.track_id)
     if success:
         await update_track(
@@ -446,7 +458,7 @@ async def _process_one_track(
             sc_url=match.track_url,
             match_score=match.score,
         )
-        return "liked", match.track_id
+        return "liked", None
     else:
         await update_track(track_id, status="error")
         return "error", None

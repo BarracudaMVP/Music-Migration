@@ -37,6 +37,7 @@
       <tr class="text-left text-gray-400 border-b bg-gray-50">
         <th class="px-4 py-2">ID</th>
         <th class="px-4 py-2">Пользователь</th>
+        <th class="px-4 py-2">Откуда → Куда</th>
         <th class="px-4 py-2">Статус</th>
         <th class="px-4 py-2">Создана</th>
         <th class="px-4 py-2"></th>
@@ -47,6 +48,13 @@
       <tr class="border-b border-gray-50 hover:bg-gray-50">
         <td class="px-4 py-2 font-mono">#{{ m.id }}</td>
         <td class="px-4 py-2 text-gray-500 text-xs">{{ m.user_id }}</td>
+        <td class="px-4 py-2 text-xs text-gray-600">
+          {% if m.from_service or m.to_service %}
+          <span class="font-mono">{{ m.from_service or '?' }}</span>
+          <span class="text-gray-300 mx-1">→</span>
+          <span class="font-mono">{{ m.to_service or '?' }}</span>
+          {% else %}—{% endif %}
+        </td>
         <td class="px-4 py-2">
           <span class="{% if m.status == 'done' %}text-green-600{% elif m.status == 'failed' %}text-red-600{% elif m.status == 'running' %}text-indigo-600 font-medium{% else %}text-gray-400{% endif %}">
             {{ m.status_label }}

@@ -79,7 +79,8 @@ async def get_migration(migration_id: int) -> dict | None:
 
 async def get_previously_migrated_ym_ids(user_id: str, to_service: str) -> set[str]:
     """Возвращает ym_id треков, уже успешно перенесённых этим пользователем в to_service.
-    Для soundcloud также включает старые миграции, где to_service IS NULL (до MM-55)."""
+    Для soundcloud также включает старые миграции, где to_service IS NULL (до MM-55).
+    Учитывает статусы 'liked' (прямой лайк) и 'in_playlist' (добавлен в плейлист)."""
     async with AsyncSessionLocal() as session:
         to_service_filter = Migration.to_service == to_service
         # Обратная совместимость: старые SC-миграции хранили NULL в to_service
@@ -91,7 +92,7 @@ async def get_previously_migrated_ym_ids(user_id: str, to_service: str) -> set[s
             .where(
                 Migration.user_id == user_id,
                 to_service_filter,
-                Track.status == "liked",
+                Track.status.in_(["liked", "in_playlist"]),
             )
         )
         return {row for row in result.scalars()}
@@ -189,14 +190,33 @@ async def get_tracks_page(
 
 
 async def get_liked_sc_tracks(migration_id: int) -> dict[str, int]:
-    """Возвращает {ym_id: sc_id} для уже перенесённых треков."""
+    """Возвращает {ym_id: sc_id} для уже перенесённых треков (статусы liked и in_playlist)."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Track.ym_id, Track.sc_id).where(
-                Track.migration_id == migration_id, Track.status == "liked"
+                Track.migration_id == migration_id,
+                Track.status.in_(["liked", "in_playlist"]),
             )
         )
         return {row.ym_id: row.sc_id for row in result}
+
+
+async def get_track_stats_batch(migration_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Возвращает {migration_id: {status: count}} для списка миграций (один SQL-запрос)."""
+    if not migration_ids:
+        return {}
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Track.migration_id, Track.status, func.count().label("cnt"))
+            .where(Track.migration_id.in_(migration_ids))
+            .group_by(Track.migration_id, Track.status)
+        )
+        stats: dict[int, dict[str, int]] = {}
+        for row in result:
+            if row.migration_id not in stats:
+                stats[row.migration_id] = {}
+            stats[row.migration_id][row.status] = row.cnt
+        return stats
 
 
 # ---------------------------------------------------------------------------

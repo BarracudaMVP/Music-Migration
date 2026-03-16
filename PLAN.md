@@ -2364,6 +2364,37 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-92 — Web UI: статусы треков, история, инлайн список, переименования
+
+**Цель:** улучшить отображение информации о миграции и треках в веб-интерфейсе.
+
+**Что сделано:**
+
+- [x] Новый статус `in_playlist` — трек добавлен в плейлист (не лайкнут напрямую). Раньше `playlist_mode` ставил `status="liked"`, теперь — `status="in_playlist"`. Режимы взаимоисключающие.
+- [x] `MigrationStats.in_playlist` + `.success` property = `liked + in_playlist`
+- [x] `get_track_stats_batch()` в `core/db/crud.py` — один SQL-запрос для статистики N миграций (история, без N+1)
+- [x] История (`/history`) — иконки + имена сервисов from/to, `success_count/total_count`, кнопка "Новый перенос"
+- [x] Страница миграции (`/migrate/{id}`) — убрана кнопка "Подробный отчёт"; инлайн список треков при завершении через HTMX sub-fragment (`/migrate/{id}/tracks-fragment`)
+- [x] Новый шаблон `fragments/tracks_table.html` — фильтр табов + таблица + пагинация (50/страница), HTMX-навигация
+- [x] `/migrate/{id}/result` → 301 редирект на `/migrate/{id}`
+- [x] "Score" → "Точность" / "SC" → "Ссылка" во всех шаблонах
+- [x] Ссылки на треки — по типу сервиса назначения: Spotify → open.spotify.com/track/{id}, YM → music.yandex.ru/track/{id}, SC → полный URL
+- [x] Прогресс (`progress.html`) — показывает from/to сервис
+- [x] Тесты: обновлены + 5 новых (stats, in_playlist статусы, batch stats в DB)
+
+**Файлы изменены:**
+- `migration/to_soundcloud.py` — `MigrationStats.in_playlist`, `_process_one_track` возвращает `in_playlist`
+- `core/db/crud.py` — `get_track_stats_batch`, `get_previously_migrated_ym_ids` учитывает `in_playlist`
+- `core/db/__init__.py` — экспорт `get_track_stats_batch`
+- `core/i18n.py` — `tstatus_in_playlist`, `history_new_btn`, `tracks_col_score`, `tracks_col_sc`, `history_success_count`
+- `api/routes/web.py` — `/tracks-fragment` эндпоинт, история со статистикой
+- `api/templates/history.html`, `progress.html`, `fragments/status.html`, `tracks.html`
+- `api/templates/fragments/tracks_table.html` (новый)
+- `api/templates/admin/migrations.html`, `admin/migration_detail.html`
+- `tests/test_pipeline.py`, `tests/test_db_integration.py`
+
+---
+
 ### MM-88 — Spotify: обход ограничений через бот-пользователя (плейлист-шаринг)
 
 **Цель**: обойти лимит 25 пользователей в dev-режиме Spotify — вместо лайка треков на аккаунте пользователя, создавать плейлист от имени бот-аккаунта и отдавать пользователю ссылку.

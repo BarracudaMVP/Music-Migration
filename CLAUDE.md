@@ -337,7 +337,7 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - All I/O is async (SQLAlchemy 2.x async, aiohttp, aiogram)
 - YM API calls batch by 150 tracks (`_BATCH_SIZE`)
 - SoundCloud rate limiting: no proactive sleep (like Spotify pattern); 429 backoff in `like_track`/`follow_user`. Official OAuth has no documented aggregate rate limit (only 15k/24h for `/tracks/:id/stream` which we don't use)
-- Migration is resumable: DB tracks `pending/liked/not_found/error` per track
+- Migration is resumable: DB tracks `pending/liked/in_playlist/not_found/error` per track. `liked` = directly liked; `in_playlist` = added to SC playlist (not directly liked). Modes are mutually exclusive. `MigrationStats.success = liked + in_playlist`
 - `YandexMusicClient._uid` may be None for some OAuth tokens → API calls omit `user_id` param
 - SQLAlchemy `_dialect_insert()` uses PostgreSQL insert in production; SQLite fallback only for in-memory test fixtures
 - Schema managed by `alembic upgrade head` (runs in entrypoint.sh); `init_db()` removed
@@ -366,13 +366,16 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - `transliterate_variants(artist)` used in `to_spotify._process_one_track` to add Latin search queries for Cyrillic artist names (e.g. Баста → Basta)
 - Spotify dev mode: max 25 allowlisted users in Dashboard → Settings → User Management; Playwright automation planned as fallback (see PLAN.md)
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
-- `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); `like_track` is implemented but bypassed in playlist_mode (was 404 due to Datadome cookie tokens; with OAuth should work but untested)
+- `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); sets `status="in_playlist"`. `like_tracks=True` sets `status="liked"` (direct like); on `LikeNotSupportedError` falls back to `status="in_playlist"`
 - SC write endpoints: `POST /likes/tracks/soundcloud:tracks:{id}`, `POST /playlists`, `PUT /me/followings/{id}` — Authorization Code Flow grants write access without explicit scope declarations
 - `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
 - Web UI stepwise flow (MM-49): `GET /api/flow/to-step?from=X` → HTMX карточки TO; `GET /api/flow/rest?from=X&to=Y` → content types + auth status + settings; `_SERVICE_ICONS` dict в `api/routes/web.py` передаётся через `_render()` в каждый шаблон
 - `POST /migrate` читает `content_types[]` (multiple checkbox) через `request.form().getlist()`; вычисляет `mode=full|tracks` для совместимости с worker'ами
 - OAuth callbacks (web.py/Jinja2 flow) сохраняют `auth_flow_from`/`auth_flow_to` в session; редиректят на `/?pf=...&pt=...` для восстановления флоу
 - `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
+- `get_track_stats_batch(migration_ids)` в `core/db/crud.py` — один GROUP BY запрос для статистики N миграций (история без N+1); возвращает `dict[int, dict[str, int]]`
+- `GET /migrate/{id}/tracks-fragment` — HTMX sub-fragment: фильтр-табы + таблица треков + пагинация (50/стр); загружается инлайн при завершении миграции через `hx-trigger="load"` в `fragments/status.html`; `fragments/tracks_table.html` — шаблон фрагмента
+- `/migrate/{id}/result` → 301 редирект на `/migrate/{id}` (endpoint удалён как отдельная страница)
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
 - File import/export unified in main flow (MM-67): `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
 - `FileAdapter.id = "file"` (MM-69, ранее `"file_csv"`); i18n ключ `svc_file`; alembic миграция `i9j0k1l2m3n4` обновляет старые записи в БД

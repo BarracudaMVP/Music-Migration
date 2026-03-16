@@ -110,7 +110,8 @@ _S: dict[str, dict[str, str]] = {
     "status_not_found":   {"ru": "Не найдено",          "en": "Not found"},
     "status_errors":      {"ru": "Ошибок",              "en": "Errors"},
     "status_in_queue":    {"ru": "В очереди",           "en": "In queue"},
-    "status_report_btn":  {"ru": "Подробный отчёт",     "en": "Detailed report"},
+    "status_report_btn":  {"ru": "Подробный отчёт",     "en": "Detailed report"},  # deprecated — kept for compat
+
     "status_csv_btn":     {"ru": "Скачать CSV",         "en": "Download CSV"},
     "status_progress":      {"ru": "Добавлено",   "en": "Added"},
     "status_current_track": {"ru": "Сейчас",      "en": "Now"},
@@ -123,10 +124,11 @@ _S: dict[str, dict[str, str]] = {
     "mstatus_cancelled": {"ru": "Отменён",      "en": "Cancelled"},
 
     # Track status labels
-    "tstatus_liked":     {"ru": "Добавлено",    "en": "Added"},
-    "tstatus_not_found": {"ru": "Не найдено",   "en": "Not found"},
-    "tstatus_error":     {"ru": "Ошибка",       "en": "Error"},
-    "tstatus_pending":   {"ru": "В очереди",    "en": "Queued"},
+    "tstatus_liked":       {"ru": "Лайкнут",       "en": "Liked"},
+    "tstatus_in_playlist": {"ru": "В плейлисте",   "en": "In playlist"},
+    "tstatus_not_found":   {"ru": "Не найдено",    "en": "Not found"},
+    "tstatus_error":       {"ru": "Ошибка",        "en": "Error"},
+    "tstatus_pending":     {"ru": "В очереди",     "en": "Queued"},
 
     # ------------------------------------------------------------------ #
     # Result
@@ -144,10 +146,11 @@ _S: dict[str, dict[str, str]] = {
     # History
     # ------------------------------------------------------------------ #
     "history_title":    {"ru": "История переносов",    "en": "Transfer history"},
-    "history_new_btn":  {"ru": "+ Новый",              "en": "+ New"},
+    "history_new_btn":  {"ru": "Новый перенос",        "en": "New transfer"},
     "history_empty":    {"ru": "Переносов пока нет.",  "en": "No transfers yet."},
     "history_start":    {"ru": "Начать первый",        "en": "Start your first"},
     "history_transfer": {"ru": "Перенос",              "en": "Transfer"},
+    "history_success_count": {"ru": "Успешно",         "en": "Success"},
 
     # ------------------------------------------------------------------ #
     # Tracks list
@@ -161,8 +164,8 @@ _S: dict[str, dict[str, str]] = {
     "tracks_col_artist":  {"ru": "Исполнитель",    "en": "Artist"},
     "tracks_col_title":   {"ru": "Название",       "en": "Title"},
     "tracks_col_status":  {"ru": "Статус",         "en": "Status"},
-    "tracks_col_score":   {"ru": "Score",          "en": "Score"},
-    "tracks_col_sc":      {"ru": "SC",             "en": "SC"},
+    "tracks_col_score":   {"ru": "Точность",        "en": "Accuracy"},
+    "tracks_col_sc":      {"ru": "Ссылка",         "en": "Link"},
     "tracks_empty":       {"ru": "Треков не найдено.", "en": "No tracks found."},
     "tracks_page_of":     {"ru": "стр.",           "en": "p."},
     "tracks_of":          {"ru": "из",             "en": "of"},

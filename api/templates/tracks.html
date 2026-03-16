@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}{{ t('history_transfer') }} #{{ migration_id }} — {{ t('result_tracks_btn') }}{% endblock %}
+{% block title %}{{ t('history_transfer') }} #{{ migration_id }} — {{ t('tracks_col_title') }}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-5">
-  <h1 class="text-xl font-bold">{{ t('result_tracks_btn') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
-  <a href="/migrate/{{ migration_id }}/result" class="text-sm text-gray-400 hover:text-indigo-600 transition">{{ t('tracks_back') }}</a>
+  <h1 class="text-xl font-bold">{{ t('history_transfer') }} <span class="text-indigo-600">#{{ migration_id }}</span></h1>
+  <a href="/migrate/{{ migration_id }}" class="text-sm text-gray-400 hover:text-indigo-600 transition">← {{ t('history_transfer') }}</a>
 </div>
 
 <!-- Stats bar -->
@@ -14,6 +14,7 @@
   <div class="bg-white rounded-xl border border-gray-200 px-4 py-3 text-center shadow-sm">
     <div class="text-xl font-bold
       {% if s == 'liked' %}text-green-600
+      {% elif s == 'in_playlist' %}text-teal-600
       {% elif s == 'not_found' %}text-orange-500
       {% elif s == 'error' %}text-red-500
       {% else %}text-gray-400{% endif %}">{{ cnt }}</div>
@@ -30,7 +31,7 @@
       {% if not status_filter %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
     {{ t('tracks_filter_all') }}
   </a>
-  {% for s, key in [('liked','tracks_liked'), ('not_found','tracks_not_found'), ('error','tracks_errors'), ('pending','tracks_pending')] %}
+  {% for s, key in [('liked','tracks_liked'), ('in_playlist','tstatus_in_playlist'), ('not_found','tracks_not_found'), ('error','tracks_errors'), ('pending','tracks_pending')] %}
   <a href="?status={{ s }}&page=1"
     class="px-3 py-1.5 rounded-full text-xs font-medium border transition
       {% if status_filter == s %}bg-gray-900 text-white border-gray-900{% else %}border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700{% endif %}">
@@ -61,6 +62,7 @@
           <td class="px-4 py-2 whitespace-nowrap">
             <span class="text-xs px-2 py-0.5 rounded-full font-medium
               {% if t_row.status == 'liked' %}bg-green-50 text-green-700
+              {% elif t_row.status == 'in_playlist' %}bg-teal-50 text-teal-700
               {% elif t_row.status == 'not_found' %}bg-orange-50 text-orange-700
               {% elif t_row.status == 'error' %}bg-red-50 text-red-700
               {% else %}bg-gray-100 text-gray-500{% endif %}">
@@ -72,8 +74,16 @@
           </td>
           <td class="px-4 py-2 text-center">
             {% if t_row.sc_url %}
-            <a href="{{ t_row.sc_url }}" target="_blank" rel="noopener"
-              class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
+              {% if to_service == 'spotify' %}
+              <a href="https://open.spotify.com/track/{{ t_row.sc_url }}" target="_blank" rel="noopener"
+                class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
+              {% elif to_service == 'yandex_music' %}
+              <a href="https://music.yandex.ru/track/{{ t_row.sc_url }}" target="_blank" rel="noopener"
+                class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
+              {% else %}
+              <a href="{{ t_row.sc_url }}" target="_blank" rel="noopener"
+                class="text-indigo-500 hover:text-indigo-700 text-xs">↗</a>
+              {% endif %}
             {% else %}<span class="text-gray-300">—</span>{% endif %}
           </td>
         </tr>

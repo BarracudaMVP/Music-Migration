@@ -55,28 +55,33 @@
   <div class="px-6 py-5">
     {% set total = stats.values() | sum %}
     {% set liked = stats.get('liked', 0) %}
+    {% set in_playlist = stats.get('in_playlist', 0) %}
+    {% set success = liked + in_playlist %}
     {% set not_found = stats.get('not_found', 0) %}
     {% set error = stats.get('error', 0) %}
     {% set pending = stats.get('pending', 0) %}
 
-    {% if total > 0 and liked > 0 and not polling %}
+    {% if total > 0 and success > 0 and not polling %}
     <!-- Progress bar (completed) -->
     <div class="mb-4">
       <div class="flex justify-between text-xs text-gray-400 mb-1">
         <span>{{ t('status_progress') }}</span>
-        <span>{{ liked }} / {{ total }}</span>
+        <span>{{ success }} / {{ total }}</span>
       </div>
       <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
         <div class="h-full bg-green-500 rounded-full transition-all duration-500"
-          style="width: {{ ((liked / total) * 100) | round | int }}%"></div>
+          style="width: {{ ((success / total) * 100) | round | int }}%"></div>
       </div>
     </div>
     {% endif %}
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div class="bg-green-50 rounded-xl p-3 text-center">
-        <div class="text-2xl font-bold text-green-600">{{ liked }}</div>
+        <div class="text-2xl font-bold text-green-600">{{ success }}</div>
         <div class="text-xs text-green-700 mt-0.5">{{ t('status_transferred') }}</div>
+        {% if liked > 0 and in_playlist > 0 %}
+        <div class="text-xs text-green-500 mt-0.5">♥ {{ liked }} / ♫ {{ in_playlist }}</div>
+        {% endif %}
       </div>
       <div class="bg-orange-50 rounded-xl p-3 text-center">
         <div class="text-2xl font-bold text-orange-500">{{ not_found }}</div>
@@ -96,18 +101,34 @@
   <div class="px-6 py-8 text-center text-sm text-gray-400">{{ t('status_waiting') }}</div>
   {% endif %}
 
-  <!-- Actions (shown when done) -->
+  <!-- Actions (CSV export when done) -->
   {% if done %}
-  <div class="px-6 pb-5 flex flex-wrap gap-2">
-    <a href="/migrate/{{ migration_id }}/result"
-      class="flex-1 min-w-[120px] text-center bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
-      {{ t('status_report_btn') }}
-    </a>
+  <div class="px-6 pb-4 flex flex-wrap gap-2 border-t border-gray-50 pt-4">
     <a href="/migrate/{{ migration_id }}/export?fmt=csv"
-      class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2.5 rounded-xl hover:bg-gray-200 text-sm transition">
+      class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2 rounded-xl hover:bg-gray-200 text-sm transition">
       {{ t('status_csv_btn') }}
+    </a>
+    <a href="/migrate/{{ migration_id }}/export?fmt=json"
+      class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2 rounded-xl hover:bg-gray-200 text-sm transition">
+      JSON
+    </a>
+    <a href="/"
+      class="flex-1 min-w-[120px] text-center bg-indigo-600 text-white py-2 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
+      {{ t('result_new_btn') }}
     </a>
   </div>
   {% endif %}
 
 </div>
+
+<!-- Inline track list (loaded after migration completes) -->
+{% if done %}
+<div class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+  <div id="tracks-section"
+    hx-get="/migrate/{{ migration_id }}/tracks-fragment"
+    hx-trigger="load"
+    hx-swap="innerHTML">
+    <div class="px-6 py-6 text-center text-sm text-gray-400">{{ t('progress_loading') }}</div>
+  </div>
+</div>
+{% endif %}

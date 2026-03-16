@@ -16,6 +16,7 @@ from core.db import (
     create_migration,
     get_migration,
     get_track_stats,
+    get_track_stats_batch,
     get_tracks_page,
     load_user_session,
     save_user_session,
@@ -511,29 +512,21 @@ async def migration_status_fragment(request: Request, migration_id: int):
 
 @router.get("/migrate/{migration_id}/result", response_class=HTMLResponse)
 async def migration_result(request: Request, migration_id: int):
-    migration = await get_migration(migration_id)
-    if migration is None:
-        return RedirectResponse("/", status_code=303)
-    stats = await get_track_stats(migration_id)
-    lang = get_lang(request)
-    status_label = _status_label(migration["status"], lang)
-    return _render("result.html", request, {
-        "migration_id": migration_id,
-        "migration": migration,
-        "status_label": status_label,
-        "stats": stats,
-    })
+    # Deprecated — redirect to migration progress page which now shows results inline
+    return RedirectResponse(f"/migrate/{migration_id}", status_code=301)
 
 
 _PER_PAGE = 50
 _TRACK_STATUS_LABEL_RU = {
-    "liked": "Добавлен",
+    "liked": "Лайкнут",
+    "in_playlist": "В плейлисте",
     "not_found": "Не найден",
     "error": "Ошибка",
     "pending": "В очереди",
 }
 _TRACK_STATUS_LABEL_EN = {
-    "liked": "Added",
+    "liked": "Liked",
+    "in_playlist": "In playlist",
     "not_found": "Not found",
     "error": "Error",
     "pending": "Queued",
@@ -565,6 +558,7 @@ async def migration_tracks(
     total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
     lang = get_lang(request)
     track_label_map = _TRACK_STATUS_LABEL_EN if lang == "en" else _TRACK_STATUS_LABEL_RU
+    to_service = migration.get("to_service") or ""
     return _render("tracks.html", request, {
         "migration_id": migration_id,
         "migration": migration,
@@ -575,6 +569,47 @@ async def migration_tracks(
         "page": page,
         "total_pages": total_pages,
         "total": total,
+        "to_service": to_service,
+    })
+
+
+@router.get("/migrate/{migration_id}/tracks-fragment", response_class=HTMLResponse)
+async def migration_tracks_fragment(
+    request: Request,
+    migration_id: int,
+    status: str = "",
+    page: int = 1,
+):
+    """HTMX fragment — inline track table on migration page when done."""
+    migration = await get_migration(migration_id)
+    if migration is None:
+        return HTMLResponse("")
+    user_id = _session_user_id(request)
+    if user_id and migration.get("user_id") and migration["user_id"] != user_id:
+        return HTMLResponse("", status_code=403)
+
+    page = max(1, page)
+    tracks, total = await get_tracks_page(
+        migration_id,
+        status=status or None,
+        page=page,
+        per_page=_PER_PAGE,
+    )
+    stats = await get_track_stats(migration_id)
+    total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+    lang = get_lang(request)
+    track_label_map = _TRACK_STATUS_LABEL_EN if lang == "en" else _TRACK_STATUS_LABEL_RU
+    to_service = migration.get("to_service") or ""
+    return _render("fragments/tracks_table.html", request, {
+        "migration_id": migration_id,
+        "tracks": tracks,
+        "stats": stats,
+        "status_filter": status,
+        "status_label_map": track_label_map,
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+        "to_service": to_service,
     })
 
 
@@ -623,16 +658,27 @@ async def history(request: Request):
         rows = result.scalars().all()
 
     lang = get_lang(request)
-    migrations = [
-        {
+    migration_ids = [m.id for m in rows]
+    batch_stats = await get_track_stats_batch(migration_ids)
+
+    migrations = []
+    for m in rows:
+        s = batch_stats.get(m.id, {})
+        success = s.get("liked", 0) + s.get("in_playlist", 0)
+        total = sum(s.values())
+        migrations.append({
             "id": m.id,
             "user_migration_number": m.user_migration_number,
+            "from_service": m.from_service or "",
+            "to_service": m.to_service or "",
+            "from_name": _svc_name(m.from_service or "file", lang),
+            "to_name": _svc_name(m.to_service or "soundcloud", lang),
             "status": m.status,
             "status_label": _status_label(m.status, lang),
             "created_at": m.created_at,
-        }
-        for m in rows
-    ]
+            "success_count": success,
+            "total_count": total,
+        })
     return _render("history.html", request, {
         "migrations": migrations,
         "has_migrations": bool(rows),
