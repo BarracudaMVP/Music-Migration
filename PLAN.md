@@ -2463,3 +2463,28 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### 🔲 MM-95 — Яндекс Музыка: режим создания плейлиста
+
+**Контекст:** Миграция → YM сейчас только лайкает треки. Нет режима плейлиста (аналогично SC `playlist_mode`). Галочка "Проставить лайки" для YM скрыта в UI (MM-94) именно потому что второго режима нет.
+
+**Цель:** Дать выбор: лайкать треки ИЛИ создать плейлист с найденными треками.
+
+**YM API:**
+- `POST /users/{uid}/playlists` — создание плейлиста (title, visibility)
+- `POST /users/{uid}/playlists/{kind}/change-relative` — добавление треков (revision + diff с insert)
+
+**Что сделать:**
+
+- [ ] `core/yandex/client.py` — `create_playlist(title)` → kind; `add_tracks_to_playlist(kind, track_ids)`
+- [ ] `migration/to_yandex.py` — `playlist_mode: bool` в `migrate_to_yandex` + `_run_pending_loop`:
+  - `playlist_mode=False` (default): лайки → `status=liked`
+  - `playlist_mode=True`: собирает track_ids → создаёт плейлист в конце → `status=in_playlist`
+- [ ] `worker/tasks.py` — `run_yandex_migration_job` принимает `like_tracks: bool = True`; передаёт `playlist_mode=not like_tracks`
+- [ ] `api/routes/web.py` — передавать `like_tracks=like` в `run_yandex_migration_job`
+- [ ] `api/templates/fragments/flow_rest.html` — показывать чекбокс для `to_service == 'yandex_music'`
+- [ ] Тесты: `playlist_mode`, батчинг `add_tracks_to_playlist`
+
+**Файлы:** `core/yandex/client.py`, `migration/to_yandex.py`, `worker/tasks.py`, `api/routes/web.py`, `api/templates/fragments/flow_rest.html`
+
+---
+

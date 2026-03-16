@@ -38,7 +38,7 @@ _S: dict[str, dict[str, str]] = {
     "index_skip_migrated":      {"ru": "Пропустить уже перенесённые треки", "en": "Skip already transferred tracks"},
     "index_skip_migrated_hint": {"ru": "Треки из предыдущих переносов в этот сервис не будут обработаны повторно", "en": "Tracks from previous transfers to this service will not be processed again"},
     "index_like_tracks":        {"ru": "Проставить лайки на треки", "en": "Like tracks directly"},
-    "index_like_tracks_hint":   {"ru": "Попробует лайкнуть каждый трек напрямую; при отказе сервиса автоматически добавит в плейлист", "en": "Tries to like each track directly; if not supported, automatically falls back to playlist"},
+    "index_like_tracks_hint":   {"ru": "Лайкнет каждый трек напрямую и добавит в плейлист. По умолчанию — только плейлист", "en": "Likes each track directly and also adds to playlist. Default — playlist only"},
 
     # Stepwise flow (MM-49)
     "step_from":            {"ru": "Откуда",                   "en": "From"},
