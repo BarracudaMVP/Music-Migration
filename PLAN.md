@@ -2341,6 +2341,44 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-93 — Валидация токенов перед запуском миграции
+
+**Проблема:** при невалидном Spotify/YM/SC токене воркер падал с `ValueError` уже после постановки задачи в очередь — пользователь видел статус "ошибка" без понятного объяснения и кнопки переавторизации.
+
+**Что сделано:**
+
+- [x] `core/db/crud.py` — `clear_service_token(user_id, service)`: обнуляет токен + refresh_token в БД для сервиса
+- [x] `api/routes/web.py` — `_validate_service_token(service, token)` + `_SESSION_FLAG` dict + `_check_token(service, pf, pt)` closure в handler:
+  - Spotify: `SpotifyClient(token).init()` → 401 = невалидный
+  - YM: `YandexMusicClient(token).init()` → auth failure
+  - SC: прямой HTTP GET `/me` → 401 = невалидный (403 — ожидаемо для неодобренных приложений)
+- [x] При ошибке: `clear_service_token`, удаление session флага, редирект `/?error=...&pf={from}&pt={to}` (восстанавливает флоу + показывает кнопку авторизации)
+- [x] Вызов во всех 3 кейсах `start_migrate` (export/import/normal) перед enqueue
+- [x] Тесты: `test_clear_service_token_spotify/yandex/unknown_service`
+
+**Файлы:** `core/db/crud.py`, `core/db/__init__.py`, `api/routes/web.py`, `tests/test_db_integration.py`
+
+---
+
+### ✅ MM-94 — SC like_tracks: трек добавляется и в плейлист тоже
+
+**Проблема:** при включённой галочке "Лайкнуть треки" (like_tracks=True) плейлист НЕ создавался — трек только лайкался напрямую. Плейлист должен создаваться всегда.
+
+**Причина:** в `_process_one_track` при успешном лайке возвращалось `("liked", None)` — `None` вместо `match.track_id` означало что sc_id не попадал в `collected_ids` → плейлист для трека не создавался.
+
+**Что исправлено:**
+- [x] `migration/to_soundcloud.py` — `_process_one_track`: `return "liked", None` → `return "liked", match.track_id`
+- [x] `migration/to_soundcloud.py` — `_run_pending_loop`: для `result == "liked"` добавлен `if sc_id: collected_ids.append(sc_id)`
+- [x] `tests/test_pipeline.py` — `test_process_track_like_tracks_success`: обновлён assert `sc_id == 55` (было `is None`)
+
+**Итоговое поведение:**
+- `like_tracks=False` + `playlist_mode=True`: только плейлист → `status=in_playlist`
+- `like_tracks=True`: прямой лайк → `status=liked` + sc_id идёт в `collected_ids` → плейлист тоже создаётся
+
+**Файлы:** `migration/to_soundcloud.py`, `tests/test_pipeline.py`
+
+---
+
 ### 🔲 MM-91 — Rate limiting: защита API от флуда
 
 **Контекст:** Сейчас ограничена только частота запуска миграций (10/час per user_id, Redis).

@@ -303,6 +303,8 @@ async def _run_pending_loop(
 
         if result == "liked":
             stats.liked += 1
+            if sc_id:  # liked tracks also go into the playlist
+                collected_ids.append(sc_id)
             logger.debug(f"[{i}/{total}] OK (liked): {track_str}")
         elif result == "in_playlist":
             stats.in_playlist += 1
@@ -422,7 +424,7 @@ async def _process_one_track(
                     sc_url=match.track_url,
                     match_score=match.score,
                 )
-                return "liked", None  # напрямую лайкнут, в плейлист не добавлять
+                return "liked", match.track_id  # лайкнут + добавить в плейлист
             else:
                 await update_track(track_id, status="error")
                 return "error", None

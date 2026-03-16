@@ -265,3 +265,41 @@ async def test_get_track_stats_batch_empty(db):
     from core.db.crud import get_track_stats_batch
     result = await get_track_stats_batch([])
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# MM-93: clear_service_token
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_clear_service_token_spotify(db):
+    from core.db.crud import save_spotify_token, load_user_session, clear_service_token
+
+    await save_spotify_token("u_clr", "tok123", refresh_token="ref456")
+    session = await load_user_session("u_clr")
+    assert session["spotify_token"] == "tok123"
+
+    await clear_service_token("u_clr", "spotify")
+    session = await load_user_session("u_clr")
+    assert not session["spotify_token"]
+    assert session["spotify_refresh_token"] is None
+
+
+@pytest.mark.asyncio
+async def test_clear_service_token_yandex(db):
+    from core.db.crud import save_yandex_token, load_user_session, clear_service_token
+
+    await save_yandex_token("u_ym", "ym_tok")
+    session = await load_user_session("u_ym")
+    assert session["yandex_token"] == "ym_tok"
+
+    await clear_service_token("u_ym", "yandex_music")
+    session = await load_user_session("u_ym")
+    assert not session["yandex_token"]
+
+
+@pytest.mark.asyncio
+async def test_clear_service_token_unknown_service(db):
+    """Unknown service should be a no-op (not raise)."""
+    from core.db.crud import clear_service_token
+    await clear_service_token("u_x", "unknown_service")  # must not raise

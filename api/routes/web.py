@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from api.routes.oauth import _ensure_user_id, _session_user_id
 from core.db import (
+    clear_service_token,
     create_migration,
     get_migration,
     get_track_stats,
@@ -239,9 +240,53 @@ async def flow_rest(
 
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 # Migration
 # ---------------------------------------------------------------------------
+
+_SESSION_FLAG: dict[str, str] = {
+    "yandex_music": "ym_connected",
+    "soundcloud": "sc_connected",
+    "spotify": "spotify_connected",
+}
+
+
+async def _validate_service_token(service: str, token: str) -> str | None:
+    """Quick token validation against the live API.
+    Returns a human-readable error string, or None if OK.
+    """
+    if not token or service == "file":
+        return None
+    from config import settings as _cfg
+
+    if service == "spotify":
+        try:
+            from core.spotify.client import SpotifyClient
+            client = await SpotifyClient(token).init()
+            await client.close()
+        except ValueError as e:
+            return str(e)
+
+    elif service == "yandex_music":
+        try:
+            from core.yandex.client import YandexMusicClient
+            await YandexMusicClient(token, proxy_url=_cfg.ym_proxy_url or None).init()
+        except ValueError as e:
+            return str(e)
+
+    elif service == "soundcloud":
+        # SC init() swallows /me errors; we do a lightweight 401 check manually
+        try:
+            import aiohttp
+            auth = token if token.startswith("OAuth ") else f"OAuth {token}"
+            async with aiohttp.ClientSession(headers={"Authorization": auth}) as _s:
+                async with _s.get("https://api.soundcloud.com/me") as resp:
+                    if resp.status == 401:
+                        return "Невалидный SoundCloud токен"
+        except Exception:
+            pass  # network error — don't block the migration
+
+    return None
+
 
 @router.post("/migrate")
 async def start_migrate(
@@ -289,6 +334,16 @@ async def start_migrate(
     spotify_token = db_session.get("spotify_token") or ""
     spotify_refresh_token = db_session.get("spotify_refresh_token")
 
+    # Токен для сервиса
+    def _token_for(service: str) -> str:
+        if service == "yandex_music":
+            return ym_token
+        if service == "soundcloud":
+            return sc_token
+        if service == "spotify":
+            return spotify_token
+        return ""
+
     # Проверяем наличие нужных токенов
     def _missing_token(service: str) -> str | None:
         if service == "file":
@@ -301,11 +356,29 @@ async def start_migrate(
             return "Сначала подключи Spotify"
         return None
 
+    async def _check_token(service: str, pf: str, pt: str) -> RedirectResponse | None:
+        """Validate live token. On failure — clear from DB/session, return redirect."""
+        tok = _token_for(service)
+        err = await _validate_service_token(service, tok)
+        if err:
+            await clear_service_token(user_id, service)
+            flag = _SESSION_FLAG.get(service)
+            if flag:
+                request.session.pop(flag, None)
+            msg = f"{err}. Авторизуйтесь заново."
+            return RedirectResponse(
+                f"/?error={quote(msg)}&pf={pf}&pt={pt}", status_code=303
+            )
+        return None
+
     # Case 1: Export to file — synchronous, no migration record needed
     if is_to_file:
         err = _missing_token(from_service)
         if err:
             return RedirectResponse(f"/?error={quote(err)}", status_code=303)
+        redir = await _check_token(from_service, from_service, "file")
+        if redir:
+            return redir
         try:
             from core.export import export_library
             from fastapi.responses import Response as FastAPIResponse
@@ -340,6 +413,9 @@ async def start_migrate(
         err = _missing_token(to_service)
         if err:
             return RedirectResponse(f"/?error={quote(err)}", status_code=303)
+        redir = await _check_token(to_service, "file", to_service)
+        if redir:
+            return redir
 
         if file is None or not file.filename:
             return RedirectResponse(f"/?error={quote('Выбери файл для загрузки')}", status_code=303)
@@ -414,6 +490,10 @@ async def start_migrate(
         err = _missing_token(svc)
         if err:
             return RedirectResponse(f"/?error={quote(err)}", status_code=303)
+    for svc in (from_service, to_service):
+        redir = await _check_token(svc, from_service, to_service)
+        if redir:
+            return redir
 
     migration_id = await create_migration(user_id, from_service=from_service, to_service=to_service)
     arq = get_arq_pool()

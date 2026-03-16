@@ -400,6 +400,23 @@ async def save_spotify_token(
         await session.commit()
 
 
+async def clear_service_token(user_id: str, service: str) -> None:
+    """Clears the stored token(s) for a service (marks as disconnected)."""
+    _field_map: dict[str, dict] = {
+        "yandex_music": {"yandex_token": ""},
+        "soundcloud": {"soundcloud_token": "", "soundcloud_refresh_token": None},
+        "spotify": {"spotify_token": None, "spotify_refresh_token": None},
+    }
+    fields = _field_map.get(service)
+    if not fields:
+        return
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserSession).where(UserSession.user_id == user_id).values(**fields)
+        )
+        await session.commit()
+
+
 async def save_user_lang(user_id: str, lang: str) -> None:
     """Обновляет язык интерфейса пользователя."""
     async with AsyncSessionLocal() as session:

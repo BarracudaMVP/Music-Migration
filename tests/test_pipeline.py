@@ -289,7 +289,7 @@ async def test_process_track_playlist_mode():
 
 @pytest.mark.asyncio
 async def test_process_track_like_tracks_success():
-    """like_tracks=True: like_track called; on success returns None sc_id (no playlist)."""
+    """like_tracks=True: like_track called; on success returns sc_id for playlist too."""
     from migration.to_soundcloud import _process_one_track
 
     sc_client = MagicMock()
@@ -303,7 +303,7 @@ async def test_process_track_like_tracks_success():
         result, sc_id = await _process_one_track(sc_client, row, like_tracks=True)
 
     assert result == "liked"
-    assert sc_id is None  # liked directly — no need to add to playlist
+    assert sc_id == 55  # sc_id returned so track is also added to playlist
     sc_client.like_track.assert_called_once_with(55)
     mock_update.assert_called_once_with(
         2, status="liked", sc_id=55, sc_url="http://sc/55", match_score=90.0
