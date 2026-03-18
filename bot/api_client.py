@@ -102,6 +102,7 @@ class MigrationApiClient:
         track_limit: int | None = None,
         skip_already_migrated: bool = True,
         like_tracks: bool = False,
+        spotify_playlist_mode: bool = False,
     ) -> int:
         """Запускает миграцию. Возвращает migration_id."""
         body: dict = {
@@ -113,6 +114,7 @@ class MigrationApiClient:
             "to_service": to_service,
             "skip_already_migrated": skip_already_migrated,
             "like_tracks": like_tracks,
+            "spotify_playlist_mode": spotify_playlist_mode,
         }
         if spotify_token:
             body["spotify_token"] = spotify_token

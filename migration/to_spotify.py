@@ -104,10 +104,10 @@ async def migrate_to_spotify(
         else:
             followed, not_found = 0, 0
 
-    # Create bot playlist when playlist_mode is active
+    # Create playlist when playlist_mode is active (bot account if configured, else user account)
     playlist_url: str | None = None
     if playlist_mode and pipeline_stats.in_playlist > 0:
-        playlist_url = await _create_bot_playlist(migration_id, playlist_name)
+        playlist_url = await _create_playlist(migration_id, playlist_name, spotify_token)
 
     if playlist_url:
         await update_migration(migration_id, status="done", result_path=playlist_url)
@@ -127,14 +127,18 @@ async def migrate_to_spotify(
     return stats
 
 
-async def _create_bot_playlist(migration_id: int, name: str) -> str | None:
-    """Create a public Spotify playlist via the bot account. Returns the playlist URL or None."""
+async def _create_playlist(migration_id: int, name: str, user_token: str) -> str | None:
+    """Create a public Spotify playlist and return its URL.
+
+    Uses SPOTIFY_BOT_TOKEN when configured (workaround for Spotify dev-mode user limit);
+    falls back to the user's own token so playlists always work.
+    """
     from config import settings
     from core.spotify.client import SpotifyClient
 
-    bot_token = settings.spotify_bot_token
-    if not bot_token:
-        logger.warning("[to_spotify] SPOTIFY_BOT_TOKEN not configured — skipping playlist creation")
+    token = settings.spotify_bot_token or user_token
+    if not token:
+        logger.warning("[to_spotify] No Spotify token available for playlist creation")
         return None
 
     track_ids = await get_track_urls_by_status(migration_id, "in_playlist")
@@ -142,15 +146,19 @@ async def _create_bot_playlist(migration_id: int, name: str) -> str | None:
         logger.warning(f"[to_spotify] No in_playlist tracks found for migration #{migration_id}")
         return None
 
+    account = "bot" if settings.spotify_bot_token else "user"
     track_uris = [f"spotify:track:{tid}" for tid in track_ids]
-    bot_client = await SpotifyClient(bot_token).init()
+    client = await SpotifyClient(token).init()
     try:
-        playlist_id, playlist_url = await bot_client.create_playlist(name)
-        await bot_client.add_tracks_to_playlist(playlist_id, track_uris)
+        playlist_id, playlist_url = await client.create_playlist(name)
+        await client.add_tracks_to_playlist(playlist_id, track_uris)
     finally:
-        await bot_client.close()
+        await client.close()
 
-    logger.info(f"[to_spotify] Bot playlist {name!r} created with {len(track_uris)} tracks → {playlist_url}")
+    logger.info(
+        f"[to_spotify] Playlist {name!r} created via {account} account "
+        f"with {len(track_uris)} tracks → {playlist_url}"
+    )
     return playlist_url
 
 

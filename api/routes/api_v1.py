@@ -374,6 +374,8 @@ class StartMigrationRequest(BaseModel):
     limit: int = 0
     skip_already_migrated: bool = True
     like_tracks: bool = False
+    spotify_playlist_mode: bool = False
+    spotify_playlist_name: str = "Music Migration"
     export_fmt: str = "csv"
 
 
@@ -429,6 +431,8 @@ async def start_migration(
             **job_kwargs,
             "spotify_token": token_sp,
             "spotify_refresh_token": token_sp_refresh,
+            "playlist_mode": body.spotify_playlist_mode,
+            "playlist_name": body.spotify_playlist_name,
         })
     else:
         if body.from_service == "spotify":

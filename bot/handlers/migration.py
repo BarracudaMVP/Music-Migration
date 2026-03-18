@@ -34,13 +34,23 @@ def _kb_cancel(lang: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def _kb_result(migration_id: int, not_found: int, lang: str) -> InlineKeyboardMarkup:
+def _kb_result(
+    migration_id: int,
+    not_found: int,
+    lang: str,
+    playlist_url: str | None = None,
+) -> InlineKeyboardMarkup:
     web_url = settings.public_url
     rows = []
     if not_found > 0:
         rows.append([InlineKeyboardButton(
             text=t("bot_btn_not_found", lang).format(n=not_found),
             callback_data=f"migration:not_found:{migration_id}",
+        )])
+    if playlist_url:
+        rows.append([InlineKeyboardButton(
+            text=t("bot_btn_open_playlist", lang),
+            url=playlist_url,
         )])
     rows.append([InlineKeyboardButton(
         text=t("bot_btn_open_browser", lang),
@@ -96,6 +106,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
     spotify_token = data.get("spotify_token")
     skip_already_migrated = data.get("skip_already_migrated", True)
     like_tracks = data.get("like_tracks", False)
+    spotify_playlist_mode = data.get("spotify_playlist_mode", False)
     user_id = str(callback.from_user.id)
 
     if from_service == "spotify":
@@ -118,6 +129,7 @@ async def on_start_migration(callback: CallbackQuery, state: FSMContext) -> None
             track_limit=track_limit,
             skip_already_migrated=skip_already_migrated,
             like_tracks=like_tracks,
+            spotify_playlist_mode=spotify_playlist_mode,
         )
     except Exception as e:
         logger.exception(f"Failed to start migration: {e}")
@@ -262,8 +274,9 @@ async def _poll_migration(
         done = liked + not_found + errors
 
         if mig_status in ("done", "failed", "cancelled"):
+            playlist_url = migration.get("result_path")
             text = _build_final_text(tracks, data.get("artists", {}), lang)
-            kb = _kb_result(migration_id, not_found, lang)
+            kb = _kb_result(migration_id, not_found, lang, playlist_url=playlist_url)
             try:
                 await bot.edit_message_text(
                     chat_id=chat_id,
