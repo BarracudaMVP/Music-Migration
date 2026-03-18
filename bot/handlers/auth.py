@@ -243,8 +243,9 @@ async def on_toggle_skip_migrated(callback: CallbackQuery, state: FSMContext) ->
     from_service = data.get("from_service", "yandex_music")
     to_service = data.get("to_service", "soundcloud")
     like = data.get("like_tracks", False)
+    spotify_playlist_mode = data.get("spotify_playlist_mode", False)
     await callback.message.edit_reply_markup(
-        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang)
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang, spotify_playlist_mode)
     )
 
 
@@ -258,8 +259,25 @@ async def on_toggle_like_tracks(callback: CallbackQuery, state: FSMContext) -> N
     from_service = data.get("from_service", "yandex_music")
     to_service = data.get("to_service", "soundcloud")
     skip = data.get("skip_already_migrated", True)
+    spotify_playlist_mode = data.get("spotify_playlist_mode", False)
     await callback.message.edit_reply_markup(
-        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang)
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang, spotify_playlist_mode)
+    )
+
+
+@router.callback_query(AuthFlow.confirming, F.data == "toggle_spotify_playlist")
+async def on_toggle_spotify_playlist(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    playlist_mode = not data.get("spotify_playlist_mode", False)
+    await state.update_data(spotify_playlist_mode=playlist_mode)
+    lang = await _get_lang(state)
+    from_service = data.get("from_service", "yandex_music")
+    to_service = data.get("to_service", "soundcloud")
+    skip = data.get("skip_already_migrated", True)
+    like = data.get("like_tracks", False)
+    await callback.message.edit_reply_markup(
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang, playlist_mode)
     )
 
 
@@ -451,7 +469,14 @@ async def receive_soundcloud_token(message: Message, state: FSMContext) -> None:
 # Confirmation screens
 # ---------------------------------------------------------------------------
 
-def _confirmation_kb(from_service: str, to_service: str, skip: bool, like_tracks: bool, lang: str) -> InlineKeyboardMarkup:
+def _confirmation_kb(
+    from_service: str,
+    to_service: str,
+    skip: bool,
+    like_tracks: bool,
+    lang: str,
+    spotify_playlist_mode: bool = False,
+) -> InlineKeyboardMarkup:
     """Клавиатура подтверждения с тоглами опций."""
     skip_label = t("bot_skip_migrated_on" if skip else "bot_skip_migrated_off", lang)
     rows = []
@@ -465,6 +490,10 @@ def _confirmation_kb(from_service: str, to_service: str, skip: bool, like_tracks
     if to_service == "soundcloud":
         like_label = t("bot_like_tracks_on" if like_tracks else "bot_like_tracks_off", lang)
         rows.append([InlineKeyboardButton(text=like_label, callback_data="toggle_like_tracks")])
+    # Playlist mode toggle for Spotify destination
+    if to_service == "spotify":
+        playlist_label = t("bot_spotify_playlist_on" if spotify_playlist_mode else "bot_spotify_playlist_off", lang)
+        rows.append([InlineKeyboardButton(text=playlist_label, callback_data="toggle_spotify_playlist")])
     rows.append([InlineKeyboardButton(text=t("bot_btn_cancel", lang), callback_data="cancel_migration")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -477,13 +506,14 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     to_service = data.get("to_service", "soundcloud")
     skip = data.get("skip_already_migrated", True)
     like = data.get("like_tracks", False)
+    spotify_playlist_mode = data.get("spotify_playlist_mode", False)
 
     label_key = _SERVICE_LABEL.get(from_service, f"bot_service_{from_service}")
     service_name = t(label_key, lang)
     await message.answer(
         t("bot_confirm_ready", lang).format(service=service_name),
         parse_mode="HTML",
-        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang),
+        reply_markup=_confirmation_kb(from_service, to_service, skip, like, lang, spotify_playlist_mode),
     )
     await state.set_state(AuthFlow.confirming)
 

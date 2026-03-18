@@ -5,10 +5,10 @@ Covers:
 - _SpotifyWriteSession: playlist_mode=True returns 'in_playlist' without calling like_track
 - _SpotifyWriteSession: playlist_mode=False (default) calls like_track
 - SpotifyAdapter.write_session passes playlist_mode kwarg
-- migrate_to_spotify: calls _create_bot_playlist when playlist_mode=True and in_playlist > 0
+- migrate_to_spotify: calls _create_playlist when playlist_mode=True and in_playlist > 0
 - migrate_to_spotify: stores playlist_url in SpotifyWriteStats
-- _create_bot_playlist: no-op when SPOTIFY_BOT_TOKEN is not configured
-- _create_bot_playlist: creates playlist via bot client and returns URL
+- _create_playlist: no-op when no token available
+- _create_playlist: creates playlist via bot/user client and returns URL
 - migration_done_text: includes playlist_url link when provided
 """
 import pytest
@@ -118,7 +118,7 @@ async def test_migrate_to_spotify_calls_create_bot_playlist():
          patch("migration.to_spotify.bulk_insert_tracks", AsyncMock()), \
          patch("migration.to_spotify.update_migration", AsyncMock()), \
          patch("migration.to_spotify.run_pending_tracks_loop", AsyncMock(return_value=mock_stats)), \
-         patch("migration.to_spotify._create_bot_playlist", AsyncMock(return_value="https://open.spotify.com/playlist/abc")) as mock_create:
+         patch("migration.to_spotify._create_playlist", AsyncMock(return_value="https://open.spotify.com/playlist/abc")) as mock_create:
         MockRegistry.get.return_value = mock_adapter
         stats = await migrate_to_spotify(
             tracks_data=[{"artist": "A", "title": "T"}],
@@ -129,7 +129,7 @@ async def test_migrate_to_spotify_calls_create_bot_playlist():
             playlist_name="My Playlist",
         )
 
-    mock_create.assert_called_once_with(1, "My Playlist")
+    mock_create.assert_called_once_with(1, "My Playlist", "tok")
     assert stats.playlist_url == "https://open.spotify.com/playlist/abc"
 
 
@@ -162,7 +162,7 @@ async def test_migrate_to_spotify_no_playlist_when_no_in_playlist_tracks():
          patch("migration.to_spotify.bulk_insert_tracks", AsyncMock()), \
          patch("migration.to_spotify.update_migration", AsyncMock()), \
          patch("migration.to_spotify.run_pending_tracks_loop", AsyncMock(return_value=mock_stats)), \
-         patch("migration.to_spotify._create_bot_playlist", AsyncMock()) as mock_create:
+         patch("migration.to_spotify._create_playlist", AsyncMock()) as mock_create:
         MockRegistry.get.return_value = mock_adapter
         stats = await migrate_to_spotify(
             tracks_data=[{"artist": "A", "title": "T"}],
@@ -205,7 +205,7 @@ async def test_migrate_to_spotify_no_playlist_when_mode_false():
          patch("migration.to_spotify.bulk_insert_tracks", AsyncMock()), \
          patch("migration.to_spotify.update_migration", AsyncMock()), \
          patch("migration.to_spotify.run_pending_tracks_loop", AsyncMock(return_value=mock_stats)), \
-         patch("migration.to_spotify._create_bot_playlist", AsyncMock()) as mock_create:
+         patch("migration.to_spotify._create_playlist", AsyncMock()) as mock_create:
         MockRegistry.get.return_value = mock_adapter
         await migrate_to_spotify(
             tracks_data=[{"artist": "A", "title": "T"}],
@@ -224,13 +224,13 @@ async def test_migrate_to_spotify_no_playlist_when_mode_false():
 
 @pytest.mark.asyncio
 async def test_create_bot_playlist_no_token_returns_none():
-    """Returns None when SPOTIFY_BOT_TOKEN is not configured."""
-    from migration.to_spotify import _create_bot_playlist
+    """Returns None when SPOTIFY_BOT_TOKEN is not configured and no user token."""
+    from migration.to_spotify import _create_playlist
 
     with patch("config.settings") as mock_settings, \
          patch("migration.to_spotify.get_track_urls_by_status", AsyncMock(return_value=["id1"])):
         mock_settings.spotify_bot_token = ""
-        result = await _create_bot_playlist(1, "Test")
+        result = await _create_playlist(1, "Test", "")
 
     assert result is None
 
@@ -238,7 +238,7 @@ async def test_create_bot_playlist_no_token_returns_none():
 @pytest.mark.asyncio
 async def test_create_bot_playlist_creates_and_returns_url():
     """Creates playlist via bot client and returns the URL."""
-    from migration.to_spotify import _create_bot_playlist
+    from migration.to_spotify import _create_playlist
 
     mock_client = MagicMock()
     mock_client.create_playlist = AsyncMock(return_value=("playlist_id_123", "https://open.spotify.com/playlist/123"))
@@ -251,7 +251,7 @@ async def test_create_bot_playlist_creates_and_returns_url():
         mock_settings.spotify_bot_token = "bot_token_xyz"
         MockClient.return_value.init = AsyncMock(return_value=mock_client)
 
-        result = await _create_bot_playlist(42, "My Playlist")
+        result = await _create_playlist(42, "My Playlist", "user_token")
 
     assert result == "https://open.spotify.com/playlist/123"
     mock_client.create_playlist.assert_called_once_with("My Playlist")
@@ -265,12 +265,12 @@ async def test_create_bot_playlist_creates_and_returns_url():
 @pytest.mark.asyncio
 async def test_create_bot_playlist_no_tracks_returns_none():
     """Returns None when there are no in_playlist tracks."""
-    from migration.to_spotify import _create_bot_playlist
+    from migration.to_spotify import _create_playlist
 
     with patch("config.settings") as mock_settings, \
          patch("migration.to_spotify.get_track_urls_by_status", AsyncMock(return_value=[])):
         mock_settings.spotify_bot_token = "bot_token_xyz"
-        result = await _create_bot_playlist(1, "Empty")
+        result = await _create_playlist(1, "Empty", "user_token")
 
     assert result is None
 
