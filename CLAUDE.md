@@ -145,6 +145,8 @@ YM_PROXY_URL=              # SOCKS5 proxy for Yandex API (e.g. socks5://user:pas
 SPOTIFY_CLIENT_ID=         # From developer.spotify.com app
 SPOTIFY_CLIENT_SECRET=     # From developer.spotify.com app
 SPOTIFY_REDIRECT_URI=      # e.g. https://yourdomain.com/api/v1/auth/spotify/callback
+SPOTIFY_BOT_TOKEN=         # Optional: bot-account token for playlist creation (MM-88); falls back to user token if absent
+SPOTIFY_BOT_REFRESH_TOKEN= # Optional: refresh token for bot account
 
 # SoundCloud (MM-52)
 SOUNDCLOUD_TOKEN=          # oauth_token cookie value (2-... or 3-...) — legacy, prefer OAuth below
@@ -233,8 +235,8 @@ worker/                                 — ARQ job definitions
     │                                     run_file_migration_job (File→SC, playlist_mode=True)
     │                                     run_spotify_migration_job (Spotify→SC, playlist_mode=True)
     │                                     run_yandex_migration_job (any→YM)
-    │                                     run_spotify_write_job (any→Spotify, auto-refresh token)
-    └── notifications.py               — notify_telegram(), migration_done_text(), migration_failed_text()
+    │                                     run_spotify_write_job (any→Spotify, auto-refresh, playlist_mode, playlist_name)
+    └── notifications.py               — notify_telegram(), migration_done_text(playlist_url=), migration_failed_text()
 
 core/
     ├── db/                             — SQLAlchemy 2.x async package
@@ -254,13 +256,17 @@ core/
     │   ├── models.py                   — SpotifyTrack, SpotifyPlaylist, SpotifyArtist
     │   ├── oauth.py                    — Authorization Code Flow + refresh_access_token
     │   └── client.py                   — SpotifyClient: read (liked tracks/playlists/artists) +
-    │                                     write (search_tracks, like_track, search_artists, follow_artist)
-    ├── services/                       — Service registry + adapters
-    │   ├── base.py                     — Capability flags + MusicServiceAdapter ABC
+    │                                     write (search_tracks, like_track, search_artists, follow_artist,
+    │                                     create_playlist(name)→(id,url), add_tracks_to_playlist(id,uris) batches 100)
+    ├── services/                       — Service registry + adapters (MM-87: AdapterWriteSession ABC)
+    │   ├── base.py                     — Capability flags + MusicServiceAdapter ABC + AdapterWriteSession ABC
+    │   │                                  (AdapterWriteSession: search_track, write_track, search_artist, follow_artist)
     │   ├── registry.py                 — ServiceRegistry singleton
-    │   ├── yandex/adapter.py           — YandexMusicAdapter (READ + WRITE_LIKED_TRACKS + EXPORT)
-    │   ├── soundcloud/adapter.py       — SoundCloudAdapter (READ + WRITE + EXPORT)
+    │   ├── yandex/adapter.py           — YandexMusicAdapter (READ + WRITE_LIKED_TRACKS + EXPORT); write_session()
+    │   ├── soundcloud/adapter.py       — SoundCloudAdapter (READ + WRITE + EXPORT); write_session()
     │   ├── spotify/adapter.py          — SpotifyAdapter (READ + WRITE: LIKED_TRACKS | PLAYLISTS | LIKED_ARTISTS + EXPORT)
+    │   │                                  write_session(token, playlist_mode=False) → _SpotifyWriteSession
+    │   │                                  playlist_mode=True: write_track returns "in_playlist" (no like_track call)
     │   └── file/adapter.py             — FileAdapter (CSV/JSON import/export)
     ├── export.py                       — export_library(service_id, token, fmt), exportable_services()
     ├── i18n.py                         — t(key, lang), detect_lang_web/tg, format_eta()
@@ -269,12 +275,17 @@ core/
     └── crypto.py                       — Token encryption/decryption (Fernet)
 
 migration/                              — пайплайны по destination (unified to_* naming, MM-76)
+    ├── pipeline.py                     — platform-agnostic loop (MM-87): run_pending_tracks_loop(session, migration_id,
+    │                                     progress_callback, write_sleep) → TrackPipelineStats; process_one_track(session, row)
     ├── to_soundcloud.py                — any → SC (треки + плейлисты + артисты): YM, Spotify, File источники;
     │                                     MigrationStats, PlaylistMigrationStats, ArtistMigrationStats, FullMigrationStats;
     │                                     _run_pending_loop, _process_one_track, _create_liked_playlists (playlist_mode);
     │                                     run_migration() (YM→SC CLI/bot entry), run_spotify_migration() (Spotify→SC worker)
     ├── to_yandex.py                    — any → YM лайки (multi-query, fuzzy match, sleep 1.0s)
-    └── to_spotify.py                   — any → Spotify лайки + подписки на артистов (auto-refresh token)
+    └── to_spotify.py                   — any → Spotify (MM-87 pipeline + MM-88/89 playlist mode);
+                                          migrate_to_spotify(playlist_mode, playlist_name);
+                                          _create_playlist(migration_id, name, user_token): uses SPOTIFY_BOT_TOKEN or user_token;
+                                          SpotifyWriteStats.playlist_url → stored in Migration.result_path
 
 bot/
     ├── main.py                         — aiogram 3.x entry

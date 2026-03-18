@@ -47,19 +47,27 @@
                        ▼
           ┌────────────────────────┐
           │      ARQ Worker        │
-          │  run_migration_job     │  ← YM → SC (playlist_mode)
-          │  run_file_migration_job│  ← File → SC (playlist_mode)
-          │  run_spotify_mig_job   │  ← Spotify → SC (playlist_mode)
-          │  run_yandex_mig_job    │  ← any → YM
-          │  run_spotify_write_job │  ← any → Spotify (auto-refresh)
-          └────────────┬───────────┘
+          │  run_migration_job       │  ← YM → SC (playlist_mode=True)
+          │  run_file_migration_job  │  ← File → SC (playlist_mode=True)
+          │  run_spotify_migration_job│ ← Spotify → SC (playlist_mode=True)
+          │  run_yandex_migration_job │  ← any → YM
+          │  run_spotify_write_job   │  ← any → Spotify (auto-refresh token,
+          │                          │    playlist_mode, playlist_name)
+          └────────────┬─────────────┘
                        │
+                       ▼
+          ┌────────────────────────────┐
+          │  migration/pipeline.py     │  ← platform-agnostic
+          │  run_pending_tracks_loop() │     (MM-87 AdapterWriteSession ABC)
+          └────────────┬───────────────┘
+                       │  write_session(token)
          ┌─────────────┼──────────────┐
          ▼             ▼              ▼
   ┌─────────────┐ ┌──────────┐ ┌──────────────┐
   │ YM Adapter  │ │SC Adapter│ │Spotify Adapt.│  + FileAdapter
   │ (RU proxy   │ │(OAuth,   │ │(OAuth +       │    (CSV/JSON)
-  │  socks5://) │ │playlist) │ │ auto-refresh) │
+  │  socks5://) │ │playlist) │ │ auto-refresh, │
+  │             │ │          │ │ playlist_mode)│
   └──────┬──────┘ └────┬─────┘ └──────┬───────┘
          │             │              │
          ▼             ▼              ▼
@@ -85,8 +93,9 @@ Capability:
   soundcloud:     READ_LIKED_TRACKS, WRITE_LIKED_TRACKS, WRITE_PLAYLISTS, WRITE_LIKED_ARTISTS, EXPORT_TRACKS
                   (OAuth Authorization Code Flow, api.soundcloud.com, Authorization: OAuth {token})
   file:           EXPORT_TRACKS, WRITE_LIKED_TRACKS  (MM-69: переименован с "file_csv"; CSV/JSON import+export)
-  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS, WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS
-                  (WRITE_PLAYLISTS — планируется в MM-89; dev mode: max 25 пользователей в allowlist)
+  spotify:        READ_LIKED_TRACKS, READ_PLAYLISTS, READ_LIKED_ARTISTS, EXPORT_TRACKS,
+                  WRITE_LIKED_TRACKS, WRITE_LIKED_ARTISTS, WRITE_PLAYLISTS (MM-88/89: create_playlist + add_tracks_to_playlist)
+                  dev mode: max 25 пользователей в allowlist; SPOTIFY_BOT_TOKEN — опциональный бот-аккаунт для плейлистов
 ```
 
 ```
