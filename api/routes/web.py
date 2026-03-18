@@ -371,7 +371,7 @@ async def start_migrate(
             )
         return None
 
-    # Case 1: Export to file — synchronous, no migration record needed
+    # Case 1: Export to file — async via ARQ worker (MM-78)
     if is_to_file:
         err = _missing_token(from_service)
         if err:
@@ -379,26 +379,17 @@ async def start_migrate(
         redir = await _check_token(from_service, from_service, "file")
         if redir:
             return redir
-        try:
-            from core.export import export_library
-            from fastapi.responses import Response as FastAPIResponse
 
-            if from_service == "yandex_music":
-                source_token = ym_token
-            elif from_service == "spotify":
-                source_token = spotify_token
-            else:
-                source_token = sc_token
-            data = await export_library(from_service, source_token, fmt=export_fmt)
-            filename = f"library_{from_service}.{export_fmt}"
-            media = "text/csv" if export_fmt == "csv" else "application/json"
-            return FastAPIResponse(
-                content=data,
-                media_type=media,
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-            )
-        except Exception as e:
-            return RedirectResponse(f"/?error={quote(str(e)[:200])}", status_code=303)
+        source_token = _token_for(from_service)
+        migration_id = await create_migration(user_id, from_service=from_service, to_service="file")
+        arq = get_arq_pool()
+        job = await arq.enqueue_job(
+            "run_export_job",
+            migration_id, from_service, source_token, export_fmt, user_id,
+        )
+        if job:
+            await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
+        return RedirectResponse(f"/migrate/{migration_id}", status_code=303)
 
     # Check rate limit before creating any migration
     from api.deps import check_migration_rate_limit
@@ -594,6 +585,40 @@ async def migration_status_fragment(request: Request, migration_id: int):
 async def migration_result(request: Request, migration_id: int):
     # Deprecated — redirect to migration progress page which now shows results inline
     return RedirectResponse(f"/migrate/{migration_id}", status_code=301)
+
+
+@router.get("/migrate/{migration_id}/export-file")
+async def migration_export_file(request: Request, migration_id: int):
+    """Download export file for a completed export migration (to_service=file, MM-78)."""
+    from fastapi.responses import Response as FastAPIResponse
+    from api.main import get_arq_pool
+
+    migration = await get_migration(migration_id)
+    if migration is None:
+        raise HTTPException(status_code=404, detail="Migration not found")
+    user_id = _session_user_id(request)
+    if user_id and migration.get("user_id") and migration["user_id"] != user_id:
+        raise HTTPException(status_code=403)
+    if migration.get("status") != "done" or not migration.get("result_path"):
+        raise HTTPException(status_code=404, detail="Export not ready")
+
+    arq = get_arq_pool()
+    if not arq:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+
+    data = await arq.get(f"export_data:{migration_id}")
+    if data is None:
+        raise HTTPException(status_code=410, detail="Export expired or not found")
+
+    fmt = migration["result_path"]
+    media = "text/csv" if fmt == "csv" else "application/json"
+    from_svc = migration.get("from_service") or "library"
+    filename = f"library_{from_svc}.{fmt}"
+    return FastAPIResponse(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 _PER_PAGE = 50
