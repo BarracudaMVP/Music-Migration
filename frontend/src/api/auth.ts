@@ -22,7 +22,18 @@ export async function exchangeCode(code: string): Promise<TokenPair> {
 // Use stored refresh token to get a new access token
 export async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) return null
+  if (!refreshToken) {
+    // No token — probe /auth/me without auth.
+    // In DEV_MODE the server bypasses JWT and returns dev_user, so we get a 200.
+    // In production this returns 401 and we fall through to null.
+    try {
+      await api.get('/auth/me')
+      setAccessToken('dev')
+      return 'dev'
+    } catch {
+      return null
+    }
+  }
 
   try {
     const tokens = await api.post<TokenPair>('/auth/refresh', {
@@ -47,10 +58,15 @@ export async function logout(): Promise<void> {
   }
 }
 
+const SERVICE_AUTH_SLUG: Record<string, string> = {
+  yandex_music: 'yandex',
+}
+
 export function getOAuthStartUrl(service: string, flowFrom?: string, flowTo?: string): string {
+  const slug = SERVICE_AUTH_SLUG[service] ?? service
   const params = new URLSearchParams()
   if (flowFrom) params.set('flow_from', flowFrom)
   if (flowTo) params.set('flow_to', flowTo)
   const qs = params.toString()
-  return `/api/v1/auth/${service}${qs ? `?${qs}` : ''}`
+  return `/api/v1/auth/${slug}${qs ? `?${qs}` : ''}`
 }

@@ -517,7 +517,7 @@ async def get_migration_tracks(
         migration_id,
         status=status_filter or None,
         page=page,
-        page_size=page_size,
+        per_page=page_size,
     )
     return {
         "tracks": tracks,

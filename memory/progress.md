@@ -4,6 +4,21 @@
 
 ---
 
+## ✅ MM-96 — SPA: фиксы auth URL, page_size, dev-mode авторизация — 2026-03-19
+
+**Что сделано:**
+
+1. `frontend/src/api/auth.ts` — `getOAuthStartUrl`: добавлен `SERVICE_AUTH_SLUG = {yandex_music: 'yandex'}`. Сервис ID `yandex_music` маппится на slug `yandex` → фиксит 404 на `GET /api/v1/auth/yandex_music`.
+2. `api/routes/api_v1.py` — `get_migration_tracks`: исправлен вызов `get_tracks_page(..., page_size=50)` → `per_page=50` (имя параметра в crud-функции `per_page`, не `page_size`).
+3. `api/security.py` — `get_current_user`: при `settings.dev_mode=True` сразу возвращает `"dev_user"` — все `/api/v1/` endpoints работают без JWT.
+4. `frontend/src/api/auth.ts` — `refreshAccessToken`: при отсутствии refresh token в localStorage пробует `GET /auth/me` без токена. В DEV_MODE сервер отдаёт 200 → `accessToken = "dev"` (sentinel) → SPA продолжает. В проде → 401 → `return null` → обычный OAuth.
+
+**Ключевые решения:**
+- Dev-bypass без нового endpoint: backend игнорирует JWT, frontend зондирует существующий `/auth/me`.
+- `soundcloud` и `spotify` slug не нуждаются в маппинге (совпадают с service ID).
+
+---
+
 ## ✅ MM-83 — React SPA: страницы и полный флоу — 2026-03-19
 
 **Цель:** реализовать все страницы React SPA на ветке `feature/spa`.

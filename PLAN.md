@@ -2446,6 +2446,26 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-96 — SPA: фиксы auth URL, page_size, dev-mode авторизация
+
+**Проблема:** Три бага обнаруженных при первом запуске SPA в dev-режиме:
+1. `GET /api/v1/auth/yandex_music` → 404 — сервис ID `yandex_music` не совпадал с именем endpoint `/auth/yandex`
+2. `get_tracks_page(..., page_size=50)` → игнорировалось — параметр называется `per_page`
+3. SPA не могла авторизоваться в DEV_MODE — JWT не выдавался, хотя `dev_user` был в БД
+
+**Что исправлено:**
+
+- [x] `frontend/src/api/auth.ts` — `getOAuthStartUrl`: маппинг `SERVICE_AUTH_SLUG = {yandex_music: 'yandex'}` перед построением URL → фиксит 404 на `/auth/yandex_music`
+- [x] `api/routes/api_v1.py` — `get_migration_tracks`: `page_size=page_size` → `per_page=page_size` (имя параметра в crud)
+- [x] `api/security.py` — `get_current_user`: при `DEV_MODE=true` сразу возвращает `"dev_user"` без проверки JWT
+- [x] `frontend/src/api/auth.ts` — `refreshAccessToken`: при отсутствии refresh token в localStorage пробует `GET /auth/me` без заголовка; в DEV_MODE сервер отдаёт 200 → SPA ставит sentinel `"dev"` в память и продолжает работу; в проде → 401 → поведение прежнее
+
+**Принцип dev-bypass:** без нового endpoint — backend просто не проверяет JWT в DEV_MODE, frontend использует существующий `/auth/me` как зонд.
+
+**Файлы:** `frontend/src/api/auth.ts`, `api/routes/api_v1.py`, `api/security.py`
+
+---
+
 ### 🔲 MM-95 — Яндекс Музыка: режим создания плейлиста
 
 **Контекст:** Миграция → YM сейчас только лайкает треки. Нет режима плейлиста (аналогично SC `playlist_mode`). Галочка "Проставить лайки" для YM скрыта в UI (MM-94) именно потому что второго режима нет.

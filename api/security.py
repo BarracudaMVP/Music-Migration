@@ -64,8 +64,14 @@ def decode_access_token(token: str) -> str | None:
 async def get_current_user(authorization: str = Header(default="")) -> str:
     """FastAPI dependency: extracts and validates Bearer JWT, returns user_id.
 
+    In DEV_MODE bypasses auth and always returns "dev_user".
     Raises HTTP 401 if token is missing or invalid.
     """
+    from config import settings
+
+    if settings.dev_mode:
+        return "dev_user"
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
