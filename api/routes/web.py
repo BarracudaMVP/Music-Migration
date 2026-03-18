@@ -236,6 +236,7 @@ async def flow_rest(
         "sc_enabled": bool(cfg.sc_client_id),
         "is_from_file": is_from_file,
         "is_to_file": is_to_file,
+        "spotify_bot_configured": bool(cfg.spotify_bot_token),
     })
 
 
@@ -296,6 +297,7 @@ async def start_migrate(
     track_limit: int = Form(0),
     skip_already_migrated: bool = Form(False),
     like_tracks: bool = Form(False),
+    spotify_playlist_mode: bool = Form(False),
     export_fmt: str = Form("csv"),
     file: Optional[UploadFile] = File(None),
 ):
@@ -465,6 +467,7 @@ async def start_migrate(
                 spotify_token, spotify_refresh_token, user_id,
                 track_limit=None, skip_already_migrated=skip_already_migrated,
                 tracks_override=tracks,
+                playlist_mode=spotify_playlist_mode,
             )
         else:
             return RedirectResponse(
@@ -507,6 +510,7 @@ async def start_migrate(
             migration_id, source_token, from_service,
             spotify_token, spotify_refresh_token, user_id,
             track_limit=limit, skip_already_migrated=skip,
+            playlist_mode=spotify_playlist_mode,
         )
     elif from_service == "spotify":
         job = await arq.enqueue_job(

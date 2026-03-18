@@ -46,6 +46,7 @@ def migration_done_text(
     tracks: dict,
     artists: dict | None = None,
     lang: str = "ru",
+    playlist_url: str | None = None,
 ) -> str:
     liked = tracks.get("liked", 0)
     not_found = tracks.get("not_found", 0)
@@ -60,6 +61,9 @@ def migration_done_text(
         followed = artists.get("followed", 0)
         art_nf = artists.get("not_found", 0)
         text += t("notif_done_artists", lang).format(followed=followed, nf=art_nf)
+
+    if playlist_url:
+        text += f'\n<a href="{playlist_url}">{t("notif_done_playlist", lang)}</a>'
 
     text += f'\n<a href="{web_url}/migrate/{migration_id}/result">{t("notif_done_link", lang)}</a>'
     return text

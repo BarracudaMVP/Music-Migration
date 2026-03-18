@@ -39,6 +39,8 @@ _S: dict[str, dict[str, str]] = {
     "index_skip_migrated_hint": {"ru": "Треки из предыдущих переносов в этот сервис не будут обработаны повторно", "en": "Tracks from previous transfers to this service will not be processed again"},
     "index_like_tracks":        {"ru": "Проставить лайки на треки", "en": "Like tracks directly"},
     "index_like_tracks_hint":   {"ru": "Лайкнет каждый трек напрямую и добавит в плейлист. По умолчанию — только плейлист", "en": "Likes each track directly and also adds to playlist. Default — playlist only"},
+    "index_spotify_playlist_mode":      {"ru": "Создать публичный плейлист", "en": "Create public playlist"},
+    "index_spotify_playlist_mode_hint": {"ru": "Треки будут добавлены в плейлист бот-аккаунта. Вы получите ссылку по окончании.", "en": "Tracks will be added to the bot account playlist. You'll get a link when done."},
 
     # Stepwise flow (MM-49)
     "step_from":            {"ru": "Откуда",                   "en": "From"},
@@ -112,7 +114,8 @@ _S: dict[str, dict[str, str]] = {
     "status_in_queue":    {"ru": "В очереди",           "en": "In queue"},
     "status_report_btn":  {"ru": "Подробный отчёт",     "en": "Detailed report"},  # deprecated — kept for compat
 
-    "status_csv_btn":     {"ru": "Скачать CSV",         "en": "Download CSV"},
+    "status_csv_btn":          {"ru": "Скачать CSV",           "en": "Download CSV"},
+    "status_open_playlist_btn": {"ru": "Открыть плейлист",      "en": "Open playlist"},
     "status_progress":      {"ru": "Добавлено",   "en": "Added"},
     "status_current_track": {"ru": "Сейчас",      "en": "Now"},
 
@@ -425,6 +428,7 @@ _S: dict[str, dict[str, str]] = {
         "en": "\nArtists followed: <b>{followed}</b>, not found: <b>{nf}</b>",
     },
     "notif_done_link":    {"ru": "Открыть результат",   "en": "View result"},
+    "notif_done_playlist": {"ru": "Открыть плейлист Spotify", "en": "Open Spotify playlist"},
     "notif_failed":       {"ru": "Перенос #{id} завершился с ошибкой.\n\nПопробуй запустить снова через /migrate", "en": "Transfer #{id} failed.\n\nTry again with /migrate"},
 
     # ETA

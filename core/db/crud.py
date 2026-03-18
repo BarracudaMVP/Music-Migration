@@ -190,6 +190,19 @@ async def get_tracks_page(
         return [_track_to_dict(r) for r in result.scalars()], total
 
 
+async def get_track_urls_by_status(migration_id: int, status: str) -> list[str]:
+    """Return sc_url values for tracks with the given status (used for bot playlist creation)."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Track.sc_url).where(
+                Track.migration_id == migration_id,
+                Track.status == status,
+                Track.sc_url.isnot(None),
+            )
+        )
+        return [row for row in result.scalars() if row]
+
+
 async def get_liked_sc_tracks(migration_id: int) -> dict[str, int]:
     """Возвращает {ym_id: sc_id} для уже перенесённых треков (статусы liked и in_playlist)."""
     async with AsyncSessionLocal() as session:

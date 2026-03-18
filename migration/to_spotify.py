@@ -22,6 +22,7 @@ from core.db import (
     get_pending_artists,
     update_artist,
     bulk_insert_artists,
+    get_track_urls_by_status,
 )
 from config import settings as _settings
 from core.matcher import normalize, _score_pair
@@ -41,13 +42,17 @@ class SpotifyWriteStats:
     errors: int = 0
     artists_followed: int = 0
     artists_not_found: int = 0
+    playlist_url: str | None = None
 
     def __str__(self) -> str:
-        return (
+        base = (
             f"Spotify | Треков: {self.total} | Добавлено: {self.liked} | "
             f"Не найдено: {self.not_found} | Ошибок: {self.errors} | "
             f"Исполнителей: {self.artists_followed}"
         )
+        if self.playlist_url:
+            base += f" | Плейлист: {self.playlist_url}"
+        return base
 
 
 async def migrate_to_spotify(
@@ -56,12 +61,16 @@ async def migrate_to_spotify(
     spotify_token: str,
     migration_id: int,
     progress_callback=None,
+    playlist_mode: bool = False,
+    playlist_name: str = "Music Migration",
 ) -> SpotifyWriteStats:
     """
-    Main pipeline: list[{artist, title}] → Spotify likes.
+    Main pipeline: list[{artist, title}] → Spotify likes (or bot playlist).
 
     artists_data: list[{"name": str}] — optional, can be empty.
     progress_callback(current, total, track_str) — optional, used by worker.
+    playlist_mode: if True, collect matched tracks and create a public playlist
+                   via the bot account (SPOTIFY_BOT_TOKEN).
     """
     await update_migration(migration_id, status="running")
 
@@ -80,7 +89,7 @@ async def migrate_to_spotify(
     )
 
     adapter = ServiceRegistry.get("spotify")
-    async with adapter.write_session(spotify_token) as session:
+    async with adapter.write_session(spotify_token, playlist_mode=playlist_mode) as session:
         pipeline_stats = await run_pending_tracks_loop(
             session, migration_id, progress_callback, write_sleep=_SPOTIFY_WRITE_SLEEP
         )
@@ -95,7 +104,15 @@ async def migrate_to_spotify(
         else:
             followed, not_found = 0, 0
 
-    await update_migration(migration_id, status="done")
+    # Create bot playlist when playlist_mode is active
+    playlist_url: str | None = None
+    if playlist_mode and pipeline_stats.in_playlist > 0:
+        playlist_url = await _create_bot_playlist(migration_id, playlist_name)
+
+    if playlist_url:
+        await update_migration(migration_id, status="done", result_path=playlist_url)
+    else:
+        await update_migration(migration_id, status="done")
 
     stats = SpotifyWriteStats(
         total=pipeline_stats.total,
@@ -104,9 +121,37 @@ async def migrate_to_spotify(
         errors=pipeline_stats.errors,
         artists_followed=followed,
         artists_not_found=not_found,
+        playlist_url=playlist_url,
     )
     logger.info(f"Перенос в Spotify завершён. {stats}")
     return stats
+
+
+async def _create_bot_playlist(migration_id: int, name: str) -> str | None:
+    """Create a public Spotify playlist via the bot account. Returns the playlist URL or None."""
+    from config import settings
+    from core.spotify.client import SpotifyClient
+
+    bot_token = settings.spotify_bot_token
+    if not bot_token:
+        logger.warning("[to_spotify] SPOTIFY_BOT_TOKEN not configured — skipping playlist creation")
+        return None
+
+    track_ids = await get_track_urls_by_status(migration_id, "in_playlist")
+    if not track_ids:
+        logger.warning(f"[to_spotify] No in_playlist tracks found for migration #{migration_id}")
+        return None
+
+    track_uris = [f"spotify:track:{tid}" for tid in track_ids]
+    bot_client = await SpotifyClient(bot_token).init()
+    try:
+        playlist_id, playlist_url = await bot_client.create_playlist(name)
+        await bot_client.add_tracks_to_playlist(playlist_id, track_uris)
+    finally:
+        await bot_client.close()
+
+    logger.info(f"[to_spotify] Bot playlist {name!r} created with {len(track_uris)} tracks → {playlist_url}")
+    return playlist_url
 
 
 async def _run_pending_artists_loop(
