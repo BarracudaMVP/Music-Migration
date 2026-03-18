@@ -2425,33 +2425,37 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
-### MM-88 — Spotify: обход ограничений через бот-пользователя (плейлист-шаринг)
+### ✅ MM-88 — Spotify: обход ограничений через бот-пользователя (плейлист-шаринг)
 
 **Цель**: обойти лимит 25 пользователей в dev-режиме Spotify — вместо лайка треков на аккаунте пользователя, создавать плейлист от имени бот-аккаунта и отдавать пользователю ссылку.
 
-#### Идея
+#### Что сделано
 
-1. Бот-аккаунт Spotify (`SPOTIFY_BOT_TOKEN`) авторизован один раз, имеет доступ к API без ограничений dev-режима
-2. При миграции → Spotify: создаём публичный плейлист на боте, добавляем треки туда
-3. Пользователю отправляется ссылка на плейлист (Telegram / веб) — он открывает и сохраняет себе вручную или через "Follow"
-4. Опционально: автоматически добавлять плейлист в библиотеку пользователя через `PUT /users/{user_id}/playlists` (если пользователь тоже авторизован)
-
-#### Что сделать
-
-- [ ] `SPOTIFY_BOT_TOKEN` / `SPOTIFY_BOT_REFRESH_TOKEN` в config.py + .env
-- [ ] `SpotifyClient.create_playlist(name, track_ids)` — создание публичного плейлиста
-- [ ] Новый режим в `migration/to_spotify.py`: `playlist_mode=True` → собирает треки → `SpotifyClient(bot_token).create_playlist(...)` → возвращает URL
-- [ ] Передача URL пользователю: в ответе API (`playlist_url`), в боте (сообщение), в веб-UI (результат)
-- [ ] Тесты: `create_playlist`, маршрутизация режима
+- [x] `SPOTIFY_BOT_TOKEN` / `SPOTIFY_BOT_REFRESH_TOKEN` в config.py
+- [x] `SpotifyClient.create_playlist(name)` → `(playlist_id, playlist_url)` + `add_tracks_to_playlist(id, uris)` (батч 100)
+- [x] `get_track_urls_by_status(migration_id, status)` в `core/db/crud.py`
+- [x] `_SpotifyWriteSession(playlist_mode=True)`: `write_track` возвращает `"in_playlist"` без вызова `like_track`
+- [x] `migrate_to_spotify(playlist_mode=True, playlist_name=...)`: после пайплайна вызывает `_create_bot_playlist`
+- [x] `playlist_url` сохраняется в `Migration.result_path`; возвращается в `SpotifyWriteStats.playlist_url`
+- [x] `run_spotify_write_job`: `playlist_mode`, `playlist_name` параметры; `playlist_url` в Telegram-уведомлении
+- [x] `api/routes/migrations.py`: `spotify_playlist_mode`, `spotify_playlist_name` поля в `StartMigrationRequest`
+- [x] `api/routes/web.py`: форма + `spotify_bot_configured` в контексте шаблона
+- [x] `status.html`: кнопка "Открыть плейлист" для Spotify-миграций с `result_path`
+- [x] `flow_rest.html`: чекбокс режима плейлиста для `to=spotify` когда бот настроен
+- [x] `notifications.py`: `playlist_url` ссылка в Telegram-сообщении
+- [x] 13 тестов в `tests/test_mm88_spotify_playlist.py`, 272 всего проходят
 
 #### Файлы
 
 - `config.py` — новые env vars
 - `core/spotify/client.py` — `create_playlist`, `add_tracks_to_playlist`
-- `migration/to_spotify.py` — playlist_mode
-- `worker/tasks.py` — передать bot_token + вернуть playlist_url
-- `api/routes/migrations.py` — включить playlist_url в ответ
-- `bot/handlers/migration.py`, `api/templates/result.html` — отобразить ссылку
+- `core/db/crud.py`, `core/db/__init__.py` — `get_track_urls_by_status`
+- `core/services/spotify/adapter.py` — `playlist_mode` в `_SpotifyWriteSession` + `write_session`
+- `migration/to_spotify.py` — `playlist_mode`, `_create_bot_playlist`, `SpotifyWriteStats.playlist_url`
+- `worker/tasks.py`, `worker/notifications.py` — проброс параметров
+- `api/routes/migrations.py`, `api/routes/web.py` — новые параметры
+- `api/templates/fragments/status.html`, `flow_rest.html` — UI
+- `core/i18n.py` — новые ключи: `index_spotify_playlist_mode`, `status_open_playlist_btn`, `notif_done_playlist`
 
 ---
 
