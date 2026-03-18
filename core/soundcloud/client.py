@@ -78,8 +78,8 @@ class SoundCloudClient:
     # Чтение библиотеки
     # ------------------------------------------------------------------
 
-    async def get_liked_tracks(self) -> list[SCTrack]:
-        """Возвращает все лайкнутые треки текущего пользователя."""
+    async def get_liked_tracks(self, limit: int | None = None) -> list[SCTrack]:
+        """Возвращает лайкнутые треки текущего пользователя. limit=None — все треки."""
         self._ensure_init()
         tracks: list[SCTrack] = []
         params = {"limit": 200, "linked_partitioning": 1}
@@ -99,6 +99,10 @@ class SoundCloudClient:
                     url=raw.get("permalink_url", "") or "",
                     duration_ms=raw.get("duration", 0) or 0,
                 ))
+                if limit and len(tracks) >= limit:
+                    logger.info(f"SC get_liked_tracks: достигнут лимит {limit}, остановка")
+                    logger.info(f"SC get_liked_tracks: получено {len(tracks)} треков")
+                    return tracks
             next_href = data.get("next_href")
             if next_href:
                 from urllib.parse import urlparse
@@ -108,6 +112,36 @@ class SoundCloudClient:
                 path = None
         logger.info(f"SC get_liked_tracks: получено {len(tracks)} треков")
         return tracks
+
+    async def get_followings(self, limit: int | None = None) -> list[SCUser]:
+        """Возвращает список артистов/пользователей, на которых подписан текущий пользователь."""
+        self._ensure_init()
+        users: list[SCUser] = []
+        params = {"limit": 200, "linked_partitioning": 1}
+        path = "/me/followings"
+        while path:
+            data = await self._get(path, params=params)
+            params = {}
+            for item in data.get("collection", []):
+                if not item or not isinstance(item, dict):
+                    continue
+                users.append(SCUser(
+                    id=item.get("id", 0),
+                    username=item.get("username", "") or "",
+                    url=item.get("permalink_url", "") or "",
+                ))
+                if limit and len(users) >= limit:
+                    logger.info(f"SC get_followings: достигнут лимит {limit}, остановка")
+                    return users
+            next_href = data.get("next_href")
+            if next_href:
+                from urllib.parse import urlparse
+                parsed = urlparse(next_href)
+                path = parsed.path + ("?" + parsed.query if parsed.query else "")
+            else:
+                path = None
+        logger.info(f"SC get_followings: получено {len(users)} подписок")
+        return users
 
     # ------------------------------------------------------------------
     # Поиск (read-only)

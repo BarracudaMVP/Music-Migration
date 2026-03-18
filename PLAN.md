@@ -1716,22 +1716,26 @@ migration/
 
 ---
 
-### 🔲 MM-77 — SoundCloud как источник (чтение библиотеки)
+### ✅ MM-77 — SoundCloud как источник (чтение библиотеки)
 
-> Полноценная поддержка SoundCloud как FROM-сервиса: чтение лайкнутых треков и (опционально) плейлистов.
+> Полноценная поддержка SoundCloud как FROM-сервиса: чтение лайкнутых треков и подписок на артистов.
 
-**Контекст:** В матрице переносов SC→File, SC→YM, SC→Spotify уже помечены как ✓, но реализация `fetch_liked_tracks` у `SoundCloudAdapter` не проверена с OAuth-токеном. SC `/me` возвращает 403 для неодобренных приложений — нужно выяснить, работает ли чтение библиотеки.
+**Что сделано:**
+- [x] `SoundCloudClient.get_liked_tracks(limit=None)` — добавлен `limit` param, ранняя остановка пагинации
+- [x] `SoundCloudClient.get_followings(limit=None)` — новый метод: `GET /me/followings` с пагинацией через `next_href`
+- [x] `SoundCloudAdapter.capabilities` — добавлен `READ_LIKED_ARTISTS`
+- [x] `SoundCloudAdapter.fetch_liked_tracks(token, limit)` — передаёт `limit` в клиент
+- [x] `SoundCloudAdapter.fetch_liked_artists(token)` — новый метод, возвращает `[{"name": username}]`
+- [x] `web.py` — SC как FROM уже маршрутизируется корректно (SC→YM, SC→Spotify, SC→File)
+- [x] `tests/test_sc_source.py` — 14 тестов: клиент (pagination, limit), адаптер (capabilities, fetch), матрица
+- Пагинация `get_liked_tracks`: уже была реализована через `next_href`; добавлена только ранняя остановка по `limit`
 
-**Задачи:**
-- [ ] Проверить `SoundCloudAdapter.fetch_liked_tracks()` с OAuth-токеном — эндпоинт `GET /me/track_likes` или `GET /me/likes/tracks`
-- [ ] Если SC API отдаёт 403 на чтение — найти рабочий эндпоинт (возможно `/stream/users/{id}/liked_tracks`)
-- [ ] Реализовать пагинацию (SC отдаёт `next_href` для продолжения)
-- [ ] (Опц.) `fetch_liked_playlists()` для SC → поддержка переноса плейлистов из SC
-- [ ] (Опц.) `fetch_liked_artists()` — `GET /me/followings`
-- [ ] Добавить SC в `from_services` в `api/routes/web.py` если отсутствует (сейчас матрица поддерживает, но нет UI-карточки?)
-- [ ] Написать тест на адаптер (мок SC API)
+**Матрица после MM-77:**
+- SC→YM: треки ✓
+- SC→Spotify: треки + артисты ✓ (READ_LIKED_ARTISTS добавлен)
+- SC→File: треки через экспорт ✓
 
-**Файлы:** `core/soundcloud/client.py`, `core/services/soundcloud/adapter.py`, `api/routes/web.py`, `tests/`
+**Файлы:** `core/soundcloud/client.py`, `core/services/soundcloud/adapter.py`, `tests/test_sc_source.py`
 
 ---
 
@@ -1957,7 +1961,7 @@ JWT_REFRESH_TOKEN_TTL=2592000
 
 ---
 
-### 🔲 MM-83 — React SPA: скаффолдинг + базовая навигация
+### 🚧 MM-83 — React SPA: скаффолдинг + базовая навигация
 
 > Создать React-фронтенд в `frontend/` на Vite + React + TypeScript + plain CSS.
 > Фронтенд работает параллельно с Jinja2 UI (бэкенд не меняется).
@@ -2012,11 +2016,12 @@ Node.js локально не нужен — `node_modules` живут в Docker
 - [x] `main.tsx`: обернуть в `BrowserRouter`
 - [x] `.gitignore`: исключить `frontend/node_modules/`, `frontend/dist/`
 - [x] `LOCAL_SETUP.md`: инструкция по запуску фронтенда
+- [x] AuthCallbackPage: обмен code → JWT + redirect (реализована полностью)
+- [ ] **⏸ Ждём дизайн** — HomePage, MigratePage, ProgressPage, HistoryPage (заглушки)
 - [ ] HomePage: выбор from/to сервисов (карточки), кнопки OAuth
 - [ ] MigratePage: подтверждение, content types, запуск миграции
 - [ ] ProgressPage: polling статуса, прогресс-бар
 - [ ] HistoryPage: список миграций
-- [ ] AuthCallbackPage: обмен code → JWT + redirect
 
 **⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
 
