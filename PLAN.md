@@ -2258,46 +2258,31 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
-### MM-87 — Рефакторинг адаптеров: адаптеры как единственная точка взаимодействия с сервисами
+### ✅ MM-87 — Рефакторинг адаптеров: адаптеры как единственная точка взаимодействия с сервисами
 
-**Цель**: пайплайны `migration/to_*.py` не должны знать о деталях конкретных платформ. Вся логика взаимодействия — поиск, запись, создание плейлиста — живёт в адаптере. Пайплайн работает только через интерфейс `MusicServiceAdapter`.
+**Цель**: пайплайны `migration/to_*.py` не должны знать о деталях конкретных платформ. Вся логика взаимодействия — поиск, запись — живёт в адаптере. Пайплайн работает только через интерфейс `AdapterWriteSession`.
 
-#### Контекст
+#### Реализовано
 
-Система флагов `Capability` уже существует в `core/services/base.py` (`READ_LIKED_TRACKS`, `WRITE_LIKED_TRACKS`, `WRITE_PLAYLISTS` и др.). Адаптеры уже объявляют свои возможности. Нужно:
-1. Расширить ABC write-методами
-2. Реализовать их в адаптерах
-3. Переписать пайплайны через адаптер вместо прямых вызовов клиентов
+- [x] `AdapterWriteSession` ABC в `core/services/base.py` — `search_track`, `write_track`, `search_artist`, `follow_artist`, `apply_transliteration`
+- [x] `MusicServiceAdapter.write_session(token)` — async context manager → `AdapterWriteSession`
+- [x] `_YMWriteSession` в `core/services/yandex/adapter.py`
+- [x] `_SpotifyWriteSession` (с `apply_transliteration=True`) в `core/services/spotify/adapter.py`
+- [x] `_SCWriteSession` (playlist_mode / like_tracks / LikeNotSupportedError fallback) в `core/services/soundcloud/adapter.py`
+- [x] `migration/pipeline.py` — `process_one_track(session, row)` + `run_pending_tracks_loop()` — единый пайплайн
+- [x] `migration/to_yandex.py` — принимает `ym_token: str`, не импортирует `YandexMusicClient`
+- [x] `migration/to_spotify.py` — принимает `spotify_token: str`, `_run_pending_artists_loop` через сессию
+- [x] `worker/tasks.py` — убраны `SpotifyClient` и `YandexMusicClient` из job-функций
+- [x] 23 теста в `tests/test_adapter_write.py`, 237 всего проходят
 
-#### Возможности разных сервисов
+#### Не в рамках MM-87 (отложено)
+- `migration/to_soundcloud.py` — оставлена как есть (760 строк, playlist-batching SC-специфично)
+- `api/routes/services.py` — matrix уже строится из Capability флагов (реализовано ранее)
 
-| Адаптер | READ | WRITE_LIKED_TRACKS | WRITE_PLAYLISTS | WRITE_LIKED_ARTISTS |
-|---|---|---|---|---|
-| YandexMusic | ✓ | ✓ | — | — |
-| Spotify | ✓ | ✓ | ✓ | ✓ |
-| SoundCloud | ✓ | playlist_mode | ✓ | ✓ |
-| File | ✓ | — | — | — |
-
-Фронт и бэк должны ограничивать доступные переносы на основе `adapter.can(Capability.X)` — не хардкодить логику под каждый сервис.
-
-#### Что сделать
-
-- [ ] `MusicServiceAdapter` (base.py) — добавить абстрактные write-методы: `search_track()`, `write_track()`, `create_playlist()`, `add_tracks_to_playlist()`, `follow_artist()` — дефолт `NotImplementedError`; `can()` уже есть
-- [ ] Реализовать write-методы в `YandexMusicAdapter`, `SpotifyAdapter`, `SoundCloudAdapter`
-- [ ] `FileAdapter` — write-методы не нужны, capabilities не меняются
-- [ ] `migration/to_soundcloud.py`, `to_yandex.py`, `to_spotify.py` — переписать через `adapter.search_track()` / `adapter.write_track()` и т.д.; пайплайн не импортирует конкретные клиенты
-- [ ] Единый `_process_one_track(dest_adapter, track, ...)` — убрать дублирование между пайплайнами
-- [ ] `ServiceRegistry` / `api/routes/` — `services/matrix` строится из `Capability` флагов, не из захардкоженного словаря
-- [ ] Фронт (SPA) — `GET /api/v1/services/matrix` отражает реальные возможности адаптеров; UI скрывает недоступные пары
-- [ ] Обновить тесты: mock на уровне адаптера, а не клиента
-
-#### Файлы
-
-- `core/services/base.py` — расширить ABC
-- `core/services/yandex/adapter.py`, `soundcloud/adapter.py`, `spotify/adapter.py` — write-методы
-- `migration/to_soundcloud.py`, `to_yandex.py`, `to_spotify.py` — упростить через адаптер
-- `api/routes/services.py` — matrix из capabilities
-- `tests/` — обновить/добавить тесты
+#### Ключевые паттерны
+- `adapter.write_session(token)` — async context manager, клиент создаётся и закрывается внутри
+- `session.apply_transliteration` — Bool флаг; `pipeline.process_one_track` добавляет транслитерацию если True
+- Transliteration при поиске: нужна для Spotify (Cyrillic → Latin), не нужна для YM
 
 ---
 

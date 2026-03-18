@@ -363,7 +363,8 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - `get_liked_tracks(limit)` in YM and Spotify clients stops pagination early when limit is reached (no full fetch before slice)
 - `settings.search_limit` (env: `SEARCH_LIMIT`, default 5) controls candidate count per search query for both Spotify and SC destinations
 - `find_best_match` breaks immediately on `score == 100.0` — no need to check remaining candidates
-- `transliterate_variants(artist)` used in `to_spotify._process_one_track` to add Latin search queries for Cyrillic artist names (e.g. Баста → Basta)
+- `transliterate_variants(artist)` applied in `migration/pipeline.process_one_track` when `session.apply_transliteration=True` (set by `_SpotifyWriteSession`); adds Latin search queries for Cyrillic artist names (e.g. Баста → Basta)
+- MM-87 `AdapterWriteSession` ABC in `core/services/base.py` — `search_track`, `write_track`, `search_artist`, `follow_artist`; each adapter exposes `write_session(token)` `@asynccontextmanager`; `migration/pipeline.py` has unified `process_one_track(session, row)` + `run_pending_tracks_loop`; `to_yandex.py` and `to_spotify.py` no longer import platform clients directly
 - Spotify dev mode: max 25 allowlisted users in Dashboard → Settings → User Management; Playwright automation planned as fallback (see PLAN.md)
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); sets `status="in_playlist"`. `like_tracks=True` sets `status="liked"` (direct like); on `LikeNotSupportedError` falls back to `status="in_playlist"`
