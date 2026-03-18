@@ -139,6 +139,8 @@ async def run_spotify_write_job(
     track_limit: int | None = None,
     skip_already_migrated: bool = True,
     tracks_override: list[dict] | None = None,
+    playlist_mode: bool = False,
+    playlist_name: str = "Music Migration",
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
     from migration.to_spotify import migrate_to_spotify
@@ -189,18 +191,24 @@ async def run_spotify_write_job(
                     except Exception as e:
                         logger.warning(f"[job] Could not fetch artists from {from_service}: {e}")
 
-            await migrate_to_spotify(
+            stats = await migrate_to_spotify(
                 tracks_data=tracks_data,
                 artists_data=artists_data,
                 spotify_token=access_token,
                 migration_id=migration_id,
                 progress_callback=progress_cb,
+                playlist_mode=playlist_mode,
+                playlist_name=playlist_name,
             )
 
             logger.info(f"[job] Spotify WRITE migration #{migration_id} finished")
 
             tracks = await get_track_stats(migration_id)
-            await notify_telegram(user_id, migration_done_text(migration_id, tracks, lang=lang))
+            playlist_url = stats.playlist_url if stats else None
+            await notify_telegram(
+                user_id,
+                migration_done_text(migration_id, tracks, lang=lang, playlist_url=playlist_url),
+            )
 
         except Exception as e:
             logger.error(f"[job] Spotify WRITE migration #{migration_id} failed: {e}")

@@ -110,6 +110,12 @@
       class="flex-1 min-w-[160px] text-center bg-indigo-600 text-white py-2 rounded-xl hover:bg-indigo-700 text-sm font-medium transition">
       ⬇ {{ t('status_csv_btn') if migration.result_path == 'csv' else 'JSON' }}
     </a>
+    {% elif migration.to_service == 'spotify' and migration.result_path %}
+    {# Bot playlist created — show Open Playlist button #}
+    <a href="{{ migration.result_path }}" target="_blank" rel="noopener"
+      class="flex-1 min-w-[160px] text-center bg-green-600 text-white py-2 rounded-xl hover:bg-green-700 text-sm font-medium transition">
+      ♫ {{ t('status_open_playlist_btn') }}
+    </a>
     {% else %}
     <a href="/migrate/{{ migration_id }}/export?fmt=csv"
       class="flex-1 min-w-[120px] text-center bg-gray-100 text-gray-700 py-2 rounded-xl hover:bg-gray-200 text-sm transition">

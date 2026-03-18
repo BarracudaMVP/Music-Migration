@@ -22,6 +22,8 @@ class StartMigrationRequest(BaseModel):
     track_limit: int | None = None
     skip_already_migrated: bool = True
     like_tracks: bool = False
+    spotify_playlist_mode: bool = False
+    spotify_playlist_name: str = "Music Migration"
 
 
 class StartMigrationResponse(BaseModel):
@@ -53,6 +55,8 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
             migration_id, source_token, body.from_service,
             body.spotify_token or "", body.spotify_refresh_token, body.user_id,
             track_limit=body.track_limit, skip_already_migrated=skip,
+            playlist_mode=body.spotify_playlist_mode,
+            playlist_name=body.spotify_playlist_name,
         )
     elif body.from_service == "spotify" and body.spotify_token:
         job = await arq.enqueue_job(

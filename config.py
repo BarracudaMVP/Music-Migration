@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     spotify_client_secret: str = Field(default="")
     spotify_redirect_uri: str = Field(default="http://localhost:8000/auth/spotify/callback")
 
+    # Spotify bot account for playlist creation (MM-88)
+    # A separate Spotify account used to create public playlists shared with users.
+    spotify_bot_token: str = Field(default="")
+    spotify_bot_refresh_token: str = Field(default="")
+
     # Yandex OAuth callback (oauth.yandex.ru app)
     # If set — uses redirect flow (button, no code copy-paste). Must be registered in the app.
     # Example: https://musicmigration.site/auth/yandex/callback

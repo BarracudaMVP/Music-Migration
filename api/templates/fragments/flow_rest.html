@@ -123,6 +123,17 @@
       </label>
       {% endif %}
 
+      {% if to_service == 'spotify' and spotify_bot_configured %}
+      <label class="flex items-start gap-2.5 cursor-pointer">
+        <input type="checkbox" name="spotify_playlist_mode" value="true"
+          class="mt-0.5 accent-indigo-600 w-4 h-4 shrink-0">
+        <span class="text-sm text-gray-700">
+          {{ t('index_spotify_playlist_mode') }}
+          <span class="block text-xs text-gray-400 mt-0.5">{{ t('index_spotify_playlist_mode_hint') }}</span>
+        </span>
+      </label>
+      {% endif %}
+
     </div>
   </div>
 

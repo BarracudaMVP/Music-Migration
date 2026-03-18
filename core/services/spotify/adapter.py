@@ -9,8 +9,9 @@ class _SpotifyWriteSession(AdapterWriteSession):
 
     apply_transliteration = True  # Cyrillic artists may be indexed under Latin names on Spotify
 
-    def __init__(self, client) -> None:
+    def __init__(self, client, *, playlist_mode: bool = False) -> None:
         self._client = client
+        self._playlist_mode = playlist_mode
 
     async def search_track(self, query: str, limit: int = 10) -> list[TrackCandidate]:
         results = await self._client.search_tracks(query, limit=limit)
@@ -25,6 +26,8 @@ class _SpotifyWriteSession(AdapterWriteSession):
         ]
 
     async def write_track(self, match: MatchResult) -> str:
+        if self._playlist_mode:
+            return "in_playlist"
         success = await self._client.like_track(match.track_url)
         return "liked" if success else "error"
 
@@ -66,8 +69,9 @@ class SpotifyAdapter(MusicServiceAdapter):
     async def write_session(self, token: str, **kwargs):
         from core.spotify.client import SpotifyClient
 
+        playlist_mode = kwargs.get("playlist_mode", False)
         client = await SpotifyClient(token).init()
-        session = _SpotifyWriteSession(client)
+        session = _SpotifyWriteSession(client, playlist_mode=playlist_mode)
         try:
             yield session
         finally:

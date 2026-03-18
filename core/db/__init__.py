@@ -4,6 +4,7 @@ core.db — SQLAlchemy 2.x async DB layer.
 """
 from core.db.crud import (
     create_migration,
+    get_track_urls_by_status,
     update_migration,
     get_migration,
     get_previously_migrated_ym_ids,
@@ -38,6 +39,7 @@ from core.db.crud import (
 
 __all__ = [
     "create_migration",
+    "get_track_urls_by_status",
     "update_migration",
     "get_migration",
     "get_previously_migrated_ym_ids",

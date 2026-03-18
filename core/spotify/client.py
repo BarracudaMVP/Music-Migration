@@ -194,6 +194,38 @@ class SpotifyClient:
         logger.debug(f"[spotify] search query={query!r} type=artist → {len(result)} results")
         return result
 
+    async def create_playlist(self, name: str, public: bool = True) -> tuple[str, str]:
+        """Create a new playlist. Returns (playlist_id, playlist_url)."""
+        self._ensure_init()
+        async with self._session.get(f"{_BASE}/me") as resp:  # type: ignore[union-attr]
+            me = await resp.json()
+        user_id = me["id"]
+        async with self._session.post(  # type: ignore[union-attr]
+            f"{_BASE}/users/{user_id}/playlists",
+            json={"name": name, "public": public, "description": "Created by Music Migration"},
+        ) as resp:
+            data = await resp.json()
+        playlist_id = data["id"]
+        playlist_url = data["external_urls"]["spotify"]
+        logger.info(f"[spotify] created playlist {name!r} id={playlist_id} url={playlist_url}")
+        return playlist_id, playlist_url
+
+    async def add_tracks_to_playlist(self, playlist_id: str, track_uris: list[str]) -> None:
+        """Add tracks to a playlist in batches of 100 (Spotify API limit)."""
+        self._ensure_init()
+        _BATCH = 100
+        for i in range(0, len(track_uris), _BATCH):
+            batch = track_uris[i : i + _BATCH]
+            async with self._session.post(  # type: ignore[union-attr]
+                f"{_BASE}/playlists/{playlist_id}/tracks",
+                json={"uris": batch},
+            ) as resp:
+                if resp.status not in (200, 201):
+                    body = await resp.text()
+                    logger.warning(f"[spotify] add_tracks batch {i // _BATCH + 1} → {resp.status}: {body}")
+            await asyncio.sleep(0.1)
+        logger.info(f"[spotify] added {len(track_uris)} tracks to playlist {playlist_id!r}")
+
     async def follow_artist(self, artist_id: str) -> bool:
         """Follow an artist (PUT /me/following?type=artist)."""
         self._ensure_init()
