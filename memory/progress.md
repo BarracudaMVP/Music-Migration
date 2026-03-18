@@ -4,6 +4,27 @@
 
 ---
 
+## ✅ MM-83 — React SPA: страницы и полный флоу — 2026-03-19
+
+**Цель:** реализовать все страницы React SPA на ветке `feature/spa`.
+
+**Что сделано:**
+
+1. `frontend/src/pages/HomePage.tsx` — выбор from/to сервисов из matrix API; auth-статус значки на карточках (✓/—); секция авторизации с OAuth кнопками (`window.location.href = getOAuthStartUrl(...)`); `canProceed` gate; кнопка "Далее →" → `/migrate?from=X&to=Y`; `?auth_error=1` banner; `useRef(false)` guard.
+2. `frontend/src/pages/MigratePage.tsx` — читает `?from=X&to=Y`; настройки: limit (All/50/100/500), skip_already (скрыт для file), like_tracks (SC), spotify_playlist_mode (Spotify); `handleStart()` → `startMigration()` → navigate `/migrate/{id}/progress`; auth секция с OAuth кнопками.
+3. `frontend/src/pages/ProgressPage.tsx` — polling `getMigration(id)` каждые 2с через `setInterval`; прогресс-бар `doneCount/total`; статистика (liked+in_playlist, not_found, errors, pending); `current_track` во время выполнения; terminal actions: "Открыть плейлист" (если `result_path`), "Новая миграция", "История".
+4. `frontend/src/pages/HistoryPage.tsx` — redirect если нет токена; `listMigrations()` → кликабельные строки; статус-бейджи (running/pending/done/failed/cancelled); success count, not_found count; ссылка "Плейлист ↗" с `e.stopPropagation()`.
+5. `frontend/src/api/migrations.ts` — обновлены типы: `TrackStats` (liked, in_playlist, not_found, error, pending); `Migration.stats`; `MigrationDetail`; `TracksPage`/`TrackRow`.
+6. `frontend/src/api/services.ts` — добавлены `MatrixEntry`, `UserStatus`, `isConnected()`, `fetchUserStatus()`.
+7. `frontend/src/index.css` — добавлены стили: layout (`.page`, `.container`, `.page-header`), service grid (`.service-card`, `.service-badge`), auth (`.auth-list`, `.auth-row`), settings (`.setting-row`, `.setting-select`), progress (`.progress-bar`, `.progress-fill`, `.stat-rows`), status badges, history (`.migration-list`, `.migration-row`, `.migration-meta`).
+
+**Ключевые решения:**
+- Polling вместо SSE (`EventSource` не поддерживает кастомные заголовки для JWT)
+- `useRef(false)` guard против double-fetch в React Strict Mode
+- `canStart = authServices.every(isAuth) && !starting` — кнопка disabled пока не авторизован
+
+---
+
 ## ✅ MM-89 — Spotify playlist user-account fallback — 2026-03-18
 
 **Цель:** расширить Spotify playlist mode (MM-88) — убрать зависимость от `SPOTIFY_BOT_TOKEN`, дать пользователю выбор режима в боте и SPA.

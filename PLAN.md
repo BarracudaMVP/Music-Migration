@@ -7,7 +7,7 @@
 
 ## Стек
 
-- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83, в процессе)
+- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83 ✅, ветка `feature/spa`)
 - **БД**: PostgreSQL + SQLAlchemy 2.x async + Alembic
 - **Очередь**: arq (Redis)
 - **Бот**: aiogram 3.x
@@ -1972,58 +1972,28 @@ JWT_REFRESH_TOKEN_TTL=2592000
 
 ---
 
-### 🚧 MM-83 — React SPA: страницы и полный флоу
+### ✅ MM-83 — React SPA: страницы и полный флоу
 
-> React-фронтенд в `frontend/`, scaffolding уже готов (ветка `feature/spa`).
-> Бэкенд не меняется. Jinja2 UI работает параллельно.
-> Ветка: `feature/spa`
+> Ветка: `feature/spa`. Все страницы реализованы.
 
 **Стек:** Vite + React 19 + TypeScript + React Router v6 + plain CSS (тёмная тема)
 
-**Уже готово (scaffold):**
+**Реализовано:**
 - [x] `frontend/` — Vite + React + TypeScript проект
 - [x] `api/` слой: `client.ts` (fetch wrapper, JWT Bearer), `auth.ts`, `services.ts`, `migrations.ts`
-- [x] Базовый CSS (тёмная тема, CSS-переменные)
+- [x] Базовый CSS (тёмная тема, CSS-переменные) + стили для всех компонентов
 - [x] `App.tsx` — роутинг (BrowserRouter, 5 роутов)
-- [x] `AuthCallbackPage.tsx` — полностью реализована: обмен code → JWT + redirect
+- [x] `AuthCallbackPage.tsx` — обмен code → JWT + redirect к flow_from/flow_to
 - [x] `docker-compose.dev.yml` — frontend сервис порт 3000
-- [x] Бэкенд-баг: OAuth code в redirect — исправлен (MM-83 phase 1)
-- [x] Бэкенд-баг: OAuth start URL `/start` суффикс — убран
-
-**Доступные API эндпоинты (все `/api/v1/`):**
-```
-GET  /services              — список сервисов [{id, name, capabilities}]
-GET  /services/matrix       — матрица переносов
-GET  /auth/me               — {ym_connected, sc_connected, spotify_connected, lang, role}
-GET  /auth/{svc}?flow_from=X&flow_to=Y — OAuth start (browser redirect)
-POST /auth/exchange         — {code} → {access_token, refresh_token}
-POST /auth/refresh          — {refresh_token} → {access_token}
-POST /auth/logout           — 204
-POST /migrations            — {from_service, to_service, content_types, limit,
-                               skip_already_migrated, like_tracks,
-                               spotify_playlist_mode, spotify_playlist_name}
-GET  /migrations            — [{id, from_service, to_service, status, created_at, stats}]
-GET  /migrations/{id}       — {migration, stats, current_track}
-GET  /migrations/{id}/tracks?status=&page= — {tracks, total, page, pages}
-GET  /migrations/{id}/stream — SSE: {status, stats, current_track} каждую секунду
-GET  /migrations/{id}/export?fmt=csv|json — скачать файл
-```
-
-**Что нужно реализовать:**
-- [ ] `api/migrations.ts` — обновить типы под реальные ответы API (+ `/stream` SSE)
-- [ ] `HomePage.tsx` — главная: выбор from/to + auth-статус + OAuth кнопки
-- [ ] `MigratePage.tsx` — настройки + кнопка старта (content_types, limit, skip, like_tracks, spotify_playlist_mode)
-- [ ] `ProgressPage.tsx` — прогресс через SSE `/stream`, прогресс-бар, текущий трек
-- [ ] `HistoryPage.tsx` — список миграций, статистика, кнопка скачать
-
-**Дизайн/UX:**
-- Тёмная тема, CSS-переменные (уже в `index.css`)
-- Карточки сервисов с иконками (SVG inline или текст-emoji)
-- После auth-callback: запомнить flow_from/flow_to, вернуться к MigratePage
-- ProgressPage: SSE → живой прогресс без polling
+- [x] `HomePage.tsx` — выбор from/to сервисов, auth-статусы на карточках, OAuth кнопки, `canProceed` gate
+- [x] `MigratePage.tsx` — настройки (limit, skip_already, like_tracks, spotify_playlist_mode) + старт
+- [x] `ProgressPage.tsx` — polling каждые 2с, прогресс-бар, статистика, terminal actions
+- [x] `HistoryPage.tsx` — список миграций, статус-бейджи, success/not_found, ссылка на плейлист
+- [x] `api/migrations.ts` — типы под реальные ответы API (TrackStats, MigrationDetail, TracksPage)
+- [x] `api/services.ts` — MatrixEntry, UserStatus, isConnected, fetchUserStatus
 
 **Не входит в MM-83 (отдельные задачи):**
-- File→XX upload (нет multipart endpoint)
+- File→XX upload (нет multipart endpoint в `/api/v1/`)
 - Cancel миграции пользователем (нет user-facing cancel API)
 - Disconnect сервиса, смена языка
 
