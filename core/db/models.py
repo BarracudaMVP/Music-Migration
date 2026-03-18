@@ -49,6 +49,7 @@ class Migration(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="pending")
     user_migration_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result_path: Mapped[str | None] = mapped_column(String, nullable=True)  # MM-78: export fmt ("csv"/"json") when to_service=file
 
     tracks: Mapped[list[Track]] = relationship("Track", back_populates="migration")
     playlists: Mapped[list[Playlist]] = relationship("Playlist", back_populates="migration")

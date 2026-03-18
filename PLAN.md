@@ -1739,25 +1739,27 @@ migration/
 
 ---
 
-### 🔲 MM-78 — Асинхронный экспорт в файл (через ARQ worker)
+### ✅ MM-78 — Асинхронный экспорт в файл (через ARQ worker)
 
-> Экспорт в CSV/JSON должен идти через фоновый воркер (как все остальные миграции), а не синхронно — библиотека может быть большой, пользователь не должен ждать HTTP-ответа.
+> Экспорт в CSV/JSON идёт через ARQ worker, результат хранится в Redis (TTL 24h).
 
-**Контекст:** Сейчас `POST /migrate` с `to_service=file` выполняет экспорт синхронно в рамках HTTP-запроса: читает токен из сессии, вызывает `export_library()`, отдаёт файл через `FileResponse`. Для больших библиотек (тысячи треков) это может занять минуты — HTTP timeout или зависший UI.
+**Что сделано:**
+- [x] `worker/tasks.py` — `run_export_job(ctx, migration_id, service_id, token, fmt, user_id)`: вызывает `export_library()`, сохраняет bytes в Redis `export_data:{id}` (TTL 86400s), обновляет `status=done + result_path=fmt`, уведомляет Telegram со ссылкой
+- [x] `worker/main.py` — `run_export_job` добавлен в `functions`
+- [x] `core/db/models.py` — поле `result_path: Mapped[str | None]` в `Migration`
+- [x] `core/db/crud.py` — `get_migration()` возвращает `result_path`
+- [x] `alembic/versions/k1l2m3n4o5p6_add_result_path_to_migrations.py` — новая миграция
+- [x] `api/routes/web.py` — `POST /migrate` с `to_service=file`: вместо sync → `create_migration` + `enqueue run_export_job` + redirect на `/migrate/{id}`
+- [x] `api/routes/web.py` — `GET /migrate/{id}/export-file`: читает из Redis, отдаёт файл (410 если TTL истёк, 404 если не готово)
+- [x] `fragments/status.html` — кнопка Download для экспортных миграций (`to_service=file` + `result_path` заполнен)
+- [x] `tests/test_export_job.py` — 7 тестов: job success/failure/status-sequence, endpoint 200/404/410/missing
 
-**Задачи:**
-- [ ] Добавить ARQ job `run_export_job(ctx, migration_id, service_id, token, fmt, user_id)` в `worker/tasks.py`
-  - Вызывает `export_library(service_id, token, fmt)` внутри воркера
-  - Сохраняет результат в Redis или временный файл, путь/ключ пишет в Migration запись
-  - По завершении уведомляет Telegram с ссылкой на скачивание
-- [ ] Создать endpoint `GET /migrations/{id}/export-file` — отдаёт файл по migration_id (проверяет статус done + путь к файлу)
-- [ ] `POST /migrate` для `to_service=file`: вместо sync экспорта → `create_migration` + enqueue ARQ job → редирект на `/migrate/{id}` (прогресс, как обычная миграция)
-- [ ] Прогресс: `export_library()` принимает `progress_callback` — добавить поддержку callback в `core/export.py`
-- [ ] Добавить `download_url` или `result_path` в модель Migration (alembic миграция)
-- [ ] Обновить `result.html` / `progress.html`: кнопка скачивания файла если `migration.download_url` заполнен
-- [ ] Написать тест
+**Ключевые решения:**
+- Redis вместо shared filesystem (worker и api — разные Docker-контейнеры)
+- `result_path` хранит формат (`"csv"`/`"json"`) — и флаг готовности, и content-type для download
+- `progress_callback` в `export_library` — не реализован (export атомарен, прогресс не нужен)
 
-**Файлы:** `worker/tasks.py`, `api/routes/web.py`, `core/export.py`, `core/db/models.py`, `alembic/`, `api/templates/`
+**Файлы:** `worker/tasks.py`, `worker/main.py`, `core/db/models.py`, `core/db/crud.py`, `alembic/versions/k1l2m3n4o5p6_*`, `api/routes/web.py`, `api/templates/fragments/status.html`, `tests/test_export_job.py`
 
 ---
 

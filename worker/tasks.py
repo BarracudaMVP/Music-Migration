@@ -286,6 +286,50 @@ async def run_migration_job(
             raise
 
 
+_EXPORT_DATA_TTL = 86400  # 24h
+
+
+async def run_export_job(
+    ctx,
+    migration_id: int,
+    service_id: str,
+    token: str,
+    fmt: str,
+    user_id: str,
+) -> None:
+    """ARQ job: export library from service_id to CSV/JSON, store result in Redis."""
+    from core.export import export_library
+    from core.db import update_migration
+    from worker.notifications import notify_telegram, migration_failed_text
+    from config import settings
+
+    logger.info(f"[job] Export #{migration_id} from {service_id!r} fmt={fmt!r} for user {user_id!r}")
+    lang = await _get_user_lang(user_id)
+
+    with logger.contextualize(migration_id=migration_id, user_id=user_id):
+        try:
+            await update_migration(migration_id, status="running")
+            data = await export_library(service_id, token, fmt=fmt)
+
+            redis = ctx["redis"]
+            await redis.set(f"export_data:{migration_id}", data, ex=_EXPORT_DATA_TTL)
+            await update_migration(migration_id, status="done", result_path=fmt)
+
+            logger.info(f"[job] Export #{migration_id} done — {len(data)} bytes stored in Redis")
+            web_url = settings.web_base_url or settings.api_base_url
+            dl_url = f"{web_url}/migrate/{migration_id}/export-file"
+            await notify_telegram(
+                user_id,
+                f"✅ Экспорт #{migration_id} готов!\n📥 <a href=\"{dl_url}\">Скачать {fmt.upper()}</a>",
+            )
+
+        except Exception as e:
+            logger.error(f"[job] Export #{migration_id} failed: {e}")
+            await update_migration(migration_id, status="failed")
+            await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
+            raise
+
+
 async def run_file_migration_job(
     ctx,
     migration_id: int,

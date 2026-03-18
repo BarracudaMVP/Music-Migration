@@ -70,6 +70,7 @@ async def get_migration(migration_id: int) -> dict | None:
             "created_at": row.created_at,
             "status": row.status,
             "user_migration_number": row.user_migration_number,
+            "result_path": row.result_path,
         }
 
 
