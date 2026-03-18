@@ -40,7 +40,6 @@ async def run_yandex_migration_job(
 ) -> None:
     """ARQ job: migrate liked tracks from any source service → Yandex Music."""
     from migration.to_yandex import migrate_to_yandex
-    from core.yandex.client import YandexMusicClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
     from config import settings
@@ -65,13 +64,9 @@ async def run_yandex_migration_job(
                 tracks_data = await adapter.fetch_liked_tracks(source_token, limit=track_limit)
                 logger.info(f"[job] Fetched {len(tracks_data)} tracks from {from_service}")
 
-            ym_client = await YandexMusicClient(
-                ym_token, proxy_url=settings.ym_proxy_url or None
-            ).init()
-
             await migrate_to_yandex(
                 tracks_data=tracks_data,
-                ym_client=ym_client,
+                ym_token=ym_token,
                 migration_id=migration_id,
                 progress_callback=progress_cb,
             )
@@ -147,7 +142,6 @@ async def run_spotify_write_job(
 ) -> None:
     """ARQ job: migrate liked tracks + artists from any source → Spotify."""
     from migration.to_spotify import migrate_to_spotify
-    from core.spotify.client import SpotifyClient
     from core.db import update_migration, get_track_stats
     from worker.notifications import notify_telegram, migration_done_text, migration_failed_text
     from config import settings
@@ -195,17 +189,13 @@ async def run_spotify_write_job(
                     except Exception as e:
                         logger.warning(f"[job] Could not fetch artists from {from_service}: {e}")
 
-            sp_client = await SpotifyClient(access_token).init()
-            try:
-                await migrate_to_spotify(
-                    tracks_data=tracks_data,
-                    artists_data=artists_data,
-                    spotify_client=sp_client,
-                    migration_id=migration_id,
-                    progress_callback=progress_cb,
-                )
-            finally:
-                await sp_client.close()
+            await migrate_to_spotify(
+                tracks_data=tracks_data,
+                artists_data=artists_data,
+                spotify_token=access_token,
+                migration_id=migration_id,
+                progress_callback=progress_cb,
+            )
 
             logger.info(f"[job] Spotify WRITE migration #{migration_id} finished")
 

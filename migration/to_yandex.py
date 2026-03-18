@@ -6,12 +6,11 @@ fetched from any adapter (SoundCloud, Spotify, File, etc.).
 
 Pipeline:
 1. Insert source tracks into DB with status 'pending'
-2. For each pending track: search on YM, fuzzy-match, like
+2. For each pending track: search on YM, fuzzy-match, like (via YandexMusicAdapter)
 3. Return stats
 """
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 from loguru import logger
@@ -19,16 +18,12 @@ from loguru import logger
 from core.db import (
     update_migration,
     bulk_insert_tracks,
-    get_pending_tracks,
-    update_track,
 )
-from core.yandex.client import YandexMusicClient
-from core.matcher import find_best_match, split_artists, TrackCandidate
+from core.services.registry import ServiceRegistry
+from migration.pipeline import run_pending_tracks_loop, TrackPipelineStats
 
 # Pause between YM like operations to avoid rate limiting
 _YM_WRITE_SLEEP = 1.0
-# Number of search results to consider per query
-_SEARCH_LIMIT = 10
 
 
 @dataclass
@@ -48,7 +43,7 @@ class YandexMigrationStats:
 
 async def migrate_to_yandex(
     tracks_data: list[dict],
-    ym_client: YandexMusicClient,
+    ym_token: str,
     migration_id: int,
     progress_callback=None,
 ) -> YandexMigrationStats:
@@ -73,110 +68,20 @@ async def migrate_to_yandex(
         ],
     )
 
-    stats = await _run_pending_loop(ym_client, migration_id, progress_callback)
+    adapter = ServiceRegistry.get("yandex_music")
+    async with adapter.write_session(ym_token) as session:
+        pipeline_stats = await run_pending_tracks_loop(
+            session, migration_id, progress_callback, write_sleep=_YM_WRITE_SLEEP
+        )
+
     await update_migration(migration_id, status="done")
+
+    stats = YandexMigrationStats(
+        total=pipeline_stats.total,
+        liked=pipeline_stats.liked,
+        not_found=pipeline_stats.not_found,
+        errors=pipeline_stats.errors,
+        uncertain=pipeline_stats.uncertain,
+    )
     logger.info(f"Перенос в Яндекс Музыку завершён. {stats}")
     return stats
-
-
-async def _run_pending_loop(
-    ym_client: YandexMusicClient,
-    migration_id: int,
-    progress_callback=None,
-) -> YandexMigrationStats:
-    """Process all pending tracks: search on YM → match → like."""
-    pending = await get_pending_tracks(migration_id)
-    total = len(pending)
-    stats = YandexMigrationStats(total=total)
-
-    for i, row in enumerate(pending, start=1):
-        track_str = f"{row['ym_artist']} — {row['ym_title']}"
-        logger.info(f"[{i}/{total}] ▶ {track_str}")
-        if progress_callback:
-            await progress_callback(i, total, track_str)
-
-        try:
-            result = await _process_one_track(ym_client, row)
-        except Exception as e:
-            logger.error(f"[{i}/{total}] Ошибка: {track_str!r}: {e}")
-            await update_track(row["id"], status="error")
-            stats.errors += 1
-            continue
-
-        if result == "liked":
-            stats.liked += 1
-            logger.debug(f"[{i}/{total}] OK: {track_str}")
-        elif result == "uncertain":
-            stats.uncertain += 1
-            logger.debug(f"[{i}/{total}] uncertain: {track_str}")
-        else:
-            stats.not_found += 1
-            logger.debug(f"[{i}/{total}] not found: {track_str}")
-
-        await asyncio.sleep(_YM_WRITE_SLEEP)
-
-    return stats
-
-
-async def _process_one_track(ym_client: YandexMusicClient, row: dict) -> str:
-    """Search YM, fuzzy-match, like. Returns 'liked' | 'not_found' | 'uncertain'."""
-    src_artist = row["ym_artist"]
-    src_title = row["ym_title"]
-    track_id = row["id"]
-
-    # Multi-query strategy: one search per individual artist
-    artists = split_artists(src_artist)
-    queries = [f"{a} {src_title}" for a in artists]
-
-    if len(queries) > 1:
-        results_list = await asyncio.gather(
-            *[ym_client.search_tracks(q, limit=_SEARCH_LIMIT) for q in queries]
-        )
-    else:
-        results_list = [await ym_client.search_tracks(queries[0], limit=_SEARCH_LIMIT)]
-
-    # Deduplicate by YM track ID
-    all_candidates: dict[int, TrackCandidate] = {}
-    for ym_results in results_list:
-        for t in ym_results:
-            ym_int_id = int(t.id)
-            if ym_int_id not in all_candidates:
-                all_candidates[ym_int_id] = TrackCandidate(
-                    track_id=ym_int_id,   # used as dedup key
-                    track_url=t.id,       # string YM track ID for liking
-                    artist=t.artists_str,
-                    title=t.title,
-                )
-
-    candidates = list(all_candidates.values())
-
-    # Fallback: title-only search
-    if not candidates:
-        fallback = await ym_client.search_tracks(src_title, limit=_SEARCH_LIMIT)
-        candidates = [
-            TrackCandidate(track_id=int(t.id), track_url=t.id, artist=t.artists_str, title=t.title)
-            for t in fallback
-        ]
-
-    match = find_best_match(src_artist, src_title, candidates)
-
-    if match is None:
-        await update_track(track_id, status="not_found")
-        return "not_found"
-
-    if match.uncertain:
-        await update_track(track_id, status="not_found", match_score=match.score)
-        return "uncertain"
-
-    if not match.matched:
-        await update_track(track_id, status="not_found", match_score=match.score)
-        return "not_found"
-
-    # Like on YM — track_url stores the YM track ID string
-    success = await ym_client.like_track(match.track_url)
-    if success:
-        await update_track(track_id, status="liked", match_score=match.score)
-        return "liked"
-    else:
-        await update_track(track_id, status="error")
-        return "error"
