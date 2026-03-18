@@ -2491,4 +2491,87 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### 🔲 MM-97 — SPA: Admin Panel
+
+**Цель:** Перенести функционал Jinja2-админки в React SPA — без отдельного `/admin/*` роутера. Доступ через роль `role="admin"` в JWT, уже возвращаемой `/api/v1/auth/me`.
+
+#### Новые `/api/v1/` endpoints (admin-only)
+
+Зависимость `require_admin`:
+```python
+async def require_admin(user_id: str = Depends(get_current_user)):
+    session = await load_user_session(user_id)
+    if not session or session.get("role") != "admin":
+        raise HTTPException(403)
+    return user_id
+```
+
+- [ ] `GET /api/v1/stats` — дашборд: total_migrations, total_users, total_tracks; by_status (migrations + tracks); последние 10 миграций
+- [ ] `GET /api/v1/admin/migrations` — все миграции (filter: `?status=`, `?user_id=`), до 200; `require_admin`
+- [ ] `GET /api/v1/admin/migrations/{id}` — детали + треки (filter: `?status=`), до 500; `require_admin`
+- [ ] `POST /api/v1/admin/migrations/{id}/cancel` — отмена ARQ job + статус cancelled; `require_admin`
+- [ ] `POST /api/v1/admin/migrations/{id}/restart` — сброс error треков в pending, re-enqueue; `require_admin`
+- [ ] `GET /api/v1/admin/users` — все юзеры + migration_count; `require_admin`
+- [ ] `POST /api/v1/admin/users/{user_id}/role` — смена роли (user/admin); `require_admin`
+
+> `/api/v1/services` и `/api/v1/services/matrix` уже открыты — сервис-реестр показывается без нового endpoint.
+
+#### Существующие endpoints — расширение для admin
+
+- [ ] `GET /api/v1/migrations` — если `role=admin`, принимает `?user_id=` и возвращает все миграции (иначе только свои)
+- [ ] `GET /api/v1/migrations/{id}` — если `role=admin`, пропускает ownership check
+
+#### SPA (frontend)
+
+- [ ] `App.tsx` — маршрут `/admin` + sub-routes `/admin/dashboard`, `/admin/migrations`, `/admin/migrations/:id`, `/admin/users`; обёртка `<AdminRoute>` (redirect если `role !== "admin"`)
+- [ ] `AdminDashboardPage` — stat-карточки + таблица миграций по статусу + последние 10
+- [ ] `AdminMigrationsPage` — таблица всех миграций, фильтры status/user_id
+- [ ] `AdminMigrationDetailPage` — треки с фильтром + кнопки cancel/restart
+- [ ] `AdminUsersPage` — таблица юзеров + смена роли
+- [ ] Навбар/меню — ссылка "Admin" появляется если `role === "admin"`
+
+#### Auth
+
+- Старый `/admin/login` (пароль) — оставить работающим до момента когда первый admin-юзер будет назначен через DB/CLI
+- Или добавить одноразовый CLI-скрипт `scripts/make_admin.py user_id` как альтернативу
+
+**Файлы:** `api/routes/api_v1.py`, `api/security.py` (require_admin), `frontend/src/pages/admin/*`, `frontend/src/App.tsx`
+
+---
+
+### 🔲 MM-98 — SPA: UI фиксы и недостающие фичи
+
+**Проблемы обнаруженные при сравнении с Jinja2 UI:**
+
+#### 1. Галочки на карточках сервиса (HomePage)
+`service-badge` (`✓`/`—`) отображается прямо на карточке выбора сервиса — создаёт визуальное ощущение checkbox. В старом UI статус авторизации показывался только в отдельной секции "Авторизация" ниже.
+- [ ] `HomePage.tsx` — убрать `service-badge` с карточек FROM/TO; auth-статус остаётся только в секции авторизации под выбором
+
+#### 2. Content types (треки / плейлисты / артисты)
+`MigratePage.tsx` вообще не отображает выбор типов контента. В старом UI были чекбоксы tracks/playlists/artists (доступность зависела от capabilities адаптеров).
+- [ ] `MigratePage.tsx` — добавить секцию content types: для не-file миграций показывать `tracks`, `playlists`, `artists` (availability из capabilities сервисов через `/api/v1/services`); для file-flow фиксировано `tracks`
+- [ ] `StartMigrationRequest` — добавить `content_types` в тело запроса (уже есть в типе, но не заполняется)
+
+#### 3. File import/export не работает
+`MigratePage.tsx` не обрабатывает `from=file` (нет загрузки файла) и `to=file` (нет выбора формата + нет прямой скачки).
+- [ ] **Import (from=file)**: `MigratePage.tsx` — показывать file-picker (`<input type="file" accept=".csv,.json">`); передавать файл через `multipart/form-data` или парсить на клиенте и передавать как `tracks_override` в JSON
+- [ ] **Export (to=file)**: кнопка "Экспортировать" → `GET /api/v1/migrations/{id}/export?fmt=csv|json` → скачка файла; выбор формата CSV/JSON; нет запуска фоновой миграции
+- [ ] `api/routes/api_v1.py` — добавить `POST /api/v1/migrations/export` (sync export без создания Migration) или переиспользовать существующий `GET /migrations/{id}/export`
+
+> **Примечание по import:** текущий `/api/v1/migrations` (POST) не принимает `multipart/form-data`. Вариант — парсить CSV/JSON на клиенте и передавать `tracks_override: [{artist, title}, ...]` в JSON. Нужно добавить поддержку `tracks_override` в `POST /api/v1/migrations`.
+
+#### 4. Смена языка
+Не реализована в SPA ни на фронте, ни как endpoint.
+- [ ] `api/routes/api_v1.py` — `POST /api/v1/auth/lang` (body: `{lang: "ru"|"en"}`) → сохраняет `UserSession.lang`; `require_auth`
+- [ ] `/api/v1/auth/me` — уже возвращает `lang`, SPA читает его
+- [ ] `frontend/src` — language toggle (RU/EN) в header/footer; `i18n.ts` — статические словари; обёртка `t(key)` для всех строк в компонентах
+
+#### 5. Spotify playlist name
+`MigratePage.tsx` показывает toggle "Создать плейлист" но нет поля для ввода названия.
+- [ ] `MigratePage.tsx` — когда `spotifyPlaylistMode=true`, показывать `<input>` для `spotify_playlist_name` (placeholder: авто-генерация на бэке)
+
+**Файлы:** `frontend/src/pages/HomePage.tsx`, `frontend/src/pages/MigratePage.tsx`, `frontend/src/api/migrations.ts`, `frontend/src/api/auth.ts`, `api/routes/api_v1.py`
+
+---
+
 
