@@ -1972,85 +1972,60 @@ JWT_REFRESH_TOKEN_TTL=2592000
 
 ---
 
-### 🚧 MM-83 — React SPA: скаффолдинг + базовая навигация
+### 🚧 MM-83 — React SPA: страницы и полный флоу
 
-> Создать React-фронтенд в `frontend/` на Vite + React + TypeScript + plain CSS.
-> Фронтенд работает параллельно с Jinja2 UI (бэкенд не меняется).
+> React-фронтенд в `frontend/`, scaffolding уже готов (ветка `feature/spa`).
+> Бэкенд не меняется. Jinja2 UI работает параллельно.
 > Ветка: `feature/spa`
 
-**Стек:**
-- Vite 8 + React 19 + TypeScript
-- React Router v6 (`BrowserRouter`)
-- Plain CSS (CSS-переменные, тёмная тема)
-- Нет Tailwind, нет TanStack Query (добавим позже при необходимости)
+**Стек:** Vite + React 19 + TypeScript + React Router v6 + plain CSS (тёмная тема)
 
-**Прокси:** `vite.config.ts` — `/api/*` → `http://localhost:8000`
-
-**Структура `frontend/src/`:**
-```
-api/
-  client.ts       — fetch wrapper, JWT Bearer, ApiError
-  auth.ts         — exchangeCode, refreshAccessToken, logout, getOAuthStartUrl
-  services.ts     — fetchServices, fetchMatrix
-  migrations.ts   — startMigration, getMigrationStatus, getMigrations
-pages/
-  HomePage.tsx
-  AuthCallbackPage.tsx  — OAuth code → JWT exchange
-  MigratePage.tsx
-  ProgressPage.tsx
-  HistoryPage.tsx
-App.tsx           — Routes
-main.tsx          — BrowserRouter entry
-index.css         — базовый CSS (тёмная тема)
-```
-
-**Роуты:**
-- `/` — выбор сервисов (HomePage)
-- `/auth/callback?code=...` — OAuth callback (AuthCallbackPage)
-- `/migrate?from=X&to=Y` — настройка + запуск (MigratePage)
-- `/migrate/:id/progress` — прогресс (ProgressPage)
-- `/history` — история (HistoryPage)
-
-**Запуск:**
-```bash
-docker compose -f docker-compose.dev.yml up --build   # порт 3000
-```
-Node.js локально не нужен — `node_modules` живут в Docker volume.
-
-**Задачи:**
-- [x] Scaffolding: `npm create vite@latest frontend -- --template react-ts`
-- [x] Установить `react-router-dom`
-- [x] `vite.config.ts`: proxy `/api` → `localhost:8000`, port 3000
-- [x] `api/` слой: client, auth, services, migrations
-- [x] Страницы-заглушки для всех роутов
+**Уже готово (scaffold):**
+- [x] `frontend/` — Vite + React + TypeScript проект
+- [x] `api/` слой: `client.ts` (fetch wrapper, JWT Bearer), `auth.ts`, `services.ts`, `migrations.ts`
 - [x] Базовый CSS (тёмная тема, CSS-переменные)
-- [x] `main.tsx`: обернуть в `BrowserRouter`
-- [x] `.gitignore`: исключить `frontend/node_modules/`, `frontend/dist/`
-- [x] `LOCAL_SETUP.md`: инструкция по запуску фронтенда
-- [x] AuthCallbackPage: обмен code → JWT + redirect (реализована полностью)
-- [ ] **⏸ Ждём дизайн** — HomePage, MigratePage, ProgressPage, HistoryPage (заглушки)
-- [ ] HomePage: выбор from/to сервисов (карточки), кнопки OAuth
-- [ ] MigratePage: подтверждение, content types, запуск миграции
-- [ ] ProgressPage: polling статуса, прогресс-бар
-- [ ] HistoryPage: список миграций
+- [x] `App.tsx` — роутинг (BrowserRouter, 5 роутов)
+- [x] `AuthCallbackPage.tsx` — полностью реализована: обмен code → JWT + redirect
+- [x] `docker-compose.dev.yml` — frontend сервис порт 3000
+- [x] Бэкенд-баг: OAuth code в redirect — исправлен (MM-83 phase 1)
+- [x] Бэкенд-баг: OAuth start URL `/start` суффикс — убран
 
-**⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
+**Доступные API эндпоинты (все `/api/v1/`):**
+```
+GET  /services              — список сервисов [{id, name, capabilities}]
+GET  /services/matrix       — матрица переносов
+GET  /auth/me               — {ym_connected, sc_connected, spotify_connected, lang, role}
+GET  /auth/{svc}?flow_from=X&flow_to=Y — OAuth start (browser redirect)
+POST /auth/exchange         — {code} → {access_token, refresh_token}
+POST /auth/refresh          — {refresh_token} → {access_token}
+POST /auth/logout           — 204
+POST /migrations            — {from_service, to_service, content_types, limit,
+                               skip_already_migrated, like_tracks,
+                               spotify_playlist_mode, spotify_playlist_name}
+GET  /migrations            — [{id, from_service, to_service, status, created_at, stats}]
+GET  /migrations/{id}       — {migration, stats, current_track}
+GET  /migrations/{id}/tracks?status=&page= — {tracks, total, page, pages}
+GET  /migrations/{id}/stream — SSE: {status, stats, current_track} каждую секунду
+GET  /migrations/{id}/export?fmt=csv|json — скачать файл
+```
 
-- [x] **[КРИТИЧНО] OAuth code не передаётся в redirect** — `code = await _issue_oauth_code(user_id)` + redirect на `{WEB_BASE_URL}/auth/callback?code={code}&...`. Покрыто тестами.
-- [x] **[КРИТИЧНО] OAuth start URL mismatch** — убран `/start` суффикс в `frontend/src/api/auth.ts`.
-- [ ] **[ВЫСОКИЙ] File→XX через SPA невозможно** — `POST /api/v1/migrations` принимает JSON-тело, нет поддержки файла. Нужен multipart endpoint или отдельный `POST /api/v1/migrations/upload`.
-- [ ] **[СРЕДНИЙ] Нет cancel для пользователя** — только `POST /admin/migrations/{id}/cancel`. Добавить `POST /api/v1/migrations/{id}/cancel` (с проверкой owner).
-- [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
-- [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
+**Что нужно реализовать:**
+- [ ] `api/migrations.ts` — обновить типы под реальные ответы API (+ `/stream` SSE)
+- [ ] `HomePage.tsx` — главная: выбор from/to + auth-статус + OAuth кнопки
+- [ ] `MigratePage.tsx` — настройки + кнопка старта (content_types, limit, skip, like_tracks, spotify_playlist_mode)
+- [ ] `ProgressPage.tsx` — прогресс через SSE `/stream`, прогресс-бар, текущий трек
+- [ ] `HistoryPage.tsx` — список миграций, статистика, кнопка скачать
 
-**⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
+**Дизайн/UX:**
+- Тёмная тема, CSS-переменные (уже в `index.css`)
+- Карточки сервисов с иконками (SVG inline или текст-emoji)
+- После auth-callback: запомнить flow_from/flow_to, вернуться к MigratePage
+- ProgressPage: SSE → живой прогресс без polling
 
-- [x] **[КРИТИЧНО] OAuth code не передаётся в redirect** — `code = await _issue_oauth_code(user_id)` + redirect на `{WEB_BASE_URL}/auth/callback?code={code}&...`. Покрыто тестами.
-- [x] **[КРИТИЧНО] OAuth start URL mismatch** — убран `/start` суффикс в `frontend/src/api/auth.ts`.
-- [ ] **[ВЫСОКИЙ] File→XX через SPA невозможно** — `POST /api/v1/migrations` принимает JSON-тело, нет поддержки файла. Нужен multipart endpoint или отдельный `POST /api/v1/migrations/upload`.
-- [ ] **[СРЕДНИЙ] Нет cancel для пользователя** — только `POST /admin/migrations/{id}/cancel`. Добавить `POST /api/v1/migrations/{id}/cancel` (с проверкой owner).
-- [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
-- [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
+**Не входит в MM-83 (отдельные задачи):**
+- File→XX upload (нет multipart endpoint)
+- Cancel миграции пользователем (нет user-facing cancel API)
+- Disconnect сервиса, смена языка
 
 ---
 

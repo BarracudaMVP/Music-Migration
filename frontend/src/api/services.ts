@@ -6,19 +6,35 @@ export interface Service {
   capabilities: string[]
 }
 
-export interface ServicesResponse {
-  services: Service[]
-  auth_status: Record<string, boolean>
+export interface MatrixEntry {
+  from: string
+  to: string
 }
 
-export interface MatrixResponse {
-  matrix: Record<string, string[]>
+export interface UserStatus {
+  user_id: string
+  ym_connected: boolean
+  sc_connected: boolean
+  spotify_connected: boolean
+  lang: string
+  role: string
 }
 
-export function fetchServices(): Promise<ServicesResponse> {
-  return api.get<ServicesResponse>('/services')
+export function isConnected(status: UserStatus, serviceId: string): boolean {
+  if (serviceId === 'yandex_music') return status.ym_connected
+  if (serviceId === 'soundcloud') return status.sc_connected
+  if (serviceId === 'spotify') return status.spotify_connected
+  return false
 }
 
-export function fetchMatrix(): Promise<MatrixResponse> {
-  return api.get<MatrixResponse>('/services/matrix')
+export function fetchServices(): Promise<Service[]> {
+  return api.get<Service[]>('/services')
+}
+
+export function fetchMatrix(): Promise<MatrixEntry[]> {
+  return api.get<MatrixEntry[]>('/services/matrix')
+}
+
+export function fetchUserStatus(): Promise<UserStatus> {
+  return api.get<UserStatus>('/auth/me')
 }
