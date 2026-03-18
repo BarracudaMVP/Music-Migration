@@ -2286,34 +2286,35 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
-### MM-89 — Spotify: режим создания плейлиста вместо (или вместе с) лайками треков
+### ✅ MM-89 — Spotify: режим создания плейлиста вместо (или вместе с) лайками треков
 
 **Цель**: при миграции в Spotify давать пользователю выбор — лайкать треки в коллекцию (текущее поведение) или создавать плейлист с найденными треками. Оба режима должны работать.
 
-#### Мотивация
+#### Что сделано
 
-Текущий режим лайкает треки напрямую в `Liked Songs`. Многие пользователи предпочитают получить отдельный плейлист — не засорять коллекцию, легче проверить результат, можно поделиться.
+- [x] `_create_bot_playlist` переименована в `_create_playlist(migration_id, name, user_token)` — использует `settings.spotify_bot_token or user_token` (fallback на токен пользователя)
+- [x] `flow_rest.html` — чекбокс режима плейлиста показывается для ВСЕХ Spotify-назначений (не только когда бот настроен)
+- [x] `api/routes/api_v1.py` — `StartMigrationRequest`: `spotify_playlist_mode: bool = False` + `spotify_playlist_name: str = "Music Migration"`; пробрасывается в `run_spotify_write_job`
+- [x] `bot/handlers/auth.py` — `_confirmation_kb` получает `spotify_playlist_mode: bool = False`; кнопка `toggle_spotify_playlist` для Spotify-назначения; `on_toggle_spotify_playlist` handler
+- [x] `bot/handlers/migration.py` — `_kb_result` принимает `playlist_url: str | None`, добавляет кнопку плейлиста; `on_start_migration` читает `spotify_playlist_mode` из state; `_poll_migration` пробрасывает `result_path`
+- [x] `bot/api_client.py` — `spotify_playlist_mode: bool = False` в `start_migration`
+- [x] `core/i18n.py` — ключи `bot_spotify_playlist_on`, `bot_spotify_playlist_off`, `bot_btn_open_playlist`
+- [x] 16 тестов в `tests/test_mm89_spotify_playlist_user.py`; MM-88 тесты обновлены (`_create_bot_playlist` → `_create_playlist`)
 
-#### Что сделать
+#### Ключевые решения
 
-- [ ] `SpotifyClient` — `create_playlist(name, public=False)` + `add_tracks_to_playlist(playlist_id, track_uris)` (батч по 100 — лимит Spotify API)
-- [ ] `migration/to_spotify.py` — добавить `playlist_mode: bool` параметр (аналогично SC); если `True` — собирает `spotify:track:{id}`, в конце создаёт плейлист и добавляет треки; если `False` — текущее поведение (like)
-- [ ] Возвращать `playlist_url` в результате миграции (аналогично MM-88)
-- [ ] Воркер `run_spotify_write_job` — принимает `playlist_mode`, `playlist_name` (default: `"YM Liked"` / имя источника)
-- [ ] API — `POST /migrations` + `POST /api/v1/migrations`: новый параметр `spotify_playlist_mode: bool` (default `false`)
-- [ ] Веб UI (SPA + Jinja2) — чекбокс / toggle в настройках миграции → Spotify: "Создать плейлист" vs "Добавить в коллекцию"
-- [ ] Бот — inline кнопки выбора режима в шаге подтверждения (аналогично выбору треки/полная библиотека)
-- [ ] Тесты: оба режима, `create_playlist`, батчинг треков
+- `_create_playlist` работает без `SPOTIFY_BOT_TOKEN` — берёт токен пользователя как fallback; плейлист будет на аккаунте пользователя
+- Чекбокс в UI теперь не гейтирован на `spotify_bot_configured`
+- SPA endpoint `/api/v1/migrations` получил поддержку `spotify_playlist_mode` (была пропущена в MM-88)
 
 #### Файлы
 
-- `core/spotify/client.py` — `create_playlist`, `add_tracks_to_playlist`
-- `migration/to_spotify.py` — `playlist_mode` ветка
-- `worker/tasks.py` — пробросить параметр + вернуть `playlist_url`
-- `api/routes/migrations.py`, `api/routes/api_v1.py` — новый параметр, ответ с `playlist_url`
-- `api/templates/fragments/flow_rest.html` — UI опция
-- `bot/handlers/migration.py` — выбор режима
-- `tests/`
+- `migration/to_spotify.py` — `_create_playlist` (renamed)
+- `api/templates/fragments/flow_rest.html` — убрана проверка `spotify_bot_configured`
+- `api/routes/api_v1.py` — новые параметры в `StartMigrationRequest`
+- `bot/handlers/auth.py`, `bot/handlers/migration.py`, `bot/api_client.py` — playlist toggle + result button
+- `core/i18n.py` — новые ключи
+- `tests/test_mm89_spotify_playlist_user.py` (новый), `tests/test_mm88_spotify_playlist.py` (обновлён)
 
 ---
 
