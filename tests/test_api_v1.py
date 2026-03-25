@@ -122,8 +122,9 @@ async def test_exchange_code_success(app, mock_arq_pool):
     main_module._arq_pool = mock_arq_pool
     try:
         with patch("api.routes.api_v1.save_spa_refresh_token", new_callable=AsyncMock):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post("/api/v1/auth/exchange", json={"code": "test-code-123"})
+            with patch("api.routes.api_v1.load_user_session", new_callable=AsyncMock, return_value=None):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.post("/api/v1/auth/exchange", json={"code": "test-code-123"})
     finally:
         main_module._arq_pool = original_pool
 
@@ -335,7 +336,8 @@ async def test_list_migrations_with_auth(app, mock_arq_pool):
 
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
+    assert "migrations" in data
+    assert isinstance(data["migrations"], list)
 
 
 # ---------------------------------------------------------------------------
