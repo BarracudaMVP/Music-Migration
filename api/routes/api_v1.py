@@ -386,6 +386,7 @@ class StartMigrationRequest(BaseModel):
     spotify_playlist_mode: bool = False
     spotify_playlist_name: str = "Music Migration"
     export_fmt: str = "csv"
+    tracks_override: list[dict] | None = None  # for file import: parsed on frontend
 
 
 @router.post("/migrations", status_code=201)
@@ -395,7 +396,6 @@ async def start_migration(
 ):
     """Start a new migration job. Returns {migration_id}."""
     from api.main import get_arq_pool
-    from api.routes.migrations import _get_token
 
     arq = get_arq_pool()
     if not arq:
@@ -422,6 +422,20 @@ async def start_migration(
     token_sp_refresh = db_session.get("spotify_refresh_token") or ""
     token_sc_refresh = db_session.get("soundcloud_refresh_token") or ""
 
+    # File import via SoundCloud: use dedicated job with tracks list
+    if body.from_service == "file" and body.to_service == "soundcloud":
+        if not body.tracks_override:
+            raise HTTPException(status_code=400, detail="tracks_override required for file import")
+        await arq.enqueue_job("run_file_migration_job",
+            migration_id=migration_id,
+            sc_token=token_sc,
+            tracks=body.tracks_override,
+            user_id=user_id,
+            track_limit=body.limit or None,
+            like_tracks=body.like_tracks,
+        )
+        return {"migration_id": migration_id}
+
     job_kwargs = dict(
         migration_id=migration_id,
         user_id=user_id,
@@ -434,7 +448,10 @@ async def start_migration(
     )
 
     if body.to_service == "yandex_music":
-        await arq.enqueue_job("run_yandex_migration_job", **job_kwargs)
+        await arq.enqueue_job("run_yandex_migration_job", **{
+            **job_kwargs,
+            "tracks_override": body.tracks_override,
+        })
     elif body.to_service == "spotify":
         await arq.enqueue_job("run_spotify_write_job", **{
             **job_kwargs,
@@ -442,6 +459,7 @@ async def start_migration(
             "spotify_refresh_token": token_sp_refresh,
             "playlist_mode": body.spotify_playlist_mode,
             "playlist_name": body.spotify_playlist_name,
+            "tracks_override": body.tracks_override,
         })
     else:
         if body.from_service == "spotify":

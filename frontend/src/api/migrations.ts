@@ -1,5 +1,10 @@
 import { api } from './client'
 
+export interface TrackImport {
+  artist: string
+  title: string
+}
+
 export interface StartMigrationRequest {
   from_service: string
   to_service: string
@@ -9,6 +14,7 @@ export interface StartMigrationRequest {
   like_tracks?: boolean
   spotify_playlist_mode?: boolean
   spotify_playlist_name?: string
+  tracks_override?: TrackImport[]
 }
 
 export interface TrackStats {
@@ -67,4 +73,28 @@ export function getMigrationTracks(id: number, status?: string, page = 1): Promi
   const q = new URLSearchParams({ page: String(page) })
   if (status) q.set('status', status)
   return api.get<TracksPage>(`/migrations/${id}/tracks?${q}`)
+}
+
+export async function parseImportFile(file: File): Promise<TrackImport[]> {
+  const text = await file.text()
+
+  if (file.name.toLowerCase().endsWith('.json')) {
+    const data = JSON.parse(text) as TrackImport[]
+    return data.filter(t => t && typeof t.artist === 'string' && typeof t.title === 'string')
+  }
+
+  // CSV: first line is header, expect artist and title columns
+  const lines = text.trim().split('\n')
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+  const artistIdx = headers.indexOf('artist')
+  const titleIdx = headers.indexOf('title')
+  if (artistIdx === -1 || titleIdx === -1) return []
+
+  return lines.slice(1)
+    .map(line => {
+      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+      return { artist: cols[artistIdx] ?? '', title: cols[titleIdx] ?? '' }
+    })
+    .filter(t => t.artist || t.title)
 }

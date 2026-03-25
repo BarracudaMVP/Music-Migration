@@ -2539,39 +2539,53 @@ async def require_admin(user_id: str = Depends(get_current_user)):
 
 ---
 
-### 🔲 MM-98 — SPA: UI фиксы и недостающие фичи
+### ✅ MM-98 — SPA: UI фиксы и недостающие фичи
 
-**Проблемы обнаруженные при сравнении с Jinja2 UI:**
-
-#### 1. Галочки на карточках сервиса (HomePage)
-`service-badge` (`✓`/`—`) отображается прямо на карточке выбора сервиса — создаёт визуальное ощущение checkbox. В старом UI статус авторизации показывался только в отдельной секции "Авторизация" ниже.
-- [ ] `HomePage.tsx` — убрать `service-badge` с карточек FROM/TO; auth-статус остаётся только в секции авторизации под выбором
-
-#### 2. Content types (треки / плейлисты / артисты)
-`MigratePage.tsx` вообще не отображает выбор типов контента. В старом UI были чекбоксы tracks/playlists/artists (доступность зависела от capabilities адаптеров).
-- [ ] `MigratePage.tsx` — добавить секцию content types: для не-file миграций показывать `tracks`, `playlists`, `artists` (availability из capabilities сервисов через `/api/v1/services`); для file-flow фиксировано `tracks`
-- [ ] `StartMigrationRequest` — добавить `content_types` в тело запроса (уже есть в типе, но не заполняется)
-
-#### 3. File import/export не работает
-`MigratePage.tsx` не обрабатывает `from=file` (нет загрузки файла) и `to=file` (нет выбора формата + нет прямой скачки).
-- [ ] **Import (from=file)**: `MigratePage.tsx` — показывать file-picker (`<input type="file" accept=".csv,.json">`); передавать файл через `multipart/form-data` или парсить на клиенте и передавать как `tracks_override` в JSON
-- [ ] **Export (to=file)**: кнопка "Экспортировать" → `GET /api/v1/migrations/{id}/export?fmt=csv|json` → скачка файла; выбор формата CSV/JSON; нет запуска фоновой миграции
-- [ ] `api/routes/api_v1.py` — добавить `POST /api/v1/migrations/export` (sync export без создания Migration) или переиспользовать существующий `GET /migrations/{id}/export`
-
-> **Примечание по import:** текущий `/api/v1/migrations` (POST) не принимает `multipart/form-data`. Вариант — парсить CSV/JSON на клиенте и передавать `tracks_override: [{artist, title}, ...]` в JSON. Нужно добавить поддержку `tracks_override` в `POST /api/v1/migrations`.
-
-#### 4. Смена языка
-Не реализована в SPA ни на фронте, ни как endpoint.
-- [ ] `api/routes/api_v1.py` — `POST /api/v1/auth/lang` (body: `{lang: "ru"|"en"}`) → сохраняет `UserSession.lang`; `require_auth`
-- [ ] `/api/v1/auth/me` — уже возвращает `lang`, SPA читает его
-- [ ] `frontend/src` — language toggle (RU/EN) в header/footer; `i18n.ts` — статические словари; обёртка `t(key)` для всех строк в компонентах
-
-#### 5. Spotify playlist name
-`MigratePage.tsx` показывает toggle "Создать плейлист" но нет поля для ввода названия.
-- [ ] `MigratePage.tsx` — когда `spotifyPlaylistMode=true`, показывать `<input>` для `spotify_playlist_name` (placeholder: авто-генерация на бэке)
-
-**Файлы:** `frontend/src/pages/HomePage.tsx`, `frontend/src/pages/MigratePage.tsx`, `frontend/src/api/migrations.ts`, `frontend/src/api/auth.ts`, `api/routes/api_v1.py`
+- [x] `HomePage.tsx` — убраны `service-badge` с карточек FROM/TO
+- [x] `MigratePage.tsx` — content_types чекбоксы (tracks/playlists/artists, disabled для from=file)
+- [x] `StartMigrationRequest` — `content_types` теперь передаётся из UI
+- [x] File import: file-picker в `MigratePage`, `parseImportFile()` парсит CSV/JSON на клиенте, `tracks_override` в JSON body
+- [x] `api/routes/api_v1.py` — `tracks_override` в `StartMigrationRequest`; file→SC → `run_file_migration_job`; file→YM/Spotify → `tracks_override` в воркеры
+- [x] Export (to=file): кнопки CSV↓/JSON↓ в `ProgressPage` (status=done)
+- [x] Lang switcher: `LangContext` + `LangSwitcher` компонент в `App.tsx`, `localStorage` persist (без бэкенда)
+- [x] `MigratePage.tsx` — Spotify playlist name input (когда spotifyPlaylistMode=true)
+- [x] 5 новых тестов в `tests/test_mm98_spa_ui.py`; 295 passed total
 
 ---
 
+### 🔲 MM-99 — Code Review: безопасность и качество кода
+
+**Цель:** исправить проблемы выявленные в ходе полного ревью кодовой базы (2026-03-25). Разбито по приоритету.
+
+#### Критические (блокирующие продакшн)
+
+- [ ] **Валидатор шифрования токенов** — `config.py`: добавить `model_validator` который выбрасывает `ValueError` если `db_encryption_key=""` и `dev_mode=False`; предотвращает случайный запуск прода без шифрования
+- [ ] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`, `api/routes/oauth.py`: вместо `str(e)[:120]` в URL — логировать ошибку, пользователю отдавать generic `"internal_error"`
+- [ ] **Валидация файловых загрузок** — `api/routes/web.py`: добавить проверку magic bytes (`python-magic` или встроенный `imghdr`-аналог), ограничение размера (10 MB), whitelist расширений `.csv`/`.json`
+
+#### Высокий приоритет
+
+- [ ] **Rate limit на auth endpoints** — `api/routes/api_v1.py`: добавить slowapi лимиты на `POST /auth/exchange` (10/мин) и `POST /auth/refresh` (30/мин)
+- [ ] **ARQ job timeout** — `worker/main.py`: добавить `job_timeout=3600` (1 час) в `WorkerSettings`; в каждую джоб-функцию добавить `max_tries=1`
+- [ ] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` логировать error и `raise ValueError("Token decryption failed")` вместо `return value` (encrypted строка как plain text — ломает API вызовы)
+- [ ] **Spotify token refresh mid-migration** — `worker/tasks.py` / `migration/to_spotify.py`: передавать `refresh_token` в `_SpotifyWriteSession`; при истечении access token (401 от API) — вызывать `refresh_access_token()` и продолжать
+- [ ] **Fix race condition job ID** — `api/routes/migrations.py`: сохранять job_id в Redis ДО старта джоба; использовать `arq.enqueue_job(..., job_id=pre_generated_id)` или атомарный set-then-enqueue
+- [ ] **CORS whitelist** — `api/main.py`: заменить `allow_methods=["*"]` → `["GET", "POST", "PUT", "DELETE", "OPTIONS"]`, `allow_headers=["*"]` → `["Authorization", "Content-Type", "Accept"]`
+- [ ] **`secrets.token_hex` для session ID** — `api/routes/oauth.py:52`: `uid = f"web_{uuid.uuid4().hex[:12]}"` → `f"web_{secrets.token_hex(16)}"`
+
+#### Средний приоритет
+
+- [ ] **Idempotency key для POST /migrations** — `api/routes/migrations.py`: принимать необязательный `Idempotency-Key` header; проверять Redis `idempotency:{key}` TTL 60s перед созданием новой миграции
+- [ ] **Exponential backoff для 429** — `core/soundcloud/client.py`, `core/spotify/client.py`: при `RateLimitError` — ждать 2^attempt секунд (макс 60с) перед retry
+- [ ] **Schema-валидация `tracks_override`** — `worker/tasks.py`: при `tracks_override is not None` — валидировать каждый элемент через `pydantic.TypeAdapter(list[TrackInput]).validate_python(tracks_override)` (добавить `TrackInput` модель)
+- [ ] **`/health` расширенный** — `api/main.py`: проверять ping к PostgreSQL (`select 1`) и Redis (`await redis.ping()`); возвращать `{"status": "ok", "db": "ok", "redis": "ok"}` или 503
+
+#### Не делать сейчас (зафиксировано, ждёт SPA Фаза 2)
+
+- Refresh token в `localStorage` — исправляется переходом на httpOnly cookie в MM-82 (после удаления Jinja2 и SessionMiddleware; требует `allow_credentials=True` в CORS)
+- Linear scan refresh tokens — допустимо для текущего объёма пользователей; индекс добавить позже
+
+**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `api/routes/migrations.py`, `api/routes/web.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `migration/to_spotify.py`, `core/soundcloud/client.py`, `core/spotify/client.py`
+
+---
 

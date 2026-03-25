@@ -190,6 +190,24 @@ export default function ProgressPage() {
                 </a>
               </div>
             )}
+            {migration.to_service === 'file' && migration.status === 'done' && (
+              <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+                <a
+                  href={`/api/v1/migrations/${migration.id}/export?fmt=csv`}
+                  download={`migration-${migration.id}.csv`}
+                  className="btn btn-ghost"
+                >
+                  CSV ↓
+                </a>
+                <a
+                  href={`/api/v1/migrations/${migration.id}/export?fmt=json`}
+                  download={`migration-${migration.id}.json`}
+                  className="btn btn-ghost"
+                >
+                  JSON ↓
+                </a>
+              </div>
+            )}
             <div className="actions">
               <Link to="/" className="btn btn-primary">Новая миграция</Link>
               <Link to="/history" className="btn btn-ghost">История</Link>

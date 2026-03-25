@@ -135,11 +135,6 @@ export default function HomePage() {
               >
                 <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
                 <span className="service-name">{SERVICE_LABELS[svc.id] ?? svc.name}</span>
-                {userStatus && needsAuth(svc.id) && (
-                  <span className={`service-badge ${isAuth(svc.id) ? 'badge-ok' : 'badge-no'}`}>
-                    {isAuth(svc.id) ? '✓' : '—'}
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -158,11 +153,6 @@ export default function HomePage() {
                 >
                   <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
                   <span className="service-name">{SERVICE_LABELS[svc.id] ?? svc.name}</span>
-                  {userStatus && needsAuth(svc.id) && (
-                    <span className={`service-badge ${isAuth(svc.id) ? 'badge-ok' : 'badge-no'}`}>
-                      {isAuth(svc.id) ? '✓' : '—'}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>

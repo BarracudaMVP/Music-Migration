@@ -4,6 +4,68 @@
 
 ---
 
+## ✅ MM-98 — SPA UI: недостающие фичи — 2026-03-25
+
+**Цель:** Закрыть gap между Jinja2 UI и SPA — перенести file import/export, content types, playlist name, lang switcher.
+
+**Ключевые решения:**
+- Язык хранится в `localStorage` (не в БД) — стандартный браузерный подход, нет бэкенд-endpoint
+- File import: парсинг CSV/JSON в браузере → передача как `tracks_override` в JSON body → воркеры уже поддерживают
+- Отдельный `POST /api/v1/migrations/file` endpoint не нужен
+
+**Что сделано:**
+
+**Бэкенд (`api/routes/api_v1.py`):**
+- `StartMigrationRequest` + поле `tracks_override: list[dict] | None = None`
+- `start_migration`: для file→SC → `run_file_migration_job(tracks=tracks_override)`, для file→YM/Spotify → `tracks_override` передаётся в существующие воркеры
+- Убран dead import `from api.routes.migrations import _get_token` (не существовал, lazy import скрывал баг)
+
+**Фронтенд:**
+- `HomePage.tsx` — убраны auth-badge с карточек FROM/TO (статус остаётся в секции Авторизация)
+- `MigratePage.tsx` — playlist name input (Spotify + playlist mode), content_types чекбоксы (tracks/playlists/artists, from!=file), file picker (from=file), error state для некорректного файла, `canStart` требует файл если from=file
+- `ProgressPage.tsx` — кнопки CSV↓ / JSON↓ при to_service=file и status=done
+- `migrations.ts` — `TrackImport` тип, `tracks_override` в `StartMigrationRequest`, `parseImportFile(file)` парсит CSV/JSON
+- `App.tsx` — `LangContext`, `LangSwitcher` компонент (fixed top-right, RU/EN кнопки), `localStorage` persist
+- `index.css` — `.setting-input`, `.setting-file`, `.setting-checkboxes`, `.setting-checkbox-label`, `.lang-switcher`, `.lang-btn`
+
+**Тесты (`tests/test_mm98_spa_ui.py`):** 5 новых тестов (file→YM, file→Spotify, file→SC, SC без tracks_override→400, YM→SC без tracks_override)
+
+**Итог:** 295 passed (было 290), 1 pre-existing fail (test_like_track_raises_on_404).
+
+---
+
+## 🔲 MM-99 — Code Review: безопасность и качество кода — 2026-03-25
+
+**Цель:** провести полное ревью кодовой базы — безопасность, надёжность, архитектура.
+
+**Что найдено (критические):**
+- `db_encryption_key = ""` по умолчанию — токены хранятся plain text без валидатора для прода (`config.py`)
+- `except Exception as e: return RedirectResponse(f"...{str(e)[:120]}")` — утечка деталей ошибок в OAuth redirects
+- Нет валидации файловых загрузок (MIME, размер, magic bytes)
+- `get_user_id_by_spa_refresh_token` — full table scan + Fernet decrypt, нет rate limit на `/auth/refresh`
+
+**Что найдено (высокий приоритет):**
+- Race condition: ARQ job стартует раньше чем `arq.set(migration_job:{id})` в Redis
+- ARQ джобы без `job_timeout` — зависание на неограниченное время
+- Spotify access token не обновляется в середине длинной миграции (только в начале)
+- `decrypt_token` при ошибке: `return value` вместо raise (`core/crypto.py`)
+- CORS: `allow_methods=["*"], allow_headers=["*"]` (`api/main.py`)
+- Refresh token в `localStorage` SPA (`frontend/src/api/auth.ts:17`)
+
+**Что найдено (средний приоритет):**
+- Нет rate limit на `/auth/exchange` и `/auth/refresh`
+- Нет exponential backoff при 429 от SC/Spotify
+- Нет idempotency key при `POST /migrations`
+- `uuid.uuid4().hex[:12]` для session ID (48 бит) — надо `secrets.token_hex(32)`
+- `/health` не проверяет Redis/Postgres
+- `tracks_override` без schema-валидации
+
+**Что хорошо:** async I/O корректен, SQLAlchemy ORM (нет SQL injection), `AdapterWriteSession` ABC, resumable миграции, `guard_dev_mode`.
+
+**Следующий шаг:** реализовывать фиксы по приоритету в рамках MM-99.
+
+---
+
 ## ✅ MM-96 — SPA: фиксы auth URL, page_size, dev-mode авторизация — 2026-03-19
 
 **Что сделано:**

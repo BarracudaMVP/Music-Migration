@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { refreshAccessToken, getOAuthStartUrl } from '../api/auth'
 import { fetchUserStatus, isConnected } from '../api/services'
 import type { UserStatus } from '../api/services'
-import { startMigration } from '../api/migrations'
+import { startMigration, parseImportFile } from '../api/migrations'
+import type { TrackImport } from '../api/migrations'
 import { getAccessToken } from '../api/client'
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -38,6 +39,10 @@ export default function MigratePage() {
   const [skipAlready, setSkipAlready] = useState(true)
   const [likeTracks, setLikeTracks] = useState(false)
   const [spotifyPlaylistMode, setSpotifyPlaylistMode] = useState(false)
+  const [spotifyPlaylistName, setSpotifyPlaylistName] = useState('')
+  const [contentTypes, setContentTypes] = useState<string[]>(['tracks'])
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   useEffect(() => {
     if (ran.current) return
@@ -76,20 +81,49 @@ export default function MigratePage() {
 
   const canStart =
     authServices.every(id => isAuth(id)) &&
-    !starting
+    !starting &&
+    (fromSvc !== 'file' || importFile !== null)
 
   async function handleStart() {
     if (!canStart) return
     setStarting(true)
     setError(null)
+    setImportError(null)
+
+    let tracksOverride: TrackImport[] | undefined
+    if (fromSvc === 'file') {
+      if (!importFile) {
+        setError('Выберите файл для импорта')
+        setStarting(false)
+        return
+      }
+      try {
+        tracksOverride = await parseImportFile(importFile)
+        if (tracksOverride.length === 0) {
+          setImportError('Файл не содержит треков. Проверьте формат (CSV с колонками artist, title).')
+          setStarting(false)
+          return
+        }
+      } catch {
+        setImportError('Ошибка чтения файла. Убедитесь что файл является корректным CSV или JSON.')
+        setStarting(false)
+        return
+      }
+    }
+
     try {
       const result = await startMigration({
         from_service: fromSvc,
         to_service: toSvc,
+        content_types: fromSvc === 'file' ? ['tracks'] : contentTypes,
         limit: limit,
         skip_already_migrated: fromSvc !== 'file' ? skipAlready : undefined,
         like_tracks: toSvc === 'soundcloud' ? likeTracks : undefined,
         spotify_playlist_mode: toSvc === 'spotify' ? spotifyPlaylistMode : undefined,
+        spotify_playlist_name: toSvc === 'spotify' && spotifyPlaylistMode && spotifyPlaylistName
+          ? spotifyPlaylistName
+          : undefined,
+        tracks_override: tracksOverride,
       })
       navigate(`/migrate/${result.migration_id}/progress`)
     } catch (e: unknown) {
@@ -125,6 +159,9 @@ export default function MigratePage() {
 
         {error && (
           <div className="alert alert-error">{error}</div>
+        )}
+        {importError && (
+          <div className="alert alert-error">{importError}</div>
         )}
 
         {/* Auth section */}
@@ -225,6 +262,69 @@ export default function MigratePage() {
                   checked={spotifyPlaylistMode}
                   onChange={e => setSpotifyPlaylistMode(e.target.checked)}
                 />
+              </div>
+            )}
+
+            {/* Spotify playlist name */}
+            {toSvc === 'spotify' && spotifyPlaylistMode && (
+              <div className="setting-row">
+                <label className="setting-label" htmlFor="playlist-name">
+                  Название плейлиста
+                </label>
+                <input
+                  id="playlist-name"
+                  type="text"
+                  className="setting-input"
+                  placeholder="Music Migration"
+                  value={spotifyPlaylistName}
+                  onChange={e => setSpotifyPlaylistName(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* File import picker */}
+            {fromSvc === 'file' && (
+              <div className="setting-row">
+                <label className="setting-label" htmlFor="import-file">
+                  Файл (CSV или JSON)
+                </label>
+                <input
+                  id="import-file"
+                  type="file"
+                  accept=".csv,.json"
+                  className="setting-file"
+                  onChange={e => {
+                    setImportFile(e.target.files?.[0] ?? null)
+                    setImportError(null)
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Content types */}
+            {fromSvc !== 'file' && (
+              <div className="setting-row">
+                <span className="setting-label">Что переносить</span>
+                <div className="setting-checkboxes">
+                  {(['tracks', 'playlists', 'artists'] as const).map(ct => (
+                    <label key={ct} className="setting-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={contentTypes.includes(ct)}
+                        onChange={e => {
+                          if (ct === 'tracks') return  // tracks always included
+                          setContentTypes(prev =>
+                            e.target.checked
+                              ? [...prev, ct]
+                              : prev.filter(t => t !== ct)
+                          )
+                        }}
+                        disabled={ct === 'tracks'}
+                      />
+                      {ct === 'tracks' ? 'Треки' : ct === 'playlists' ? 'Плейлисты' : 'Артисты'}
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>
