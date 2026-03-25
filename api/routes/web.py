@@ -59,7 +59,7 @@ def _render(template: str, request: Request, ctx: dict) -> templates.TemplateRes
     ctx["t"] = lambda key: _t(key, lang)
     ctx.setdefault("has_migrations", False)
     ctx.setdefault("service_icons", _SERVICE_ICONS)
-    return templates.TemplateResponse(template, {"request": request, **ctx})
+    return templates.TemplateResponse(request, template, ctx)
 
 
 _STATUS_LABEL_RU = {

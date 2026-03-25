@@ -95,7 +95,7 @@ async def login_page(request: Request, error: str = ""):
     if await _is_admin(request):
         return RedirectResponse("/admin/dashboard", status_code=303)
     return templates.TemplateResponse(
-        "admin/login.html", {"request": request, "error": error}
+        request, "admin/login.html", {"error": error}
     )
 
 
@@ -162,9 +162,9 @@ async def dashboard(request: Request):
         )).scalars().all()
 
     return templates.TemplateResponse(
+        request,
         "admin/dashboard.html",
         {
-            "request": request,
             "total_migrations": total_migrations,
             "total_users": total_users,
             "total_tracks": total_tracks,
@@ -206,9 +206,9 @@ async def migrations_list(request: Request, status: str = "", user_id: str = "")
         for m in rows
     ]
     return templates.TemplateResponse(
+        request,
         "admin/migrations.html",
         {
-            "request": request,
             "migrations": migrations,
             "filter_status": status,
             "filter_user": user_id,
@@ -245,9 +245,9 @@ async def migration_detail(request: Request, migration_id: int, track_status: st
         stats = {row.status: row.cnt for row in stats_rows}
 
     return templates.TemplateResponse(
+        request,
         "admin/migration_detail.html",
         {
-            "request": request,
             "migration": migration,
             "status_label": _STATUS_LABEL.get(migration.status, migration.status),
             "tracks": tracks,
@@ -369,7 +369,7 @@ async def users_list(request: Request):
         for u in sessions
     ]
     return templates.TemplateResponse(
-        "admin/users.html", {"request": request, "users": users}
+        request, "admin/users.html", {"users": users}
     )
 
 
@@ -401,6 +401,5 @@ async def services_view(request: Request):
     ]
     matrix = ServiceRegistry.get_matrix()
     return templates.TemplateResponse(
-        "admin/services.html",
-        {"request": request, "adapters": adapters, "matrix": matrix},
+        request, "admin/services.html", {"adapters": adapters, "matrix": matrix}
     )
