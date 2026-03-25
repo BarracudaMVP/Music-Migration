@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     jwt_access_token_ttl: int = Field(default=900)        # seconds (15 min)
     jwt_refresh_token_ttl: int = Field(default=2592000)   # seconds (30 days)
 
+    # Admin bootstrap: set role=admin for this user_id on startup (MM-97)
+    # Use once to promote first admin, then remove from env (role persists in DB).
+    initial_admin_user_id: str = Field(default="")
+
     # Dev mode (local development only — NEVER enable in production)
     dev_mode: bool = Field(default=False)
 

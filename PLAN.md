@@ -2491,7 +2491,7 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
-### 🔲 MM-97 — SPA: Admin Panel
+### ✅ MM-97 — SPA: Admin Panel
 
 **Цель:** Перенести функционал Jinja2-админки в React SPA — без отдельного `/admin/*` роутера. Доступ через роль `role="admin"` в JWT, уже возвращаемой `/api/v1/auth/me`.
 
@@ -2506,34 +2506,31 @@ async def require_admin(user_id: str = Depends(get_current_user)):
     return user_id
 ```
 
-- [ ] `GET /api/v1/stats` — дашборд: total_migrations, total_users, total_tracks; by_status (migrations + tracks); последние 10 миграций
-- [ ] `GET /api/v1/admin/migrations` — все миграции (filter: `?status=`, `?user_id=`), до 200; `require_admin`
-- [ ] `GET /api/v1/admin/migrations/{id}` — детали + треки (filter: `?status=`), до 500; `require_admin`
-- [ ] `POST /api/v1/admin/migrations/{id}/cancel` — отмена ARQ job + статус cancelled; `require_admin`
-- [ ] `POST /api/v1/admin/migrations/{id}/restart` — сброс error треков в pending, re-enqueue; `require_admin`
-- [ ] `GET /api/v1/admin/users` — все юзеры + migration_count; `require_admin`
-- [ ] `POST /api/v1/admin/users/{user_id}/role` — смена роли (user/admin); `require_admin`
+- [x] `GET /api/v1/stats` — total_migrations, total_users, by_status, recent[10]; `require_admin`
+- [x] `GET /api/v1/users` — все юзеры + migration_count; `require_admin`
+- [x] `GET /api/v1/migrations` расширен: admin получает all + `?user_id=` filter + пагинация
+- [x] `GET /api/v1/migrations/{id}` расширен: admin bypass ownership check
 
 > `/api/v1/services` и `/api/v1/services/matrix` уже открыты — сервис-реестр показывается без нового endpoint.
 
 #### Существующие endpoints — расширение для admin
 
-- [ ] `GET /api/v1/migrations` — если `role=admin`, принимает `?user_id=` и возвращает все миграции (иначе только свои)
-- [ ] `GET /api/v1/migrations/{id}` — если `role=admin`, пропускает ownership check
+- [x] JWT `create_access_token(user_id, role)` — role из БД в каждом exchange/refresh
+- [x] `require_admin` dep в `api/security.py` — 401 без токена, 403 если role!=admin
+- [x] `get_current_user_role` dep — возвращает role из JWT (не поднимает ошибок)
+- [x] `INITIAL_ADMIN_USER_ID` env var — bootstrap admin role на startup
 
 #### SPA (frontend)
 
-- [ ] `App.tsx` — маршрут `/admin` + sub-routes `/admin/dashboard`, `/admin/migrations`, `/admin/migrations/:id`, `/admin/users`; обёртка `<AdminRoute>` (redirect если `role !== "admin"`)
-- [ ] `AdminDashboardPage` — stat-карточки + таблица миграций по статусу + последние 10
-- [ ] `AdminMigrationsPage` — таблица всех миграций, фильтры status/user_id
-- [ ] `AdminMigrationDetailPage` — треки с фильтром + кнопки cancel/restart
-- [ ] `AdminUsersPage` — таблица юзеров + смена роли
-- [ ] Навбар/меню — ссылка "Admin" появляется если `role === "admin"`
-
-#### Auth
-
-- Старый `/admin/login` (пароль) — оставить работающим до момента когда первый admin-юзер будет назначен через DB/CLI
-- Или добавить одноразовый CLI-скрипт `scripts/make_admin.py user_id` как альтернативу
+- [x] `App.tsx` — `AdminRoute` + routes `/dashboard`, `/migrations`, `/users`; redirect на `/` если role!=admin
+- [x] `AdminLayout.tsx` — sidebar nav + Outlet
+- [x] `AdminDashboardPage` — карточки + by_status + таблица recent[10]
+- [x] `AdminMigrationsPage` — таблица всех миграций, фильтры status/user_id, пагинация
+- [x] `AdminUsersPage` — таблица user_id/role/migration_count, пагинация
+- [x] `HomePage.tsx` — ссылка "Панель администратора →" если role=admin
+- [x] `auth.ts` — `getTokenRole()` — читает role из JWT payload
+- [x] `admin.ts` — `fetchStats()`, `listUsers()`
+- [x] `migrations.ts` — `listMigrations()` возвращает `MigrationsPage` (paginated)
 
 **Файлы:** `api/routes/api_v1.py`, `api/security.py` (require_admin), `frontend/src/pages/admin/*`, `frontend/src/App.tsx`
 

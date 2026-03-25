@@ -68,7 +68,7 @@ export default function HistoryPage() {
           }
         }
         const data = await listMigrations()
-        setMigrations(data)
+        setMigrations(data.migrations)
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Ошибка загрузки'
         setError(msg)

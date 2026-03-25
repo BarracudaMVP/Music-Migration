@@ -1,4 +1,4 @@
-import { api, setAccessToken } from './client'
+import { api, setAccessToken, getAccessToken } from './client'
 
 export interface TokenPair {
   access_token: string
@@ -60,6 +60,18 @@ export async function logout(): Promise<void> {
 
 const SERVICE_AUTH_SLUG: Record<string, string> = {
   yandex_music: 'yandex',
+}
+
+export function getTokenRole(): string | null {
+  const token = getAccessToken()
+  if (!token) return null
+  if (token === 'dev') return 'admin'
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.role ?? null
+  } catch {
+    return null
+  }
 }
 
 export function getOAuthStartUrl(service: string, flowFrom?: string, flowTo?: string): string {

@@ -66,6 +66,10 @@ async def startup() -> None:
     _arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter(), SpotifyAdapter()]:
         ServiceRegistry.register(adapter)
+    if settings.initial_admin_user_id:
+        from core.db.crud import set_user_role
+        await set_user_role(settings.initial_admin_user_id, "admin")
+        logger.info(f"Bootstrap: set role=admin for user {settings.initial_admin_user_id}")
 
 
 @app.on_event("shutdown")

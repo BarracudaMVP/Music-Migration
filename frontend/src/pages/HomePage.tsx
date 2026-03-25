@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { refreshAccessToken, getOAuthStartUrl } from '../api/auth'
+import { refreshAccessToken, getOAuthStartUrl, getTokenRole } from '../api/auth'
 import { fetchServices, fetchMatrix, fetchUserStatus, isConnected } from '../api/services'
 import type { Service, MatrixEntry, UserStatus } from '../api/services'
 import { getAccessToken } from '../api/client'
@@ -197,6 +197,15 @@ export default function HomePage() {
             >
               Далее →
             </button>
+          </div>
+        )}
+
+        {/* Admin link */}
+        {getTokenRole() === 'admin' && (
+          <div style={{ paddingTop: 8 }}>
+            <Link to="/dashboard" className="muted" style={{ fontSize: 13 }}>
+              Панель администратора →
+            </Link>
           </div>
         )}
       </div>

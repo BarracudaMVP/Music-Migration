@@ -27,12 +27,20 @@ export interface TrackStats {
 
 export interface Migration {
   id: number
+  user_id?: string
   from_service: string
   to_service: string
   status: string
   created_at: string | null
   result_path?: string | null
   stats?: TrackStats
+}
+
+export interface MigrationsPage {
+  migrations: Migration[]
+  total: number
+  page: number
+  pages: number
 }
 
 export interface MigrationDetail {
@@ -65,8 +73,13 @@ export function getMigration(id: number): Promise<MigrationDetail> {
   return api.get<MigrationDetail>(`/migrations/${id}`)
 }
 
-export function listMigrations(): Promise<Migration[]> {
-  return api.get<Migration[]>('/migrations')
+export function listMigrations(params?: { user_id?: string; status?: string; page?: number }): Promise<MigrationsPage> {
+  const q = new URLSearchParams()
+  if (params?.user_id) q.set('user_id', params.user_id)
+  if (params?.status) q.set('status', params.status)
+  if (params?.page) q.set('page', String(params.page))
+  const qs = q.toString()
+  return api.get<MigrationsPage>(`/migrations${qs ? `?${qs}` : ''}`)
 }
 
 export function getMigrationTracks(id: number, status?: string, page = 1): Promise<TracksPage> {

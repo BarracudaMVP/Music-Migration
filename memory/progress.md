@@ -4,6 +4,40 @@
 
 ---
 
+## ✅ MM-97 — SPA Admin Panel — 2026-03-25
+
+**Цель:** Перенести функционал Jinja2-админки в React SPA с ролевым доступом.
+
+**Ключевые решения:**
+- Admin авторизация OAuth-only: role хранится в `UserSession.role`, включается в JWT при `exchange_code`/`refresh_token`
+- Никакого `/admin/` prefix у эндпоинтов — `/api/v1/stats`, `/api/v1/users` + расширение существующих
+- `AdminRoute` + `AdminLayout` оборачивают `/dashboard`, `/migrations`, `/users` (не `/admin/...`)
+- `INITIAL_ADMIN_USER_ID` env var для первоначального bootstrap
+- Только просмотр (read-only), без кнопок cancel/restart/setRole в UI
+
+**Бэкенд:**
+- `api/security.py`: `create_access_token(user_id, role)`, `decode_access_token_payload()`, `get_current_user_role`, `require_admin`
+- `core/db/crud.py`: `get_all_migrations_paginated()`, `get_all_users_paginated()`, `get_admin_stats()`
+- `config.py`: `initial_admin_user_id: str`
+- `api/main.py`: bootstrap admin role on startup
+- `api/routes/api_v1.py`: `exchange_code`/`refresh_token` включают role из БД; `GET /stats`, `GET /users` (require_admin); `GET /migrations` с pagination + admin user_id filter; `GET /migrations/{id}` с admin bypass
+
+**Фронтенд:**
+- `api/auth.ts`: `getTokenRole()` — декодирует role из JWT payload
+- `api/admin.ts`: `fetchStats()`, `listUsers()`
+- `api/migrations.ts`: `listMigrations()` → `MigrationsPage` (paginated), `Migration.user_id` добавлен
+- `App.tsx`: `AdminRoute`, admin routes `/dashboard`/`/migrations`/`/users`
+- `pages/admin/AdminLayout.tsx`: sidebar nav
+- `pages/admin/AdminDashboardPage.tsx`: карточки + by_status + recent[10]
+- `pages/admin/AdminMigrationsPage.tsx`: таблица всех миграций + фильтры + пагинация
+- `pages/admin/AdminUsersPage.tsx`: таблица пользователей + пагинация
+- `pages/HomePage.tsx`: ссылка "Панель администратора →" если role=admin
+- `index.css`: `.admin-layout`, `.admin-sidebar`, `.admin-table`, etc.
+
+**Тесты:** `tests/test_mm97_admin_spa.py` — 13 тестов, все проходят. Общий count: 308 passed.
+
+---
+
 ## ✅ MM-98 — SPA UI: недостающие фичи — 2026-03-25
 
 **Цель:** Закрыть gap между Jinja2 UI и SPA — перенести file import/export, content types, playlist name, lang switcher.

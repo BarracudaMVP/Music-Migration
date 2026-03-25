@@ -1,10 +1,15 @@
 import { createContext, useContext, useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 import MigratePage from './pages/MigratePage'
 import ProgressPage from './pages/ProgressPage'
 import HistoryPage from './pages/HistoryPage'
+import AdminLayout from './pages/admin/AdminLayout'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import AdminMigrationsPage from './pages/admin/AdminMigrationsPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
+import { getTokenRole } from './api/auth'
 
 // ---------------------------------------------------------------------------
 // Lang context — shared across all pages
@@ -49,9 +54,21 @@ export default function App() {
         <Route path="/migrate" element={<MigratePage />} />
         <Route path="/migrate/:id/progress" element={<ProgressPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route element={<AdminRoute />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/migrations" element={<AdminMigrationsPage />} />
+            <Route path="/users" element={<AdminUsersPage />} />
+          </Route>
+        </Route>
       </Routes>
     </LangContext.Provider>
   )
+}
+
+function AdminRoute() {
+  if (getTokenRole() !== 'admin') return <Navigate to="/" replace />
+  return <Outlet />
 }
 
 function LangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
