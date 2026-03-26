@@ -26,8 +26,9 @@ export default function HomePage() {
   const [matrix, setMatrix] = useState<MatrixEntry[]>([])
   const [userStatus, setUserStatus] = useState<UserStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [fromSvc, setFromSvc] = useState<string | null>(null)
-  const [toSvc, setToSvc] = useState<string | null>(null)
+  // Pre-populate from URL params (e.g. after OAuth redirect back: /?from=yandex_music&to=soundcloud)
+  const [fromSvc, setFromSvc] = useState<string | null>(searchParams.get('from'))
+  const [toSvc, setToSvc] = useState<string | null>(searchParams.get('to'))
   const [authError, setAuthError] = useState(false)
 
   // Migration settings
@@ -81,13 +82,18 @@ export default function HomePage() {
   ]
 
   // For file source: all services with WRITE_LIKED_TRACKS (file→file is forbidden)
+  // For other sources: matrix entries + file (for export, FileAdapter has EXPORT_FILE)
   const toServices = fromSvc === 'file'
     ? services.filter(s => s.id !== 'file' && s.capabilities.includes('WRITE_LIKED_TRACKS'))
     : fromSvc
-      ? matrix
-          .filter(e => e.from === fromSvc)
-          .map(e => services.find(s => s.id === e.to))
-          .filter(Boolean) as Service[]
+      ? [
+          ...matrix
+            .filter(e => e.from === fromSvc)
+            .map(e => services.find(s => s.id === e.to))
+            .filter(Boolean) as Service[],
+          // File export: explicitly add (not in matrix)
+          ...services.filter(s => s.id === 'file' && s.capabilities.includes('EXPORT_FILE')),
+        ]
       : []
 
   function handleFromSelect(id: string) {
@@ -207,6 +213,9 @@ export default function HomePage() {
               >
                 <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
                 <span className="service-name">{tService(svc.id, lang)}</span>
+                {needsAuth(svc.id) && userStatus && isAuth(svc.id) && (
+                  <span className="auth-ok" style={{ fontSize: 11, marginTop: 2 }}>{t('connected', lang)}</span>
+                )}
               </button>
             ))}
           </div>
@@ -225,6 +234,9 @@ export default function HomePage() {
                 >
                   <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
                   <span className="service-name">{tService(svc.id, lang)}</span>
+                  {needsAuth(svc.id) && userStatus && isAuth(svc.id) && (
+                    <span className="auth-ok" style={{ fontSize: 11, marginTop: 2 }}>{t('connected', lang)}</span>
+                  )}
                 </button>
               ))}
             </div>
