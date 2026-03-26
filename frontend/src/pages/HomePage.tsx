@@ -4,13 +4,8 @@ import { refreshAccessToken, getOAuthStartUrl, getTokenRole } from '../api/auth'
 import { fetchServices, fetchMatrix, fetchUserStatus, isConnected } from '../api/services'
 import type { Service, MatrixEntry, UserStatus } from '../api/services'
 import { getAccessToken } from '../api/client'
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл (CSV/JSON)',
-}
+import { useLang } from '../App'
+import { t, tService } from '../i18n'
 
 const SERVICE_ICONS: Record<string, string> = {
   yandex_music: '🎵',
@@ -20,6 +15,7 @@ const SERVICE_ICONS: Record<string, string> = {
 }
 
 export default function HomePage() {
+  const { lang } = useLang()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const ran = useRef(false)
@@ -100,7 +96,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="page-center">
-        <p className="muted">Загрузка…</p>
+        <p className="muted">{t('loading', lang)}</p>
       </div>
     )
   }
@@ -111,21 +107,21 @@ export default function HomePage() {
         {/* Header */}
         <div className="page-header">
           <h1 className="title">Music Migration</h1>
-          <p className="subtitle">Перенос музыкальной библиотеки между платформами</p>
+          <p className="subtitle">{t('app_subtitle', lang)}</p>
           {userStatus && (
-            <Link to="/history" className="history-link">История миграций →</Link>
+            <Link to="/history" className="history-link">{t('history_link', lang)}</Link>
           )}
         </div>
 
         {authError && (
           <div className="alert alert-error">
-            Ошибка авторизации. Попробуйте снова.
+            {t('auth_error', lang)}
           </div>
         )}
 
         {/* FROM selection */}
         <div className="section">
-          <div className="section-label">Откуда</div>
+          <div className="section-label">{t('from', lang)}</div>
           <div className="service-grid">
             {fromServices.map(svc => (
               <button
@@ -134,7 +130,7 @@ export default function HomePage() {
                 onClick={() => handleFromSelect(svc.id)}
               >
                 <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
-                <span className="service-name">{SERVICE_LABELS[svc.id] ?? svc.name}</span>
+                <span className="service-name">{tService(svc.id, lang)}</span>
               </button>
             ))}
           </div>
@@ -143,7 +139,7 @@ export default function HomePage() {
         {/* TO selection */}
         {fromSvc && (
           <div className="section">
-            <div className="section-label">Куда</div>
+            <div className="section-label">{t('to', lang)}</div>
             <div className="service-grid">
               {toServices.map(svc => (
                 <button
@@ -152,7 +148,7 @@ export default function HomePage() {
                   onClick={() => handleToSelect(svc.id)}
                 >
                   <span className="service-icon">{SERVICE_ICONS[svc.id] ?? '🎶'}</span>
-                  <span className="service-name">{SERVICE_LABELS[svc.id] ?? svc.name}</span>
+                  <span className="service-name">{tService(svc.id, lang)}</span>
                 </button>
               ))}
             </div>
@@ -162,15 +158,15 @@ export default function HomePage() {
         {/* Auth section */}
         {fromSvc && toSvc && authServices.length > 0 && (
           <div className="section">
-            <div className="section-label">Авторизация</div>
+            <div className="section-label">{t('auth', lang)}</div>
             <div className="auth-list">
               {authServices.map(svcId => (
                 <div key={svcId} className="auth-row">
                   <span>
-                    {SERVICE_ICONS[svcId]} {SERVICE_LABELS[svcId] ?? svcId}
+                    {SERVICE_ICONS[svcId]} {tService(svcId, lang)}
                   </span>
                   {isAuth(svcId) ? (
-                    <span className="auth-ok">✓ Подключено</span>
+                    <span className="auth-ok">{t('connected', lang)}</span>
                   ) : (
                     <button
                       className="btn btn-ghost btn-sm"
@@ -178,7 +174,7 @@ export default function HomePage() {
                         window.location.href = getOAuthStartUrl(svcId, fromSvc!, toSvc!)
                       }}
                     >
-                      Войти
+                      {t('connect', lang)}
                     </button>
                   )}
                 </div>
@@ -195,7 +191,7 @@ export default function HomePage() {
               disabled={!canProceed}
               onClick={() => navigate(`/migrate?from=${fromSvc}&to=${toSvc}`)}
             >
-              Далее →
+              {t('next', lang)}
             </button>
           </div>
         )}
@@ -204,7 +200,7 @@ export default function HomePage() {
         {getTokenRole() === 'admin' && (
           <div style={{ paddingTop: 8 }}>
             <Link to="/dashboard" className="muted" style={{ fontSize: 13 }}>
-              Панель администратора →
+              {t('admin_link', lang)}
             </Link>
           </div>
         )}

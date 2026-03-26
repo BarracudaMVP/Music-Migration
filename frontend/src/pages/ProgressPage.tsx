@@ -4,17 +4,13 @@ import { refreshAccessToken } from '../api/auth'
 import { getMigration } from '../api/migrations'
 import type { MigrationDetail } from '../api/migrations'
 import { getAccessToken } from '../api/client'
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл (CSV/JSON)',
-}
+import { useLang } from '../App'
+import { t, tService, tStatus } from '../i18n'
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'])
 
 export default function ProgressPage() {
+  const { lang } = useLang()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const ran = useRef(false)
@@ -41,7 +37,7 @@ export default function ProgressPage() {
         stopPolling()
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Ошибка загрузки'
+      const msg = e instanceof Error ? e.message : t('load_error', lang)
       setError(msg)
       setLoading(false)
       stopPolling()
@@ -77,7 +73,7 @@ export default function ProgressPage() {
   if (loading) {
     return (
       <div className="page-center">
-        <p className="muted">Загрузка…</p>
+        <p className="muted">{t('loading', lang)}</p>
       </div>
     )
   }
@@ -86,7 +82,7 @@ export default function ProgressPage() {
     return (
       <div className="page-center">
         <div className="alert alert-error">{error}</div>
-        <Link to="/" className="btn btn-ghost">На главную</Link>
+        <Link to="/" className="btn btn-ghost">{t('to_home', lang)}</Link>
       </div>
     )
   }
@@ -113,12 +109,12 @@ export default function ProgressPage() {
         {/* Header */}
         <div className="page-header">
           <h1 className="title">
-            {SERVICE_LABELS[migration.from_service] ?? migration.from_service}
+            {tService(migration.from_service, lang)}
             {' → '}
-            {SERVICE_LABELS[migration.to_service] ?? migration.to_service}
+            {tService(migration.to_service, lang)}
           </h1>
           <span className={`status-badge status-${migration.status}`}>
-            {statusLabel(migration.status)}
+            {tStatus(migration.status, lang)}
           </span>
         </div>
 
@@ -131,39 +127,39 @@ export default function ProgressPage() {
             />
           </div>
           <p className="muted" style={{ marginTop: 6 }}>
-            {doneCount} / {total} треков ({pct}%)
+            {doneCount} / {total} {t('tracks_count', lang)} ({pct}%)
           </p>
         </div>
 
         {/* Current track */}
         {current_track && !isTerminal && (
           <div className="section">
-            <div className="section-label">Сейчас</div>
+            <div className="section-label">{t('now', lang)}</div>
             <p className="current-track">{current_track}</p>
           </div>
         )}
 
         {/* Stats */}
         <div className="section">
-          <div className="section-label">Статистика</div>
+          <div className="section-label">{t('stats', lang)}</div>
           <div className="stat-rows">
             <div className="stat-row stat-success">
-              <span>✓ Найдено и добавлено</span>
+              <span>{t('stat_found', lang)}</span>
               <span>{success}</span>
             </div>
             <div className="stat-row stat-muted">
-              <span>✗ Не найдено</span>
+              <span>{t('stat_not_found', lang)}</span>
               <span>{notFound}</span>
             </div>
             {errorCount > 0 && (
               <div className="stat-row stat-error">
-                <span>⚠ Ошибок</span>
+                <span>{t('stat_errors', lang)}</span>
                 <span>{errorCount}</span>
               </div>
             )}
             {pending > 0 && (
               <div className="stat-row stat-muted">
-                <span>⏳ Ожидает</span>
+                <span>{t('stat_pending', lang)}</span>
                 <span>{pending}</span>
               </div>
             )}
@@ -175,7 +171,7 @@ export default function ProgressPage() {
           <div className="section">
             {migration.status === 'failed' && (
               <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                Миграция завершилась с ошибкой.
+                {t('migration_failed', lang)}
               </div>
             )}
             {migration.result_path && (
@@ -186,7 +182,7 @@ export default function ProgressPage() {
                   rel="noopener noreferrer"
                   className="btn btn-primary"
                 >
-                  Открыть плейлист ↗
+                  {t('open_playlist', lang)}
                 </a>
               </div>
             )}
@@ -209,8 +205,8 @@ export default function ProgressPage() {
               </div>
             )}
             <div className="actions">
-              <Link to="/" className="btn btn-primary">Новая миграция</Link>
-              <Link to="/history" className="btn btn-ghost">История</Link>
+              <Link to="/" className="btn btn-primary">{t('new_migration', lang)}</Link>
+              <Link to="/history" className="btn btn-ghost">{t('history', lang)}</Link>
             </div>
           </div>
         )}
@@ -219,13 +215,3 @@ export default function ProgressPage() {
   )
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'running': return 'В процессе'
-    case 'pending': return 'В очереди'
-    case 'done': return 'Завершено'
-    case 'failed': return 'Ошибка'
-    case 'cancelled': return 'Отменено'
-    default: return status
-  }
-}

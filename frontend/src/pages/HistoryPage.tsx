@@ -4,25 +4,8 @@ import { refreshAccessToken } from '../api/auth'
 import { listMigrations } from '../api/migrations'
 import type { Migration } from '../api/migrations'
 import { getAccessToken } from '../api/client'
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл (CSV/JSON)',
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return d.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { useLang } from '../App'
+import { t, tService, tStatus, formatDate } from '../i18n'
 
 function statusClass(status: string): string {
   switch (status) {
@@ -35,18 +18,8 @@ function statusClass(status: string): string {
   }
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'running': return 'В процессе'
-    case 'pending': return 'В очереди'
-    case 'done': return 'Завершено'
-    case 'failed': return 'Ошибка'
-    case 'cancelled': return 'Отменено'
-    default: return status
-  }
-}
-
 export default function HistoryPage() {
+  const { lang } = useLang()
   const navigate = useNavigate()
   const ran = useRef(false)
 
@@ -70,7 +43,7 @@ export default function HistoryPage() {
         const data = await listMigrations()
         setMigrations(data.migrations)
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Ошибка загрузки'
+        const msg = e instanceof Error ? e.message : t('load_error', lang)
         setError(msg)
       } finally {
         setLoading(false)
@@ -83,7 +56,7 @@ export default function HistoryPage() {
   if (loading) {
     return (
       <div className="page-center">
-        <p className="muted">Загрузка…</p>
+        <p className="muted">{t('loading', lang)}</p>
       </div>
     )
   }
@@ -93,8 +66,8 @@ export default function HistoryPage() {
       <div className="container">
         {/* Header */}
         <div className="page-header">
-          <h1 className="title">История миграций</h1>
-          <Link to="/" className="btn btn-primary btn-sm">+ Новая миграция</Link>
+          <h1 className="title">{t('history_title', lang)}</h1>
+          <Link to="/" className="btn btn-primary btn-sm">{t('new_migration_btn', lang)}</Link>
         </div>
 
         {error && (
@@ -103,9 +76,9 @@ export default function HistoryPage() {
 
         {!error && migrations.length === 0 && (
           <div className="empty-state">
-            <p className="muted">Миграций ещё нет.</p>
+            <p className="muted">{t('no_migrations', lang)}</p>
             <Link to="/" className="btn btn-primary" style={{ marginTop: 16 }}>
-              Начать первую миграцию
+              {t('start_first', lang)}
             </Link>
           </div>
         )}
@@ -125,16 +98,16 @@ export default function HistoryPage() {
                   className="migration-row"
                 >
                   <div className="migration-direction">
-                    <span>{SERVICE_LABELS[m.from_service] ?? m.from_service}</span>
+                    <span>{tService(m.from_service, lang)}</span>
                     <span className="muted"> → </span>
-                    <span>{SERVICE_LABELS[m.to_service] ?? m.to_service}</span>
+                    <span>{tService(m.to_service, lang)}</span>
                   </div>
 
                   <div className="migration-meta">
                     <span className={`status-badge ${statusClass(m.status)}`}>
-                      {statusLabel(m.status)}
+                      {tStatus(m.status, lang)}
                     </span>
-                    <span className="muted migration-date">{formatDate(m.created_at)}</span>
+                    <span className="muted migration-date">{formatDate(m.created_at, lang)}</span>
                   </div>
 
                   {m.status === 'done' && (
@@ -149,7 +122,7 @@ export default function HistoryPage() {
                           className="playlist-link"
                           onClick={e => e.stopPropagation()}
                         >
-                          Плейлист ↗
+                          {t('playlist_link', lang)}
                         </a>
                       )}
                     </div>

@@ -6,13 +6,8 @@ import type { UserStatus } from '../api/services'
 import { startMigration, parseImportFile } from '../api/migrations'
 import type { TrackImport } from '../api/migrations'
 import { getAccessToken } from '../api/client'
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл (CSV/JSON)',
-}
+import { useLang } from '../App'
+import { t, tService } from '../i18n'
 
 const SERVICE_ICONS: Record<string, string> = {
   yandex_music: '🎵',
@@ -22,6 +17,7 @@ const SERVICE_ICONS: Record<string, string> = {
 }
 
 export default function MigratePage() {
+  const { lang } = useLang()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const ran = useRef(false)
@@ -93,19 +89,19 @@ export default function MigratePage() {
     let tracksOverride: TrackImport[] | undefined
     if (fromSvc === 'file') {
       if (!importFile) {
-        setError('Выберите файл для импорта')
+        setError(t('error_no_file', lang))
         setStarting(false)
         return
       }
       try {
         tracksOverride = await parseImportFile(importFile)
         if (tracksOverride.length === 0) {
-          setImportError('Файл не содержит треков. Проверьте формат (CSV с колонками artist, title).')
+          setImportError(t('error_empty_file', lang))
           setStarting(false)
           return
         }
       } catch {
-        setImportError('Ошибка чтения файла. Убедитесь что файл является корректным CSV или JSON.')
+        setImportError(t('error_read_file', lang))
         setStarting(false)
         return
       }
@@ -127,7 +123,7 @@ export default function MigratePage() {
       })
       navigate(`/migrate/${result.migration_id}/progress`)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Неизвестная ошибка'
+      const msg = e instanceof Error ? e.message : t('error_unknown', lang)
       setError(msg)
       setStarting(false)
     }
@@ -136,7 +132,7 @@ export default function MigratePage() {
   if (loading) {
     return (
       <div className="page-center">
-        <p className="muted">Загрузка…</p>
+        <p className="muted">{t('loading', lang)}</p>
       </div>
     )
   }
@@ -145,16 +141,16 @@ export default function MigratePage() {
     <div className="page">
       <div className="container">
         {/* Back */}
-        <Link to="/" className="back-link">← Назад</Link>
+        <Link to="/" className="back-link">{t('back', lang)}</Link>
 
         {/* Direction header */}
         <div className="page-header">
           <h1 className="title">
-            {SERVICE_ICONS[fromSvc]} {SERVICE_LABELS[fromSvc] ?? fromSvc}
+            {SERVICE_ICONS[fromSvc]} {tService(fromSvc, lang)}
             {' → '}
-            {SERVICE_ICONS[toSvc]} {SERVICE_LABELS[toSvc] ?? toSvc}
+            {SERVICE_ICONS[toSvc]} {tService(toSvc, lang)}
           </h1>
-          <p className="subtitle">Настройте параметры миграции</p>
+          <p className="subtitle">{t('migrate_subtitle', lang)}</p>
         </div>
 
         {error && (
@@ -167,15 +163,15 @@ export default function MigratePage() {
         {/* Auth section */}
         {authServices.length > 0 && (
           <div className="section">
-            <div className="section-label">Авторизация</div>
+            <div className="section-label">{t('auth', lang)}</div>
             <div className="auth-list">
               {authServices.map(svcId => (
                 <div key={svcId} className="auth-row">
                   <span>
-                    {SERVICE_ICONS[svcId]} {SERVICE_LABELS[svcId] ?? svcId}
+                    {SERVICE_ICONS[svcId]} {tService(svcId, lang)}
                   </span>
                   {isAuth(svcId) ? (
-                    <span className="auth-ok">✓ Подключено</span>
+                    <span className="auth-ok">{t('connected', lang)}</span>
                   ) : (
                     <button
                       className="btn btn-ghost btn-sm"
@@ -183,7 +179,7 @@ export default function MigratePage() {
                         window.location.href = getOAuthStartUrl(svcId, fromSvc, toSvc)
                       }}
                     >
-                      Войти
+                      {t('connect', lang)}
                     </button>
                   )}
                 </div>
@@ -194,13 +190,13 @@ export default function MigratePage() {
 
         {/* Settings */}
         <div className="section">
-          <div className="section-label">Настройки</div>
+          <div className="section-label">{t('settings', lang)}</div>
 
           <div className="settings-list">
             {/* Track limit */}
             <div className="setting-row">
               <label className="setting-label" htmlFor="limit-select">
-                Количество треков
+                {t('track_limit', lang)}
               </label>
               <select
                 id="limit-select"
@@ -208,7 +204,7 @@ export default function MigratePage() {
                 value={limit ?? ''}
                 onChange={e => setLimit(e.target.value ? Number(e.target.value) : undefined)}
               >
-                <option value="">Все</option>
+                <option value="">{t('all', lang)}</option>
                 <option value="50">50</option>
                 <option value="100">100</option>
                 <option value="500">500</option>
@@ -219,7 +215,7 @@ export default function MigratePage() {
             {fromSvc !== 'file' && (
               <div className="setting-row">
                 <label className="setting-label" htmlFor="skip-check">
-                  Пропускать уже перенесённые
+                  {t('skip_migrated', lang)}
                 </label>
                 <input
                   id="skip-check"
@@ -235,8 +231,8 @@ export default function MigratePage() {
             {toSvc === 'soundcloud' && (
               <div className="setting-row">
                 <label className="setting-label" htmlFor="like-check">
-                  Лайкать треки напрямую
-                  <span className="muted"> (иначе — в плейлист)</span>
+                  {t('like_directly', lang)}
+                  <span className="muted"> {t('otherwise_playlist', lang)}</span>
                 </label>
                 <input
                   id="like-check"
@@ -252,8 +248,8 @@ export default function MigratePage() {
             {toSvc === 'spotify' && (
               <div className="setting-row">
                 <label className="setting-label" htmlFor="spotify-playlist-check">
-                  Создать плейлист
-                  <span className="muted"> (иначе — добавить в лайки)</span>
+                  {t('create_playlist', lang)}
+                  <span className="muted"> {t('otherwise_likes', lang)}</span>
                 </label>
                 <input
                   id="spotify-playlist-check"
@@ -269,7 +265,7 @@ export default function MigratePage() {
             {toSvc === 'spotify' && spotifyPlaylistMode && (
               <div className="setting-row">
                 <label className="setting-label" htmlFor="playlist-name">
-                  Название плейлиста
+                  {t('playlist_name', lang)}
                 </label>
                 <input
                   id="playlist-name"
@@ -286,7 +282,7 @@ export default function MigratePage() {
             {fromSvc === 'file' && (
               <div className="setting-row">
                 <label className="setting-label" htmlFor="import-file">
-                  Файл (CSV или JSON)
+                  {t('import_file', lang)}
                 </label>
                 <input
                   id="import-file"
@@ -304,7 +300,7 @@ export default function MigratePage() {
             {/* Content types */}
             {fromSvc !== 'file' && (
               <div className="setting-row">
-                <span className="setting-label">Что переносить</span>
+                <span className="setting-label">{t('what_to_migrate', lang)}</span>
                 <div className="setting-checkboxes">
                   {(['tracks', 'playlists', 'artists'] as const).map(ct => (
                     <label key={ct} className="setting-checkbox-label">
@@ -316,12 +312,12 @@ export default function MigratePage() {
                           setContentTypes(prev =>
                             e.target.checked
                               ? [...prev, ct]
-                              : prev.filter(t => t !== ct)
+                              : prev.filter(x => x !== ct)
                           )
                         }}
                         disabled={ct === 'tracks'}
                       />
-                      {ct === 'tracks' ? 'Треки' : ct === 'playlists' ? 'Плейлисты' : 'Артисты'}
+                      {ct === 'tracks' ? t('tracks', lang) : ct === 'playlists' ? t('playlists', lang) : t('artists', lang)}
                     </label>
                   ))}
                 </div>
@@ -337,7 +333,7 @@ export default function MigratePage() {
             disabled={!canStart}
             onClick={handleStart}
           >
-            {starting ? 'Запуск…' : 'Начать'}
+            {starting ? t('starting', lang) : t('start', lang)}
           </button>
         </div>
       </div>

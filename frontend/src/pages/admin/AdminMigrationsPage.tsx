@@ -2,23 +2,11 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { listMigrations } from '../../api/migrations'
 import type { Migration, MigrationsPage } from '../../api/migrations'
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'В очереди',
-  running: 'В процессе',
-  done: 'Завершено',
-  failed: 'Ошибка',
-  cancelled: 'Отменено',
-}
+import { useLang } from '../../App'
+import { t, tService, tStatus, formatDate } from '../../i18n'
 
 export default function AdminMigrationsPage() {
+  const { lang } = useLang()
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<MigrationsPage | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +20,7 @@ export default function AdminMigrationsPage() {
     setLoading(true)
     listMigrations({ user_id: filterUser || undefined, status: filterStatus || undefined, page })
       .then(d => { setData(d); setError(null) })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Ошибка'))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('load_error', lang)))
       .finally(() => setLoading(false))
   }, [filterUser, filterStatus, page])
 
@@ -68,15 +56,15 @@ export default function AdminMigrationsPage() {
           value={filterStatus}
           onChange={e => setParam('status', e.target.value)}
         >
-          <option value="">Все статусы</option>
-          {Object.entries(STATUS_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
+          <option value="">{t('all_statuses', lang)}</option>
+          {(['pending', 'running', 'done', 'failed', 'cancelled'] as const).map(v => (
+            <option key={v} value={v}>{tStatus(v, lang)}</option>
           ))}
         </select>
       </div>
 
       {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
-      {loading && <p className="muted" style={{ marginTop: 12 }}>Загрузка…</p>}
+      {loading && <p className="muted" style={{ marginTop: 12 }}>{t('loading', lang)}</p>}
 
       {!loading && data && (
         <>
@@ -86,9 +74,9 @@ export default function AdminMigrationsPage() {
                 <tr>
                   <th>ID</th>
                   <th>User</th>
-                  <th>Откуда → Куда</th>
-                  <th>Статус</th>
-                  <th>Дата</th>
+                  <th>{t('from_to', lang)}</th>
+                  <th>{t('col_status', lang)}</th>
+                  <th>{t('col_date', lang)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,22 +85,22 @@ export default function AdminMigrationsPage() {
                     <td>#{m.id}</td>
                     <td className="muted" style={{ fontSize: 12 }}>{m.user_id}</td>
                     <td>
-                      {SERVICE_LABELS[m.from_service] ?? m.from_service}
+                      {tService(m.from_service, lang)}
                       {' → '}
-                      {SERVICE_LABELS[m.to_service] ?? m.to_service}
+                      {tService(m.to_service, lang)}
                     </td>
                     <td>
                       <span className={`status-badge status-${m.status}`}>
-                        {STATUS_LABELS[m.status] ?? m.status}
+                        {tStatus(m.status, lang)}
                       </span>
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>
-                      {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : '—'}
+                      {formatDate(m.created_at, lang)}
                     </td>
                   </tr>
                 ))}
                 {data.migrations.length === 0 && (
-                  <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 24 }}>Нет миграций</td></tr>
+                  <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 24 }}>{t('no_migrations_table', lang)}</td></tr>
                 )}
               </tbody>
             </table>
@@ -126,7 +114,7 @@ export default function AdminMigrationsPage() {
                 disabled={page <= 1}
                 onClick={() => setPage(page - 1)}
               >
-                ← Назад
+                {t('prev', lang)}
               </button>
               <span className="muted" style={{ fontSize: 13 }}>
                 {page} / {data.pages}
@@ -136,7 +124,7 @@ export default function AdminMigrationsPage() {
                 disabled={page >= data.pages}
                 onClick={() => setPage(page + 1)}
               >
-                Вперёд →
+                {t('next_page', lang)}
               </button>
             </div>
           )}

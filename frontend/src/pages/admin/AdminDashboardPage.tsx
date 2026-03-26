@@ -2,23 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchStats } from '../../api/admin'
 import type { AdminStats } from '../../api/admin'
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'В очереди',
-  running: 'В процессе',
-  done: 'Завершено',
-  failed: 'Ошибка',
-  cancelled: 'Отменено',
-}
-
-const SERVICE_LABELS: Record<string, string> = {
-  yandex_music: 'Яндекс Музыка',
-  spotify: 'Spotify',
-  soundcloud: 'SoundCloud',
-  file: 'Файл',
-}
+import { useLang } from '../../App'
+import { t, tService, tStatus, formatDate } from '../../i18n'
 
 export default function AdminDashboardPage() {
+  const { lang } = useLang()
   const ran = useRef(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -27,12 +15,12 @@ export default function AdminDashboardPage() {
     if (ran.current) return
     ran.current = true
     fetchStats().then(setStats).catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setError(e instanceof Error ? e.message : t('load_error', lang))
     })
   }, [])
 
   if (!stats && !error) {
-    return <div className="page-center"><p className="muted">Загрузка…</p></div>
+    return <div className="page-center"><p className="muted">{t('loading', lang)}</p></div>
   }
 
   if (error) {
@@ -41,27 +29,27 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="admin-page">
-      <h1 className="title" style={{ marginBottom: 24 }}>Dashboard</h1>
+      <h1 className="title" style={{ marginBottom: 24 }}>{t('dashboard', lang)}</h1>
 
       {/* Summary cards */}
       <div className="admin-cards">
         <div className="admin-card">
           <div className="admin-card-value">{stats!.total_migrations}</div>
-          <div className="admin-card-label">Миграций</div>
+          <div className="admin-card-label">{t('migrations_count', lang)}</div>
         </div>
         <div className="admin-card">
           <div className="admin-card-value">{stats!.total_users}</div>
-          <div className="admin-card-label">Пользователей</div>
+          <div className="admin-card-label">{t('users_count', lang)}</div>
         </div>
       </div>
 
       {/* By status */}
       <div className="section" style={{ marginTop: 28 }}>
-        <div className="section-label">По статусам</div>
+        <div className="section-label">{t('by_status', lang)}</div>
         <div className="stat-rows">
           {Object.entries(stats!.by_status).map(([status, count]) => (
             <div key={status} className="stat-row">
-              <span className={`status-badge status-${status}`}>{STATUS_LABELS[status] ?? status}</span>
+              <span className={`status-badge status-${status}`}>{tStatus(status, lang)}</span>
               <span>{count}</span>
             </div>
           ))}
@@ -71,16 +59,16 @@ export default function AdminDashboardPage() {
       {/* Recent migrations */}
       {stats!.recent.length > 0 && (
         <div className="section" style={{ marginTop: 28 }}>
-          <div className="section-label">Последние миграции</div>
+          <div className="section-label">{t('recent_migrations', lang)}</div>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>User</th>
-                  <th>Откуда → Куда</th>
-                  <th>Статус</th>
-                  <th>Дата</th>
+                  <th>{t('from_to', lang)}</th>
+                  <th>{t('col_status', lang)}</th>
+                  <th>{t('col_date', lang)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -93,17 +81,17 @@ export default function AdminDashboardPage() {
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>{m.user_id}</td>
                     <td>
-                      {SERVICE_LABELS[m.from_service] ?? m.from_service}
+                      {tService(m.from_service, lang)}
                       {' → '}
-                      {SERVICE_LABELS[m.to_service] ?? m.to_service}
+                      {tService(m.to_service, lang)}
                     </td>
                     <td>
                       <span className={`status-badge status-${m.status}`}>
-                        {STATUS_LABELS[m.status] ?? m.status}
+                        {tStatus(m.status, lang)}
                       </span>
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>
-                      {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : '—'}
+                      {formatDate(m.created_at, lang)}
                     </td>
                   </tr>
                 ))}

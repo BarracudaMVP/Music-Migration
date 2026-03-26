@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { listUsers } from '../../api/admin'
 import type { AdminUsersPage as UsersPageType, AdminUser } from '../../api/admin'
+import { useLang } from '../../App'
+import { t } from '../../i18n'
 
 export default function AdminUsersPage() {
+  const { lang } = useLang()
   const [data, setData] = useState<UsersPageType | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -12,7 +15,7 @@ export default function AdminUsersPage() {
     setLoading(true)
     listUsers(page)
       .then(d => { setData(d); setError(null) })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Ошибка'))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('load_error', lang)))
       .finally(() => setLoading(false))
   }, [page])
 
@@ -21,7 +24,7 @@ export default function AdminUsersPage() {
       <h1 className="title" style={{ marginBottom: 20 }}>Users</h1>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {loading && <p className="muted">Загрузка…</p>}
+      {loading && <p className="muted">{t('loading', lang)}</p>}
 
       {!loading && data && (
         <>
@@ -30,8 +33,8 @@ export default function AdminUsersPage() {
               <thead>
                 <tr>
                   <th>User ID</th>
-                  <th>Роль</th>
-                  <th>Миграций</th>
+                  <th>{t('col_role', lang)}</th>
+                  <th>{t('migrations_count', lang)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -49,7 +52,7 @@ export default function AdminUsersPage() {
                   </tr>
                 ))}
                 {data.users.length === 0 && (
-                  <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 24 }}>Нет пользователей</td></tr>
+                  <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 24 }}>{t('no_users', lang)}</td></tr>
                 )}
               </tbody>
             </table>
@@ -58,11 +61,11 @@ export default function AdminUsersPage() {
           {data.pages > 1 && (
             <div className="admin-pagination">
               <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-                ← Назад
+                {t('prev', lang)}
               </button>
               <span className="muted" style={{ fontSize: 13 }}>{page} / {data.pages}</span>
               <button className="btn btn-ghost btn-sm" disabled={page >= data.pages} onClick={() => setPage(p => p + 1)}>
-                Вперёд →
+                {t('next_page', lang)}
               </button>
             </div>
           )}

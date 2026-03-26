@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { exchangeCode } from '../api/auth'
+import { useLang } from '../App'
+import { t } from '../i18n'
 
 // OAuth providers redirect back here with ?code=...&flow_from=...&flow_to=...
 export default function AuthCallbackPage() {
+  const { lang } = useLang()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const ran = useRef(false)
@@ -35,7 +38,7 @@ export default function AuthCallbackPage() {
 
   return (
     <div className="page-center">
-      <p>Авторизация…</p>
+      <p>{t('authorizing', lang)}</p>
     </div>
   )
 }
