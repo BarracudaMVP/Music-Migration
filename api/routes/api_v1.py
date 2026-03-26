@@ -485,42 +485,52 @@ async def start_migration(
         )
         return {"migration_id": migration_id}
 
-    job_kwargs = dict(
+    common = dict(
         migration_id=migration_id,
         user_id=user_id,
-        yandex_token=token_ym,
-        soundcloud_token=token_sc,
         track_limit=body.limit or None,
         skip_already_migrated=body.skip_already_migrated,
-        like_tracks=body.like_tracks,
-        mode=mode,
     )
 
+    # source_token для джобов с from_service (YM-write, Spotify-write)
+    source_token = token_sp if body.from_service == "spotify" else token_sc if body.from_service == "soundcloud" else token_ym
+
     if body.to_service == "yandex_music":
-        await arq.enqueue_job("run_yandex_migration_job", **{
-            **job_kwargs,
-            "tracks_override": tracks_override_dicts,
-        })
+        await arq.enqueue_job("run_yandex_migration_job",
+            **common,
+            source_token=source_token,
+            from_service=body.from_service,
+            ym_token=token_ym,
+            tracks_override=tracks_override_dicts,
+        )
     elif body.to_service == "spotify":
-        await arq.enqueue_job("run_spotify_write_job", **{
-            **job_kwargs,
-            "spotify_token": token_sp,
-            "spotify_refresh_token": token_sp_refresh,
-            "playlist_mode": body.spotify_playlist_mode,
-            "playlist_name": body.spotify_playlist_name,
-            "tracks_override": tracks_override_dicts,
-        })
+        await arq.enqueue_job("run_spotify_write_job",
+            **common,
+            source_token=source_token,
+            from_service=body.from_service,
+            spotify_token=token_sp,
+            spotify_refresh_token=token_sp_refresh,
+            playlist_mode=body.spotify_playlist_mode,
+            playlist_name=body.spotify_playlist_name,
+            tracks_override=tracks_override_dicts,
+        )
     else:
         if body.from_service == "spotify":
-            await arq.enqueue_job("run_spotify_migration_job", **{
-                **job_kwargs,
-                "spotify_token": token_sp,
-            })
+            await arq.enqueue_job("run_spotify_migration_job",
+                **common,
+                spotify_token=token_sp,
+                sc_token=token_sc,
+                mode=mode,
+                like_tracks=body.like_tracks,
+            )
         else:
-            await arq.enqueue_job("run_migration_job", **{
-                **job_kwargs,
-                "soundcloud_refresh_token": token_sc_refresh,
-            })
+            await arq.enqueue_job("run_migration_job",
+                **common,
+                ym_token=token_ym,
+                sc_token=token_sc,
+                mode=mode,
+                like_tracks=body.like_tracks,
+            )
 
     return {"migration_id": migration_id}
 
