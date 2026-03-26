@@ -1,4 +1,4 @@
-"""Tests for MM-79: OAuth routes refactoring (api/routes/oauth.py)."""
+"""Tests for OAuth utility helpers (api/routes/oauth.py) and OAuth routes."""
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +32,7 @@ def ensure_services_registered():
 
 
 # ---------------------------------------------------------------------------
-# _ensure_user_id / _session_user_id moved to oauth.py
+# _ensure_user_id / _session_user_id
 # ---------------------------------------------------------------------------
 
 def test_session_user_id_returns_none_when_no_session():
@@ -156,7 +156,7 @@ async def test_issue_oauth_code_stores_user_id(mock_arq_pool):
 
 
 # ---------------------------------------------------------------------------
-# Yandex OAuth start
+# OAuth routes (SPA endpoints)
 # ---------------------------------------------------------------------------
 
 # Old /auth/yandex, /auth/soundcloud, /auth/spotify routes moved to /api/v1/auth/* (MM-81)
@@ -226,39 +226,25 @@ async def test_auth_spotify_v1_no_client_id(app, mock_arq_pool):
 
 
 # ---------------------------------------------------------------------------
-# Logout
+# Deleted routes → 404
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_logout_clears_session_and_redirects(app, mock_arq_pool):
-    """POST /auth/logout → 303 redirect to /."""
+async def test_logout_returns_404(app, mock_arq_pool):
+    """POST /auth/logout removed (MM-82) → 404."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        with patch("api.routes.oauth.delete_user_session", new_callable=AsyncMock):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post("/auth/logout", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/auth/logout", follow_redirects=False)
+    assert response.status_code == 404
 
-
-# ---------------------------------------------------------------------------
-# Session key: ym_connected (not ym_token)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_flow_rest_ym_connected_via_session(app, mock_arq_pool):
-    """flow_rest reads ym_connected (not ym_token) for auth status."""
-    # Patch load_user_session to return a DB session with yandex_token
-    db_session_mock = {"yandex_token": "fake_token", "soundcloud_token": "fake_sc"}
+async def test_admin_login_returns_404(app, mock_arq_pool):
+    """GET /admin/login removed (MM-82) → 404."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=db_session_mock):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.get("/api/flow/rest?from=yandex_music&to=soundcloud")
-    assert response.status_code == 200
-    # When DB has tokens, both services appear connected (no disabled button)
-    assert "disabled" not in response.text or "from_connected" not in response.text
-
-
-# GET /auth page removed (MM-75/81) — OAuth is redirect-only machinery, no HTML page
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/admin/login", follow_redirects=False)
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

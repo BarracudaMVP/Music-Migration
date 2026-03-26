@@ -107,6 +107,19 @@ services:
     networks:
       - app
 
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.prod
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -120,6 +133,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend:
+        condition: service_started
     logging:
       driver: "json-file"
       options:

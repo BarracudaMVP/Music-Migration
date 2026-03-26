@@ -57,10 +57,6 @@ class Settings(BaseSettings):
     # Admin UI (MVP8)
     admin_password: str = Field(default="admin")
 
-    # Web UI access control (MM-31)
-    web_enabled: bool = Field(default=True)          # false = disable web UI and admin (API/bot still work)
-    web_allowed_ips: str = Field(default="")         # comma-separated IPs; empty = allow all
-
     # Proxy для Яндекс Музыки (RU IP)
     ym_proxy_url: str = Field(default="")
 

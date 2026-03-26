@@ -55,16 +55,14 @@ def test_dev_mode_forced_false_on_https_api_base():
 
 
 @pytest.mark.asyncio
-async def test_ensure_user_id_returns_dev_user_in_dev_mode(app, mock_arq_pool):
-    """In DEV_MODE, every request uses user_id=dev_user."""
+async def test_jinja2_home_removed(app, mock_arq_pool):
+    """GET / returns 404 — Jinja2 web UI removed (MM-82), SPA served separately."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        with patch("api.routes.web.load_user_session", new_callable=AsyncMock, return_value=None):
-            with patch("config.settings.dev_mode", True):
-                async with AsyncClient(
-                    transport=ASGITransport(app=app), base_url="http://test"
-                ) as client:
-                    response = await client.get("/")
-    assert response.status_code == 200
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/", follow_redirects=False)
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

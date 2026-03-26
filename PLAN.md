@@ -1999,17 +1999,21 @@ JWT_REFRESH_TOKEN_TTL=2592000
 
 ---
 
-### 🔲 MM-82 — Удаление Jinja2 UI (после готовности SPA)
+### ✅ MM-82 — Удаление Jinja2 UI (после готовности SPA)
 
 > Финальный cleanup после того как SPA-фронтенд задеплоен и стабилен.
 
-- [ ] `WEB_ENABLED=false` в `.env` на EU сервере → отключить Jinja2 UI (бот и API продолжают работать)
-- [ ] Убрать `SessionMiddleware` из `api/main.py`
-- [ ] Удалить `api/templates/`, `api/routes/web.py`, `api/routes/oauth.py` (бот-роуты перенести в `bot_auth.py`)
-- [ ] Удалить HTMX-фрагменты: `GET /api/flow/*` (заменены SPA)
-- [ ] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py` и `api/middleware.py`
-- [ ] Обновить `docker-compose.yml`: добавить `frontend` сервис (nginx static)
-- [ ] Обновить CLAUDE.md, тесты
+- [x] Удалить `api/routes/web.py`, `api/routes/admin.py`, `api/middleware.py`, `api/templates/`
+- [x] `api/routes/oauth.py` → pure utility module (убрать router, оставить helpers для api_v1.py)
+- [x] Bot-роуты перенести в `bot_auth.py`: `GET /auth/yandex/bot` (router_public), `GET /api/auth/yandex/poll/{state_id}` (router с verify_internal_token)
+- [x] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py`; удалить `api/middleware.py`
+- [x] `SessionMiddleware` оставить always-on (нужен для `_ensure_user_id` в OAuth flow)
+- [x] Создать `Dockerfile.frontend.prod` (multi-stage: node build → nginx:alpine serve)
+- [x] Создать `nginx/spa.conf` (SPA static: try_files → /index.html)
+- [x] Обновить `nginx/nginx.conf`: split routing — `/api/` + `/auth/` + `/health` → api:8000; `/` → frontend:80
+- [x] Обновить `docker-compose.yml`: добавить `frontend` сервис (Dockerfile.frontend.prod)
+- [x] Обновить тесты: удалить test_middleware.py, test_web_flow.py; обновить test_oauth.py, test_dev_mode.py, test_export_job.py
+- [x] pytest: 287 passed (1 pre-existing failure in test_pipeline.py)
 
 ---
 
