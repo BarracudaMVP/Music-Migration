@@ -70,17 +70,18 @@ def test_no_key_decrypt_passthrough():
 # Graceful fallback on invalid / plain-text stored token
 # ---------------------------------------------------------------------------
 
-def test_decrypt_invalid_token_returns_as_is():
-    """A token saved before encryption was enabled should be returned unchanged."""
+def test_decrypt_invalid_token_raises():
+    """An invalid/corrupt token should raise ValueError (not silently pass through)."""
     from cryptography.fernet import Fernet
     key = Fernet.generate_key().decode()
 
     with patch("core.crypto.settings", _mock_settings(key)):
-        result = decrypt_token("not_a_fernet_token")
-    assert result == "not_a_fernet_token"
+        with pytest.raises(ValueError, match="Token decryption failed"):
+            decrypt_token("not_a_fernet_token")
 
 
-def test_decrypt_empty_string():
+def test_decrypt_empty_string_returns_empty():
+    """Empty string means no token stored — return as-is without attempting decryption."""
     from cryptography.fernet import Fernet
     key = Fernet.generate_key().decode()
 
@@ -114,7 +115,6 @@ def test_different_keys_cannot_cross_decrypt():
 
     crypto_mod._fernet = None
     with patch("core.crypto.settings", _mock_settings(key_b)):
-        # Decrypting with wrong key falls back to returning the value as-is
-        result = decrypt_token(encrypted)
-    # It should not equal the original plaintext
-    assert result != "secret"
+        # Decrypting with wrong key should raise ValueError
+        with pytest.raises(ValueError, match="Token decryption failed"):
+            decrypt_token(encrypted)

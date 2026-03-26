@@ -31,6 +31,7 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 from typing import Optional
 from urllib.parse import quote
 
@@ -62,8 +63,26 @@ from core.db import (
 )
 from core.db.crud import get_admin_stats, get_all_migrations_paginated, get_all_users_paginated
 from core.services.registry import ServiceRegistry
+from loguru import logger
 
 router = APIRouter(prefix="/api/v1")
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting helper (Redis fixed-window counter)
+# ---------------------------------------------------------------------------
+
+async def _check_rate_limit(arq, key: str, limit: int, window: int = 60) -> bool:
+    """Returns True if request is within limit, False if rate limited.
+
+    Uses a Redis fixed-window counter. Key format: rl:{endpoint}:{ip}:{window_slot}
+    """
+    slot = int(time.time()) // window
+    redis_key = f"rl:{key}:{slot}"
+    count = await arq.incr(redis_key)
+    if count == 1:
+        await arq.expire(redis_key, window * 2)
+    return count <= limit
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +112,7 @@ class AccessTokenResponse(BaseModel):
 
 
 @router.post("/auth/exchange", response_model=TokenResponse)
-async def exchange_code(body: ExchangeRequest):
+async def exchange_code(request: Request, body: ExchangeRequest):
     """Exchange short-lived oauth_code (from OAuth callback) for JWT tokens."""
     from api.main import get_arq_pool
     from config import settings
@@ -101,6 +120,10 @@ async def exchange_code(body: ExchangeRequest):
     arq = get_arq_pool()
     if not arq:
         raise HTTPException(status_code=503, detail="Redis unavailable")
+
+    ip = request.client.host if request.client else "unknown"
+    if not await _check_rate_limit(arq, f"exchange:{ip}", limit=10, window=60):
+        raise HTTPException(status_code=429, detail="Too many requests")
 
     raw = await arq.get(f"oauth_code:{body.code}")
     if not raw:
@@ -123,9 +146,16 @@ async def exchange_code(body: ExchangeRequest):
 
 
 @router.post("/auth/refresh", response_model=AccessTokenResponse)
-async def refresh_token(body: RefreshRequest):
+async def refresh_token(request: Request, body: RefreshRequest):
     """Exchange refresh token for a new access token."""
+    from api.main import get_arq_pool
     from config import settings
+
+    arq = get_arq_pool()
+    if arq:
+        ip = request.client.host if request.client else "unknown"
+        if not await _check_rate_limit(arq, f"refresh:{ip}", limit=30, window=60):
+            raise HTTPException(status_code=429, detail="Too many requests")
 
     user_id = await get_user_id_by_spa_refresh_token(body.refresh_token)
     if not user_id:
@@ -210,7 +240,8 @@ async def yandex_oauth_callback(
         token = await exchange_code_callback(code)
         await YandexMusicClient(token, proxy_url=settings.ym_proxy_url or None).init()
     except Exception as e:
-        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+        logger.error(f"Yandex OAuth callback error for user {_ensure_user_id(request)!r}: {e}")
+        return RedirectResponse(f"/?error={quote('internal_error')}", status_code=303)
 
     user_id = _ensure_user_id(request)
     await save_yandex_token(user_id, token)
@@ -273,7 +304,8 @@ async def spotify_oauth_callback(
         )
         request.session["spotify_connected"] = True
     except Exception as e:
-        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+        logger.error(f"Spotify OAuth callback error for user {user_id!r}: {e}")
+        return RedirectResponse(f"/?error={quote('internal_error')}", status_code=303)
 
     code = await _issue_oauth_code(user_id)
     from config import settings
@@ -333,7 +365,8 @@ async def soundcloud_oauth_callback(
         )
         request.session["sc_connected"] = True
     except Exception as e:
-        return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
+        logger.error(f"SoundCloud OAuth callback error for user {user_id!r}: {e}")
+        return RedirectResponse(f"/?error={quote('internal_error')}", status_code=303)
 
     code = await _issue_oauth_code(user_id)
     from config import settings

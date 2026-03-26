@@ -15,7 +15,7 @@ Redis keys:
 from __future__ import annotations
 
 import json
-import uuid
+import secrets
 
 from fastapi import Request
 
@@ -42,7 +42,7 @@ def _ensure_user_id(request: Request) -> str:
         return "dev_user"
     uid = request.session.get("user_id")
     if not uid:
-        uid = f"web_{uuid.uuid4().hex[:12]}"
+        uid = f"web_{secrets.token_hex(16)}"
         request.session["user_id"] = uid
     return uid
 
@@ -79,7 +79,7 @@ async def _issue_oauth_code(user_id: str) -> str:
     """Generate a short-lived (30s) code in Redis for JWT exchange (MM-81)."""
     from api.main import get_arq_pool
 
-    code = uuid.uuid4().hex
+    code = secrets.token_hex(16)
     arq = get_arq_pool()
     if arq:
         await arq.setex(f"oauth_code:{code}", 30, user_id)

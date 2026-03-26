@@ -45,13 +45,14 @@ def encrypt_token(token: str) -> str:
 
 
 def decrypt_token(value: str) -> str:
-    """Расшифровывает токен из БД. Если ключа нет — возвращает как есть."""
+    """Расшифровывает токен из БД. Если ключа нет или значение пустое — возвращает как есть."""
     f = _get_fernet()
     if f is None:
         return value
+    if not value:
+        return value
     try:
         return f.decrypt(value.encode()).decode()
-    except (InvalidToken, Exception):
-        # Токен мог быть сохранён до включения шифрования — возвращаем как есть
-        logger.warning("Не удалось расшифровать токен — возможно, он сохранён без шифрования")
-        return value
+    except Exception:
+        logger.error("Не удалось расшифровать токен — ключ сменился или токен повреждён")
+        raise ValueError("Token decryption failed")

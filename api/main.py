@@ -1,7 +1,7 @@
 """FastAPI application — Music Migration API."""
 from arq import create_pool
 from arq.connections import RedisSettings
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from starlette.middleware.sessions import SessionMiddleware
@@ -30,8 +30,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # SessionMiddleware — required for OAuth state flow (_ensure_user_id in api_v1.py)
@@ -76,5 +76,31 @@ def get_arq_pool():
 
 
 @app.get("/health", tags=["health"])
-async def health() -> dict:
-    return {"status": "ok", "version": "9.0.0"}
+async def health(response: Response) -> dict:
+    result: dict = {"status": "ok", "version": "9.0.0"}
+
+    arq = get_arq_pool()
+    if arq:
+        try:
+            await arq.ping()
+            result["redis"] = "ok"
+        except Exception:
+            result["redis"] = "error"
+            result["status"] = "degraded"
+    else:
+        result["redis"] = "unavailable"
+        result["status"] = "degraded"
+
+    try:
+        from sqlalchemy import text
+        from core.db.session import engine
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        result["db"] = "ok"
+    except Exception:
+        result["db"] = "error"
+        result["status"] = "degraded"
+
+    if result["status"] != "ok":
+        response.status_code = 503
+    return result

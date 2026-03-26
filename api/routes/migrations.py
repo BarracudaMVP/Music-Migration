@@ -1,4 +1,5 @@
 """Migration routes: start + status."""
+import secrets
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -38,41 +39,48 @@ async def start_migration(body: StartMigrationRequest, arq=Depends(arq_pool_dep)
     skip = body.skip_already_migrated
     like = body.like_tracks
 
+    # Pre-generate job_id and save to Redis BEFORE enqueue to avoid race condition
+    # where the worker starts before migration_job:{id} is written.
+    job_id = secrets.token_hex(16)
+    await arq.set(f"migration_job:{migration_id}", job_id, ex=86400)
+
     if body.to_service == "yandex_music":
         source_token = body.spotify_token if body.from_service == "spotify" else body.soundcloud_token
-        job = await arq.enqueue_job(
+        await arq.enqueue_job(
             "run_yandex_migration_job",
             migration_id, source_token, body.from_service, body.yandex_token, body.user_id,
             track_limit=body.track_limit, skip_already_migrated=skip,
+            _job_id=job_id,
         )
     elif body.to_service == "spotify":
         source_token = (
             body.soundcloud_token if body.from_service == "soundcloud"
             else body.yandex_token
         )
-        job = await arq.enqueue_job(
+        await arq.enqueue_job(
             "run_spotify_write_job",
             migration_id, source_token, body.from_service,
             body.spotify_token or "", body.spotify_refresh_token, body.user_id,
             track_limit=body.track_limit, skip_already_migrated=skip,
             playlist_mode=body.spotify_playlist_mode,
             playlist_name=body.spotify_playlist_name,
+            _job_id=job_id,
         )
     elif body.from_service == "spotify" and body.spotify_token:
-        job = await arq.enqueue_job(
+        await arq.enqueue_job(
             "run_spotify_migration_job",
             migration_id, body.spotify_token, body.soundcloud_token, body.mode, body.user_id,
             track_limit=body.track_limit, skip_already_migrated=skip, like_tracks=like,
+            _job_id=job_id,
         )
     else:
-        job = await arq.enqueue_job(
+        await arq.enqueue_job(
             "run_migration_job",
             migration_id, body.yandex_token, body.soundcloud_token, body.mode, body.user_id,
             track_limit=body.track_limit, skip_already_migrated=skip, like_tracks=like,
+            _job_id=job_id,
         )
 
-    if job:
-        await arq.set(f"migration_job:{migration_id}", job.job_id, ex=86400)
     return StartMigrationResponse(migration_id=migration_id)
 
 

@@ -94,6 +94,19 @@ class Settings(BaseSettings):
     dev_mode: bool = Field(default=False)
 
     @model_validator(mode="after")
+    def guard_encryption_key(self) -> "Settings":
+        """Prevent running in production without token encryption enabled."""
+        if not self.dev_mode and not self.db_encryption_key.strip():
+            import os
+            # Only enforce when a real DB is configured (not bare startup / tests)
+            if self.database_url and "localhost" not in self.database_url and "127.0.0.1" not in self.database_url:
+                raise ValueError(
+                    "DB_ENCRYPTION_KEY must be set in production. "
+                    "Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                )
+        return self
+
+    @model_validator(mode="after")
     def guard_dev_mode(self) -> "Settings":
         """Force dev_mode=False if a non-localhost public URL is configured.
 

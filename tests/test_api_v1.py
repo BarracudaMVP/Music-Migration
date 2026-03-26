@@ -27,6 +27,8 @@ def mock_arq_pool():
     pool.delete = AsyncMock()
     pool.setex = AsyncMock()
     pool.enqueue_job = AsyncMock()
+    pool.incr = AsyncMock(return_value=1)
+    pool.expire = AsyncMock()
     return pool
 
 

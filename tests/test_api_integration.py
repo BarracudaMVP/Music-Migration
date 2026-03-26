@@ -43,9 +43,18 @@ def ensure_services_registered():
 
 @pytest.mark.asyncio
 async def test_health_endpoint(app, mock_arq_pool):
+    mock_arq_pool.ping = AsyncMock()
+    mock_conn = AsyncMock()
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+    mock_conn.execute = AsyncMock()
+    mock_engine = MagicMock()
+    mock_engine.connect = MagicMock(return_value=mock_conn)
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.get("/health")
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("core.db.session.engine", mock_engine):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
@@ -183,9 +192,18 @@ async def test_get_migration_not_found_returns_404(app, mock_arq_pool):
 async def test_concurrent_health_requests(app, mock_arq_pool):
     """20 concurrent GET /health requests all return 200."""
     import asyncio
+    mock_arq_pool.ping = AsyncMock()
+    mock_conn = AsyncMock()
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+    mock_conn.execute = AsyncMock()
+    mock_engine = MagicMock()
+    mock_engine.connect = MagicMock(return_value=mock_conn)
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            responses = await asyncio.gather(*[client.get("/health") for _ in range(20)])
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("core.db.session.engine", mock_engine):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    responses = await asyncio.gather(*[client.get("/health") for _ in range(20)])
     assert all(r.status_code == 200 for r in responses)
 
 
