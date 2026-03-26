@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { refreshAccessToken } from '../api/auth'
-import { listMigrations } from '../api/migrations'
-import type { Migration } from '../api/migrations'
+import { listMigrations, getMigrationTracks } from '../api/migrations'
+import type { Migration, TrackRow } from '../api/migrations'
 import { getAccessToken } from '../api/client'
 import { useLang } from '../App'
 import { t, tService, tStatus, formatDate } from '../i18n'
@@ -26,6 +26,9 @@ export default function HistoryPage() {
   const [migrations, setMigrations] = useState<Migration[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [notFoundMap, setNotFoundMap] = useState<Record<number, TrackRow[]>>({})
+  const [loadingNotFound, setLoadingNotFound] = useState<number | null>(null)
 
   useEffect(() => {
     if (ran.current) return
@@ -52,6 +55,23 @@ export default function HistoryPage() {
 
     init()
   }, [])
+
+  async function toggleNotFound(m: Migration) {
+    if (expandedId === m.id) {
+      setExpandedId(null)
+      return
+    }
+    setExpandedId(m.id)
+    if (!notFoundMap[m.id]) {
+      setLoadingNotFound(m.id)
+      try {
+        const page = await getMigrationTracks(m.id, 'not_found', 1)
+        setNotFoundMap(prev => ({ ...prev, [m.id]: page.tracks }))
+      } finally {
+        setLoadingNotFound(null)
+      }
+    }
+  }
 
   if (loading) {
     return (
@@ -90,44 +110,87 @@ export default function HistoryPage() {
               const inPlaylist = m.stats?.in_playlist ?? 0
               const notFound = m.stats?.not_found ?? 0
               const success = liked + inPlaylist
+              const matchTotal = success + notFound
+              const matchPct = matchTotal > 0 ? Math.round((success / matchTotal) * 100) : null
 
               return (
-                <Link
-                  key={m.id}
-                  to={`/migrate/${m.id}/progress`}
-                  className="migration-row"
-                >
-                  <div className="migration-direction">
-                    <span>{tService(m.from_service, lang)}</span>
-                    <span className="muted"> → </span>
-                    <span>{tService(m.to_service, lang)}</span>
+                <div key={m.id} className="migration-row" style={{ cursor: 'default' }}>
+                  {/* Main row — clickable to go to progress */}
+                  <div
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/migrate/${m.id}/progress`)}
+                  >
+                    <div className="migration-direction">
+                      <span>{tService(m.from_service, lang)}</span>
+                      <span className="muted"> → </span>
+                      <span>{tService(m.to_service, lang)}</span>
+                    </div>
+
+                    <div className="migration-meta">
+                      <span className={`status-badge ${statusClass(m.status)}`}>
+                        {tStatus(m.status, lang)}
+                      </span>
+                      <span className="muted migration-date">{formatDate(m.created_at, lang)}</span>
+                    </div>
+
+                    {m.status === 'done' && (
+                      <div className="migration-stats">
+                        <span className="stat-ok">✓ {success}</span>
+                        {notFound > 0 && <span className="stat-miss"> · ✗ {notFound}</span>}
+                        {matchPct !== null && (
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            {' '}· {matchPct}% {t('match_pct_label', lang)}
+                          </span>
+                        )}
+                        {m.result_path && (
+                          <a
+                            href={m.result_path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="playlist-link"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {t('playlist_link', lang)}
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="migration-meta">
-                    <span className={`status-badge ${statusClass(m.status)}`}>
-                      {tStatus(m.status, lang)}
-                    </span>
-                    <span className="muted migration-date">{formatDate(m.created_at, lang)}</span>
-                  </div>
-
-                  {m.status === 'done' && (
-                    <div className="migration-stats">
-                      <span className="stat-ok">✓ {success}</span>
-                      {notFound > 0 && <span className="stat-miss"> · ✗ {notFound}</span>}
-                      {m.result_path && (
-                        <a
-                          href={m.result_path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="playlist-link"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          {t('playlist_link', lang)}
-                        </a>
+                  {/* Expand not-found tracks */}
+                  {m.status === 'done' && notFound > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 12 }}
+                        onClick={() => toggleNotFound(m)}
+                      >
+                        {loadingNotFound === m.id
+                          ? t('loading', lang)
+                          : expandedId === m.id
+                            ? t('hide_not_found', lang)
+                            : t('show_not_found', lang)}
+                      </button>
+                      {expandedId === m.id && notFoundMap[m.id] && (
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {notFoundMap[m.id].map(tr => (
+                            <div
+                              key={tr.id}
+                              style={{
+                                fontSize: 12,
+                                color: 'rgba(255,255,255,0.45)',
+                                padding: '2px 0',
+                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                              }}
+                            >
+                              {tr.ym_artist} — {tr.ym_title}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}
-                </Link>
+                </div>
               )
             })}
           </div>
