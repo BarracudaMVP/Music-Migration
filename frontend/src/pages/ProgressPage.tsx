@@ -1,13 +1,44 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { refreshAccessToken } from '../api/auth'
-import { getMigration } from '../api/migrations'
-import type { MigrationDetail } from '../api/migrations'
+import { getMigration, getMigrationTracks } from '../api/migrations'
+import type { MigrationDetail, TrackRow } from '../api/migrations'
 import { getAccessToken } from '../api/client'
 import { useLang } from '../App'
 import { t, tService, tStatus } from '../i18n'
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'])
+
+function statusChip(status: string) {
+  const colors: Record<string, string> = {
+    liked: '#22c55e',
+    in_playlist: '#3b82f6',
+    not_found: '#f59e0b',
+    error: '#ef4444',
+    pending: '#6b7280',
+  }
+  const labels: Record<string, string> = {
+    liked: '✓',
+    in_playlist: '♪',
+    not_found: '✗',
+    error: '!',
+    pending: '…',
+  }
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '1px 6px',
+        borderRadius: 4,
+        fontSize: 11,
+        color: '#fff',
+        background: colors[status] ?? '#6b7280',
+      }}
+    >
+      {labels[status] ?? status}
+    </span>
+  )
+}
 
 export default function ProgressPage() {
   const { lang } = useLang()
@@ -19,6 +50,10 @@ export default function ProgressPage() {
   const [detail, setDetail] = useState<MigrationDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [tracks, setTracks] = useState<TrackRow[]>([])
+  const [showNotFound, setShowNotFound] = useState(false)
+  const [notFoundTracks, setNotFoundTracks] = useState<TrackRow[]>([])
+  const [loadingNotFound, setLoadingNotFound] = useState(false)
 
   function stopPolling() {
     if (intervalRef.current) {
@@ -30,8 +65,12 @@ export default function ProgressPage() {
   async function poll() {
     if (!id) return
     try {
-      const data = await getMigration(Number(id))
+      const [data, tracksPage] = await Promise.all([
+        getMigration(Number(id)),
+        getMigrationTracks(Number(id), undefined, 1),
+      ])
       setDetail(data)
+      setTracks(tracksPage.tracks.filter(tr => tr.status !== 'pending').slice(0, 20))
       setLoading(false)
       if (TERMINAL_STATUSES.has(data.migration.status)) {
         stopPolling()
@@ -41,6 +80,17 @@ export default function ProgressPage() {
       setError(msg)
       setLoading(false)
       stopPolling()
+    }
+  }
+
+  async function loadNotFound() {
+    if (!id) return
+    setLoadingNotFound(true)
+    try {
+      const page = await getMigrationTracks(Number(id), 'not_found', 1)
+      setNotFoundTracks(page.tracks)
+    } finally {
+      setLoadingNotFound(false)
     }
   }
 
@@ -166,6 +216,38 @@ export default function ProgressPage() {
           </div>
         </div>
 
+        {/* Track list (processed, non-pending) */}
+        {tracks.length > 0 && (
+          <div className="section">
+            <div className="section-label">{t('track_list', lang)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {tracks.map(tr => (
+                <div
+                  key={tr.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    padding: '3px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {tr.ym_artist} — {tr.ym_title}
+                  </span>
+                  {statusChip(tr.status)}
+                  {tr.match_score != null && (
+                    <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {t('match_score_label', lang)} {Math.round(tr.match_score)}%
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Terminal actions */}
         {isTerminal && (
           <div className="section">
@@ -204,9 +286,61 @@ export default function ProgressPage() {
                 </a>
               </div>
             )}
-            <div className="actions">
-              <Link to="/" className="btn btn-primary">{t('new_migration', lang)}</Link>
-              <Link to="/history" className="btn btn-ghost">{t('history', lang)}</Link>
+
+            {/* Not found tracks expandable */}
+            {notFound > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={async () => {
+                    if (!showNotFound && notFoundTracks.length === 0) {
+                      await loadNotFound()
+                    }
+                    setShowNotFound(v => !v)
+                  }}
+                >
+                  {loadingNotFound
+                    ? t('loading', lang)
+                    : showNotFound
+                      ? t('hide_not_found', lang)
+                      : t('show_not_found', lang)}
+                </button>
+                {showNotFound && notFoundTracks.length > 0 && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="section-label">{t('not_found_section', lang)}</div>
+                    {notFoundTracks.map(tr => (
+                      <div
+                        key={tr.id}
+                        style={{
+                          fontSize: 13,
+                          padding: '2px 0',
+                          borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          color: 'rgba(255,255,255,0.5)',
+                        }}
+                      >
+                        {tr.ym_artist} — {tr.ym_title}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="actions" style={{ gap: 12 }}>
+              <Link
+                to="/"
+                className="btn btn-primary"
+                style={{ borderRadius: '9999px' }}
+              >
+                {t('new_migration', lang)}
+              </Link>
+              <Link
+                to="/history"
+                className="btn btn-ghost"
+                style={{ borderRadius: '9999px' }}
+              >
+                {t('history', lang)}
+              </Link>
             </div>
           </div>
         )}
@@ -214,4 +348,3 @@ export default function ProgressPage() {
     </div>
   )
 }
-

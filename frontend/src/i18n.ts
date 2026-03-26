@@ -80,6 +80,12 @@ const translations = {
     svc_file: 'Файл (CSV/JSON)',
     nav_migrations: 'Миграции',
     nav_users: 'Пользователи',
+    track_list: 'Треки',
+    match_score_label: 'Совп.',
+    not_found_section: 'Не найденные треки',
+    show_not_found: 'показать не найденные',
+    hide_not_found: 'скрыть',
+    match_pct_label: 'совпало',
   },
   en: {
     from: 'From',
@@ -160,6 +166,12 @@ const translations = {
     svc_file: 'File (CSV/JSON)',
     nav_migrations: 'Migrations',
     nav_users: 'Users',
+    track_list: 'Tracks',
+    match_score_label: 'Match',
+    not_found_section: 'Not found tracks',
+    show_not_found: 'show not found',
+    hide_not_found: 'hide',
+    match_pct_label: 'match rate',
   },
 } as const
 

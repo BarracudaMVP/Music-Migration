@@ -1,4 +1,4 @@
-import { api, setAccessToken, getAccessToken } from './client'
+import { api, setAccessToken, getAccessToken, ApiError } from './client'
 
 export interface TokenPair {
   access_token: string
@@ -42,9 +42,13 @@ export async function refreshAccessToken(): Promise<string | null> {
     setAccessToken(tokens.access_token)
     localStorage.setItem('refresh_token', tokens.refresh_token)
     return tokens.access_token
-  } catch {
-    localStorage.removeItem('refresh_token')
-    setAccessToken(null)
+  } catch (e) {
+    // Only remove stored token if the server explicitly rejects it (401/403).
+    // Network errors or server 500s should not wipe the token from localStorage.
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      localStorage.removeItem('refresh_token')
+      setAccessToken(null)
+    }
     return null
   }
 }
