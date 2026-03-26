@@ -4,6 +4,138 @@
 
 ---
 
+## ✅ MM-97 — SPA Admin Panel — 2026-03-25
+
+**Цель:** Перенести функционал Jinja2-админки в React SPA с ролевым доступом.
+
+**Ключевые решения:**
+- Admin авторизация OAuth-only: role хранится в `UserSession.role`, включается в JWT при `exchange_code`/`refresh_token`
+- Никакого `/admin/` prefix у эндпоинтов — `/api/v1/stats`, `/api/v1/users` + расширение существующих
+- `AdminRoute` + `AdminLayout` оборачивают `/dashboard`, `/migrations`, `/users` (не `/admin/...`)
+- `INITIAL_ADMIN_USER_ID` env var для первоначального bootstrap
+- Только просмотр (read-only), без кнопок cancel/restart/setRole в UI
+
+**Бэкенд:**
+- `api/security.py`: `create_access_token(user_id, role)`, `decode_access_token_payload()`, `get_current_user_role`, `require_admin`
+- `core/db/crud.py`: `get_all_migrations_paginated()`, `get_all_users_paginated()`, `get_admin_stats()`
+- `config.py`: `initial_admin_user_id: str`
+- `api/main.py`: bootstrap admin role on startup
+- `api/routes/api_v1.py`: `exchange_code`/`refresh_token` включают role из БД; `GET /stats`, `GET /users` (require_admin); `GET /migrations` с pagination + admin user_id filter; `GET /migrations/{id}` с admin bypass
+
+**Фронтенд:**
+- `api/auth.ts`: `getTokenRole()` — декодирует role из JWT payload
+- `api/admin.ts`: `fetchStats()`, `listUsers()`
+- `api/migrations.ts`: `listMigrations()` → `MigrationsPage` (paginated), `Migration.user_id` добавлен
+- `App.tsx`: `AdminRoute`, admin routes `/dashboard`/`/migrations`/`/users`
+- `pages/admin/AdminLayout.tsx`: sidebar nav
+- `pages/admin/AdminDashboardPage.tsx`: карточки + by_status + recent[10]
+- `pages/admin/AdminMigrationsPage.tsx`: таблица всех миграций + фильтры + пагинация
+- `pages/admin/AdminUsersPage.tsx`: таблица пользователей + пагинация
+- `pages/HomePage.tsx`: ссылка "Панель администратора →" если role=admin
+- `index.css`: `.admin-layout`, `.admin-sidebar`, `.admin-table`, etc.
+
+**Тесты:** `tests/test_mm97_admin_spa.py` — 13 тестов, все проходят. Общий count: 308 passed.
+
+---
+
+## ✅ MM-98 — SPA UI: недостающие фичи — 2026-03-25
+
+**Цель:** Закрыть gap между Jinja2 UI и SPA — перенести file import/export, content types, playlist name, lang switcher.
+
+**Ключевые решения:**
+- Язык хранится в `localStorage` (не в БД) — стандартный браузерный подход, нет бэкенд-endpoint
+- File import: парсинг CSV/JSON в браузере → передача как `tracks_override` в JSON body → воркеры уже поддерживают
+- Отдельный `POST /api/v1/migrations/file` endpoint не нужен
+
+**Что сделано:**
+
+**Бэкенд (`api/routes/api_v1.py`):**
+- `StartMigrationRequest` + поле `tracks_override: list[dict] | None = None`
+- `start_migration`: для file→SC → `run_file_migration_job(tracks=tracks_override)`, для file→YM/Spotify → `tracks_override` передаётся в существующие воркеры
+- Убран dead import `from api.routes.migrations import _get_token` (не существовал, lazy import скрывал баг)
+
+**Фронтенд:**
+- `HomePage.tsx` — убраны auth-badge с карточек FROM/TO (статус остаётся в секции Авторизация)
+- `MigratePage.tsx` — playlist name input (Spotify + playlist mode), content_types чекбоксы (tracks/playlists/artists, from!=file), file picker (from=file), error state для некорректного файла, `canStart` требует файл если from=file
+- `ProgressPage.tsx` — кнопки CSV↓ / JSON↓ при to_service=file и status=done
+- `migrations.ts` — `TrackImport` тип, `tracks_override` в `StartMigrationRequest`, `parseImportFile(file)` парсит CSV/JSON
+- `App.tsx` — `LangContext`, `LangSwitcher` компонент (fixed top-right, RU/EN кнопки), `localStorage` persist
+- `index.css` — `.setting-input`, `.setting-file`, `.setting-checkboxes`, `.setting-checkbox-label`, `.lang-switcher`, `.lang-btn`
+
+**Тесты (`tests/test_mm98_spa_ui.py`):** 5 новых тестов (file→YM, file→Spotify, file→SC, SC без tracks_override→400, YM→SC без tracks_override)
+
+**Итог:** 295 passed (было 290), 1 pre-existing fail (test_like_track_raises_on_404).
+
+---
+
+## 🔲 MM-99 — Code Review: безопасность и качество кода — 2026-03-25
+
+**Цель:** провести полное ревью кодовой базы — безопасность, надёжность, архитектура.
+
+**Что найдено (критические):**
+- `db_encryption_key = ""` по умолчанию — токены хранятся plain text без валидатора для прода (`config.py`)
+- `except Exception as e: return RedirectResponse(f"...{str(e)[:120]}")` — утечка деталей ошибок в OAuth redirects
+- Нет валидации файловых загрузок (MIME, размер, magic bytes)
+- `get_user_id_by_spa_refresh_token` — full table scan + Fernet decrypt, нет rate limit на `/auth/refresh`
+
+**Что найдено (высокий приоритет):**
+- Race condition: ARQ job стартует раньше чем `arq.set(migration_job:{id})` в Redis
+- ARQ джобы без `job_timeout` — зависание на неограниченное время
+- Spotify access token не обновляется в середине длинной миграции (только в начале)
+- `decrypt_token` при ошибке: `return value` вместо raise (`core/crypto.py`)
+- CORS: `allow_methods=["*"], allow_headers=["*"]` (`api/main.py`)
+- Refresh token в `localStorage` SPA (`frontend/src/api/auth.ts:17`)
+
+**Что найдено (средний приоритет):**
+- Нет rate limit на `/auth/exchange` и `/auth/refresh`
+- Нет exponential backoff при 429 от SC/Spotify
+- Нет idempotency key при `POST /migrations`
+- `uuid.uuid4().hex[:12]` для session ID (48 бит) — надо `secrets.token_hex(32)`
+- `/health` не проверяет Redis/Postgres
+- `tracks_override` без schema-валидации
+
+**Что хорошо:** async I/O корректен, SQLAlchemy ORM (нет SQL injection), `AdapterWriteSession` ABC, resumable миграции, `guard_dev_mode`.
+
+**Следующий шаг:** реализовывать фиксы по приоритету в рамках MM-99.
+
+---
+
+## ✅ MM-96 — SPA: фиксы auth URL, page_size, dev-mode авторизация — 2026-03-19
+
+**Что сделано:**
+
+1. `frontend/src/api/auth.ts` — `getOAuthStartUrl`: добавлен `SERVICE_AUTH_SLUG = {yandex_music: 'yandex'}`. Сервис ID `yandex_music` маппится на slug `yandex` → фиксит 404 на `GET /api/v1/auth/yandex_music`.
+2. `api/routes/api_v1.py` — `get_migration_tracks`: исправлен вызов `get_tracks_page(..., page_size=50)` → `per_page=50` (имя параметра в crud-функции `per_page`, не `page_size`).
+3. `api/security.py` — `get_current_user`: при `settings.dev_mode=True` сразу возвращает `"dev_user"` — все `/api/v1/` endpoints работают без JWT.
+4. `frontend/src/api/auth.ts` — `refreshAccessToken`: при отсутствии refresh token в localStorage пробует `GET /auth/me` без токена. В DEV_MODE сервер отдаёт 200 → `accessToken = "dev"` (sentinel) → SPA продолжает. В проде → 401 → `return null` → обычный OAuth.
+
+**Ключевые решения:**
+- Dev-bypass без нового endpoint: backend игнорирует JWT, frontend зондирует существующий `/auth/me`.
+- `soundcloud` и `spotify` slug не нуждаются в маппинге (совпадают с service ID).
+
+---
+
+## ✅ MM-83 — React SPA: страницы и полный флоу — 2026-03-19
+
+**Цель:** реализовать все страницы React SPA на ветке `feature/spa`.
+
+**Что сделано:**
+
+1. `frontend/src/pages/HomePage.tsx` — выбор from/to сервисов из matrix API; auth-статус значки на карточках (✓/—); секция авторизации с OAuth кнопками (`window.location.href = getOAuthStartUrl(...)`); `canProceed` gate; кнопка "Далее →" → `/migrate?from=X&to=Y`; `?auth_error=1` banner; `useRef(false)` guard.
+2. `frontend/src/pages/MigratePage.tsx` — читает `?from=X&to=Y`; настройки: limit (All/50/100/500), skip_already (скрыт для file), like_tracks (SC), spotify_playlist_mode (Spotify); `handleStart()` → `startMigration()` → navigate `/migrate/{id}/progress`; auth секция с OAuth кнопками.
+3. `frontend/src/pages/ProgressPage.tsx` — polling `getMigration(id)` каждые 2с через `setInterval`; прогресс-бар `doneCount/total`; статистика (liked+in_playlist, not_found, errors, pending); `current_track` во время выполнения; terminal actions: "Открыть плейлист" (если `result_path`), "Новая миграция", "История".
+4. `frontend/src/pages/HistoryPage.tsx` — redirect если нет токена; `listMigrations()` → кликабельные строки; статус-бейджи (running/pending/done/failed/cancelled); success count, not_found count; ссылка "Плейлист ↗" с `e.stopPropagation()`.
+5. `frontend/src/api/migrations.ts` — обновлены типы: `TrackStats` (liked, in_playlist, not_found, error, pending); `Migration.stats`; `MigrationDetail`; `TracksPage`/`TrackRow`.
+6. `frontend/src/api/services.ts` — добавлены `MatrixEntry`, `UserStatus`, `isConnected()`, `fetchUserStatus()`.
+7. `frontend/src/index.css` — добавлены стили: layout (`.page`, `.container`, `.page-header`), service grid (`.service-card`, `.service-badge`), auth (`.auth-list`, `.auth-row`), settings (`.setting-row`, `.setting-select`), progress (`.progress-bar`, `.progress-fill`, `.stat-rows`), status badges, history (`.migration-list`, `.migration-row`, `.migration-meta`).
+
+**Ключевые решения:**
+- Polling вместо SSE (`EventSource` не поддерживает кастомные заголовки для JWT)
+- `useRef(false)` guard против double-fetch в React Strict Mode
+- `canStart = authServices.every(isAuth) && !starting` — кнопка disabled пока не авторизован
+
+---
+
 ## ✅ MM-89 — Spotify playlist user-account fallback — 2026-03-18
 
 **Цель:** расширить Spotify playlist mode (MM-88) — убрать зависимость от `SPOTIFY_BOT_TOKEN`, дать пользователю выбор режима в боте и SPA.

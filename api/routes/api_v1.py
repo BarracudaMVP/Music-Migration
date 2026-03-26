@@ -35,7 +35,7 @@ import tempfile
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -46,7 +46,7 @@ from api.routes.oauth import (
     _state_get,
     _state_save,
 )
-from api.security import create_access_token, create_refresh_token, get_current_user
+from api.security import create_access_token, create_refresh_token, get_current_user, get_current_user_role, require_admin
 from core.db import (
     create_migration,
     delete_user_session,
@@ -62,6 +62,7 @@ from core.db import (
     save_spotify_token,
     save_yandex_token,
 )
+from core.db.crud import get_admin_stats, get_all_migrations_paginated, get_all_users_paginated
 from core.services.registry import ServiceRegistry
 
 router = APIRouter(prefix="/api/v1")
@@ -110,7 +111,9 @@ async def exchange_code(body: ExchangeRequest):
     await arq.delete(f"oauth_code:{body.code}")
     user_id = raw.decode() if isinstance(raw, bytes) else raw
 
-    access_token = create_access_token(user_id)
+    db_session = await load_user_session(user_id)
+    role = db_session.get("role") or "user" if db_session else "user"
+    access_token = create_access_token(user_id, role=role)
     refresh_token = create_refresh_token()
     await save_spa_refresh_token(user_id, refresh_token)
 
@@ -130,7 +133,9 @@ async def refresh_token(body: RefreshRequest):
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    access_token = create_access_token(user_id)
+    db_session = await load_user_session(user_id)
+    role = db_session.get("role") or "user" if db_session else "user"
+    access_token = create_access_token(user_id, role=role)
     return AccessTokenResponse(
         access_token=access_token,
         expires_in=settings.jwt_access_token_ttl,
@@ -218,11 +223,14 @@ async def yandex_oauth_callback(
     user_id = _ensure_user_id(request)
     await save_yandex_token(user_id, token)
     request.session["ym_connected"] = True
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
 
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 @router.get("/auth/spotify")
@@ -275,10 +283,13 @@ async def spotify_oauth_callback(
     except Exception as e:
         return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
 
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 @router.get("/auth/soundcloud")
@@ -332,10 +343,13 @@ async def soundcloud_oauth_callback(
     except Exception as e:
         return RedirectResponse(f"/?error={quote(str(e)[:120])}", status_code=303)
 
-    await _issue_oauth_code(user_id)
+    code = await _issue_oauth_code(user_id)
+    from config import settings
     pf = payload.get("flow_from", "")
     pt = payload.get("flow_to", "")
-    return RedirectResponse(f"/?pf={quote(pf)}&pt={quote(pt)}" if pf else "/", status_code=303)
+    base = (settings.web_base_url or settings.api_base_url).rstrip("/")
+    qs = f"&flow_from={quote(pf)}&flow_to={quote(pt)}" if pf else ""
+    return RedirectResponse(f"{base}/auth/callback?code={code}{qs}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +391,7 @@ class StartMigrationRequest(BaseModel):
     spotify_playlist_mode: bool = False
     spotify_playlist_name: str = "Music Migration"
     export_fmt: str = "csv"
+    tracks_override: list[dict] | None = None  # for file import: parsed on frontend
 
 
 @router.post("/migrations", status_code=201)
@@ -386,7 +401,6 @@ async def start_migration(
 ):
     """Start a new migration job. Returns {migration_id}."""
     from api.main import get_arq_pool
-    from api.routes.migrations import _get_token
 
     arq = get_arq_pool()
     if not arq:
@@ -413,6 +427,20 @@ async def start_migration(
     token_sp_refresh = db_session.get("spotify_refresh_token") or ""
     token_sc_refresh = db_session.get("soundcloud_refresh_token") or ""
 
+    # File import via SoundCloud: use dedicated job with tracks list
+    if body.from_service == "file" and body.to_service == "soundcloud":
+        if not body.tracks_override:
+            raise HTTPException(status_code=400, detail="tracks_override required for file import")
+        await arq.enqueue_job("run_file_migration_job",
+            migration_id=migration_id,
+            sc_token=token_sc,
+            tracks=body.tracks_override,
+            user_id=user_id,
+            track_limit=body.limit or None,
+            like_tracks=body.like_tracks,
+        )
+        return {"migration_id": migration_id}
+
     job_kwargs = dict(
         migration_id=migration_id,
         user_id=user_id,
@@ -425,7 +453,10 @@ async def start_migration(
     )
 
     if body.to_service == "yandex_music":
-        await arq.enqueue_job("run_yandex_migration_job", **job_kwargs)
+        await arq.enqueue_job("run_yandex_migration_job", **{
+            **job_kwargs,
+            "tracks_override": body.tracks_override,
+        })
     elif body.to_service == "spotify":
         await arq.enqueue_job("run_spotify_write_job", **{
             **job_kwargs,
@@ -433,6 +464,7 @@ async def start_migration(
             "spotify_refresh_token": token_sp_refresh,
             "playlist_mode": body.spotify_playlist_mode,
             "playlist_name": body.spotify_playlist_name,
+            "tracks_override": body.tracks_override,
         })
     else:
         if body.from_service == "spotify":
@@ -449,27 +481,90 @@ async def start_migration(
     return {"migration_id": migration_id}
 
 
+# ---------------------------------------------------------------------------
+# Admin endpoints — require role=admin
+# ---------------------------------------------------------------------------
+
+
+@router.get("/stats")
+async def get_stats(_user_id: str = Depends(require_admin)):
+    """Admin: aggregate stats (total migrations, users, by status, recent 10)."""
+    return await get_admin_stats()
+
+
+@router.get("/users")
+async def list_users(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+    _user_id: str = Depends(require_admin),
+):
+    """Admin: paginated list of all users with migration counts."""
+    users, total = await get_all_users_paginated(page=page, per_page=per_page)
+    return {
+        "users": users,
+        "total": total,
+        "page": page,
+        "pages": max(1, (total + per_page - 1) // per_page),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Migrations
+# ---------------------------------------------------------------------------
+
+
 @router.get("/migrations")
-async def list_migrations(user_id: str = Depends(get_current_user)):
-    """List all migrations for the current user."""
-    migrations = await get_user_migrations(user_id)
+async def list_migrations(
+    user_id: str = Depends(get_current_user),
+    role: str = Depends(get_current_user_role),
+    filter_user_id: str = Query(default="", alias="user_id"),
+    status_filter: str = Query(default="", alias="status"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+):
+    """List migrations. Admin can filter by user_id/status and see all; users see only their own."""
+    if role == "admin":
+        target_user = filter_user_id or None
+        migrations, total = await get_all_migrations_paginated(
+            status=status_filter or None,
+            user_id=target_user,
+            page=page,
+            per_page=per_page,
+        )
+        for m in migrations:
+            m["created_at"] = m["created_at"].isoformat() if m["created_at"] else None
+    else:
+        all_migrations = await get_user_migrations(user_id)
+        for m in all_migrations:
+            m["created_at"] = m["created_at"].isoformat() if m["created_at"] else None
+        if status_filter:
+            all_migrations = [m for m in all_migrations if m.get("status") == status_filter]
+        total = len(all_migrations)
+        start = (page - 1) * per_page
+        migrations = all_migrations[start:start + per_page]
     for m in migrations:
-        stats = await get_track_stats(m["id"])
-        m["stats"] = stats
-        m["created_at"] = m["created_at"].isoformat() if m["created_at"] else None
-    return migrations
+        m["stats"] = await get_track_stats(m["id"])
+    return {
+        "migrations": migrations,
+        "total": total,
+        "page": page,
+        "pages": max(1, (total + per_page - 1) // per_page),
+    }
 
 
 @router.get("/migrations/{migration_id}")
 async def get_migration_status(
     migration_id: int,
     user_id: str = Depends(get_current_user),
+    role: str = Depends(get_current_user_role),
 ):
-    """Get migration status, stats, and current track."""
+    """Get migration status, stats, and current track. Admin can view any migration."""
     from api.main import get_arq_pool
 
     migration = await get_migration(migration_id)
-    if not migration or migration["user_id"] != user_id:
+    if not migration:
+        raise HTTPException(status_code=404, detail="Migration not found")
+    if role != "admin" and migration["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Migration not found")
 
     stats = await get_track_stats(migration_id)
@@ -508,7 +603,7 @@ async def get_migration_tracks(
         migration_id,
         status=status_filter or None,
         page=page,
-        page_size=page_size,
+        per_page=page_size,
     )
     return {
         "tracks": tracks,

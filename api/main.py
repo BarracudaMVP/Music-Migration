@@ -6,8 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from starlette.middleware.sessions import SessionMiddleware
 
-from api.middleware import AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
-from api.routes import admin, api_v1, bot_auth, migrations, oauth, reports, services, sessions, web
+from api.routes import api_v1, bot_auth, migrations, reports, services, sessions
 from config import settings
 from core.logger import setup_logger
 from core.services.file.adapter import FileAdapter
@@ -35,20 +34,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# SessionMiddleware — required for OAuth state flow (_ensure_user_id in api_v1.py)
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+
 # Public JSON API v1 for SPA frontend (MM-81)
 app.include_router(api_v1.router, tags=["api_v1"])
 
-# Web UI + Admin — optional, disabled when WEB_ENABLED=false
-if settings.web_enabled:
-    # Middleware order: last added = outermost = executes first on request
-    # WebIPWhitelistMiddleware → SessionMiddleware → AllowedUsersWebMiddleware → routes
-    if settings.web_allowed_ips:
-        app.add_middleware(WebIPWhitelistMiddleware)
-    app.add_middleware(AllowedUsersWebMiddleware)
-    app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
-    app.include_router(web.router, tags=["web"])
-    app.include_router(admin.router, tags=["admin"])
-    app.include_router(oauth.router, tags=["oauth"])
+# Public bot OAuth redirect routes (no X-Internal-Token required)
+app.include_router(bot_auth.router_public, tags=["bot_auth_public"])
 
 # Internal API — always available (used by bot and worker)
 app.include_router(bot_auth.router, prefix="/api/auth", tags=["bot_auth"])
@@ -66,6 +59,10 @@ async def startup() -> None:
     _arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     for adapter in [YandexMusicAdapter(), SoundCloudAdapter(), FileAdapter(), SpotifyAdapter()]:
         ServiceRegistry.register(adapter)
+    if settings.initial_admin_user_id:
+        from core.db.crud import set_user_role
+        await set_user_role(settings.initial_admin_user_id, "admin")
+        logger.info(f"Bootstrap: set role=admin for user {settings.initial_admin_user_id}")
 
 
 @app.on_event("shutdown")

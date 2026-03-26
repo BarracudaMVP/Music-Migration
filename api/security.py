@@ -24,11 +24,12 @@ from config import settings
 # ---------------------------------------------------------------------------
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, role: str = "user") -> str:
     """Create a signed JWT access token for the given user."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
+        "role": role,
         "iat": now,
         "exp": now + timedelta(seconds=settings.jwt_access_token_ttl),
     }
@@ -56,16 +57,73 @@ def decode_access_token(token: str) -> str | None:
         return None
 
 
+def decode_access_token_payload(token: str) -> dict | None:
+    """Decode and validate a JWT access token. Returns full payload dict or None."""
+    try:
+        return jwt.decode(token, settings.jwt_secret_key, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # FastAPI dependency
 # ---------------------------------------------------------------------------
 
 
+async def get_current_user_role(authorization: str = Header(default="")) -> str:
+    """FastAPI dependency: returns role from JWT payload.
+    Returns 'admin' in DEV_MODE, 'user' if token is missing/invalid.
+    Does NOT raise — safe to use alongside get_current_user.
+    """
+    from config import settings
+
+    if settings.dev_mode:
+        return "admin"
+    if not authorization.startswith("Bearer "):
+        return "user"
+    payload = decode_access_token_payload(authorization[len("Bearer "):])
+    return payload.get("role", "user") if payload else "user"
+
+
+async def require_admin(authorization: str = Header(default="")) -> str:
+    """FastAPI dependency: requires role=admin in JWT. Returns user_id.
+    Raises HTTP 401 if no token, HTTP 403 if role != 'admin'.
+    In DEV_MODE, always returns 'dev_user'.
+    """
+    from config import settings
+
+    if settings.dev_mode:
+        return "dev_user"
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = decode_access_token_payload(authorization[len("Bearer "):])
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired or invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if payload.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return payload["sub"]
+
+
 async def get_current_user(authorization: str = Header(default="")) -> str:
     """FastAPI dependency: extracts and validates Bearer JWT, returns user_id.
 
+    In DEV_MODE bypasses auth and always returns "dev_user".
     Raises HTTP 401 if token is missing or invalid.
     """
+    from config import settings
+
+    if settings.dev_mode:
+        return "dev_user"
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

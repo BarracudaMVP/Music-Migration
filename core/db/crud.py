@@ -514,6 +514,101 @@ async def revoke_spa_refresh_token(user_id: str) -> None:
         await session.commit()
 
 
+async def get_all_migrations_paginated(
+    status: str | None = None,
+    user_id: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+) -> tuple[list[dict], int]:
+    """Returns (migrations, total) for admin view with optional filters."""
+    async with AsyncSessionLocal() as session:
+        q = select(Migration)
+        count_q = select(func.count()).select_from(Migration)
+        if status:
+            q = q.where(Migration.status == status)
+            count_q = count_q.where(Migration.status == status)
+        if user_id:
+            q = q.where(Migration.user_id == user_id)
+            count_q = count_q.where(Migration.user_id == user_id)
+        total: int = (await session.execute(count_q)).scalar_one()
+        q = q.order_by(Migration.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+        result = await session.execute(q)
+        migrations = [
+            {
+                "id": m.id,
+                "user_id": m.user_id,
+                "from_service": m.from_service,
+                "to_service": m.to_service,
+                "status": m.status,
+                "user_migration_number": m.user_migration_number,
+                "created_at": m.created_at,
+                "result_path": m.result_path,
+            }
+            for m in result.scalars()
+        ]
+        return migrations, total
+
+
+async def get_all_users_paginated(
+    page: int = 1,
+    per_page: int = 50,
+) -> tuple[list[dict], int]:
+    """Returns (users, total) for admin view with migration counts."""
+    async with AsyncSessionLocal() as session:
+        total: int = (await session.execute(select(func.count()).select_from(UserSession))).scalar_one()
+        migration_counts_result = await session.execute(
+            select(Migration.user_id, func.count().label("cnt"))
+            .group_by(Migration.user_id)
+        )
+        migration_counts = {row.user_id: row.cnt for row in migration_counts_result}
+
+        rows = await session.execute(
+            select(UserSession).order_by(UserSession.user_id).offset((page - 1) * per_page).limit(per_page)
+        )
+        users = [
+            {
+                "user_id": u.user_id,
+                "role": u.role or "user",
+                "migration_count": migration_counts.get(u.user_id, 0),
+            }
+            for u in rows.scalars()
+        ]
+        return users, total
+
+
+async def get_admin_stats() -> dict:
+    """Returns aggregate stats for admin dashboard."""
+    async with AsyncSessionLocal() as session:
+        total_migrations: int = (await session.execute(select(func.count()).select_from(Migration))).scalar_one()
+        total_users: int = (await session.execute(select(func.count()).select_from(UserSession))).scalar_one()
+
+        by_status_result = await session.execute(
+            select(Migration.status, func.count().label("cnt")).group_by(Migration.status)
+        )
+        by_status = {row.status: row.cnt for row in by_status_result}
+
+        recent_result = await session.execute(
+            select(Migration).order_by(Migration.created_at.desc()).limit(10)
+        )
+        recent = [
+            {
+                "id": m.id,
+                "user_id": m.user_id,
+                "from_service": m.from_service,
+                "to_service": m.to_service,
+                "status": m.status,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in recent_result.scalars()
+        ]
+        return {
+            "total_migrations": total_migrations,
+            "total_users": total_users,
+            "by_status": by_status,
+            "recent": recent,
+        }
+
+
 async def get_user_migrations(user_id: str) -> list[dict]:
     """Возвращает все миграции пользователя, новые сначала (MM-81)."""
     async with AsyncSessionLocal() as session:

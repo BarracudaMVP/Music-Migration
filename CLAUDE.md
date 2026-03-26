@@ -176,10 +176,6 @@ JWT_SECRET_KEY=            # generate: openssl rand -hex 32 (separate from SECRE
 JWT_ACCESS_TOKEN_TTL=900   # seconds (15 min)
 JWT_REFRESH_TOKEN_TTL=2592000  # seconds (30 days)
 
-# Web access control (MM-31)
-WEB_ENABLED=true           # false = disable web UI and admin (API/bot still work); /api/v1/ always on
-WEB_ALLOWED_IPS=           # comma-separated IPs allowed to access web UI; empty = allow all
-
 # Dev mode (MM-80) — local development only
 DEV_MODE=false             # true = _ensure_user_id() returns "dev_user"; auto-disabled on non-localhost domains
 
@@ -204,29 +200,19 @@ run.py           → bot/main.py          — aiogram 3.x Telegram bot
 cli.py                                  — CLI migration runner
 
 api/
-    ├── main.py                         — FastAPI entry, router registration (web+admin gated by WEB_ENABLED)
-    ├── middleware.py                   — AllowedUsersWebMiddleware, WebIPWhitelistMiddleware
+    ├── main.py                         — FastAPI entry, router registration; SessionMiddleware always-on (OAuth flow)
     ├── security.py                     — JWT utils (MM-81): create_access_token (HS256), create_refresh_token, decode_access_token, get_current_user FastAPI dep
     ├── routes/
     │   ├── api_v1.py                   — Public JSON API for SPA (MM-81): /api/v1/auth/*, /api/v1/services, /api/v1/migrations/* (Bearer JWT)
-    │   ├── web.py                      — Web UI: /, /auth (error display), /migrate, /migrate/{id}/tracks,
-    │   │                                  /history, /set-lang, /api/flow/* (Jinja2+HTMX)
-    │   ├── oauth.py                    — OAuth redirect/callback: /auth/yandex, /auth/soundcloud,
-    │   │                                  /auth/spotify (all providers), /auth/logout,
-    │   │                                  /api/auth/yandex/poll/{state_id} (bot polling)
-    │   │                                  State in Redis oauth_state:{provider}:{state} TTL 600s
-    │   │                                  Short-lived oauth_code:{code} TTL 30s → SPA exchanges via /api/v1/auth/exchange
-    │   ├── bot_auth.py                 — Internal bot/worker auth: POST /api/auth/yandex/token,
-    │   │                                  POST /api/auth/soundcloud/validate (X-Internal-Token)
+    │   ├── oauth.py                    — Pure utility module (MM-82, no router): _ensure_user_id, _session_user_id,
+    │   │                                  _state_save, _state_get, _issue_oauth_code — imported by api_v1.py
+    │   │                                  Redis: oauth_state:{provider}:{state} TTL 600s, oauth_code:{code} TTL 30s
+    │   ├── bot_auth.py                 — Bot/worker auth: router (X-Internal-Token) POST /api/auth/yandex/token,
+    │   │                                  POST /api/auth/soundcloud/validate, GET /api/auth/yandex/poll/{state_id};
+    │   │                                  router_public (no auth) GET /auth/yandex/bot
     │   ├── migrations.py               — REST: POST /migrations, GET /migrations/{id}
     │   ├── reports.py                  — GET /migrations/{id}/not-found (queries DB)
-    │   ├── services.py                 — GET /api/services, GET /api/services/matrix
-    │   └── admin.py                    — Admin UI: /admin/login, /dashboard, /migrations, /users, /services
-    ├── templates/                      — Jinja2 templates
-    │   ├── base.html, index.html, auth.html, progress.html, result.html
-    │   ├── history.html, tracks.html
-    │   ├── fragments/status.html, fragments/flow_to.html, fragments/flow_rest.html
-    │   └── admin/                      — Admin templates
+    │   └── services.py                 — GET /api/services, GET /api/services/matrix
     └── deps.py                         — FastAPI dependencies (verify_internal_token, check_migration_rate_limit)
 
 worker/                                 — ARQ job definitions
@@ -383,29 +369,27 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - `format_eta(track_count, to_service, lang)` in `core/i18n.py` — localised ETA string; `_SECS_PER_TRACK`: ym=1.5s, spotify=0.8s, sc=1.5s
 - `playlist_mode=True` in all SC-destination worker jobs — collects sc_ids during search loop, creates "YM Liked #N" playlists at the end (batches of `SC_PLAYLIST_BATCH_SIZE`); sets `status="in_playlist"`. `like_tracks=True` sets `status="liked"` (direct like); on `LikeNotSupportedError` falls back to `status="in_playlist"`
 - SC write endpoints: `POST /likes/tracks/soundcloud:tracks:{id}`, `POST /playlists`, `PUT /me/followings/{id}` — Authorization Code Flow grants write access without explicit scope declarations
-- `WEB_ENABLED=false` disables BOTH web UI and admin panel (both routers registered inside the same `if settings.web_enabled` block in `api/main.py`); internal API + bot always available
-- Web UI stepwise flow (MM-49): `GET /api/flow/to-step?from=X` → HTMX карточки TO; `GET /api/flow/rest?from=X&to=Y` → content types + auth status + settings; `_SERVICE_ICONS` dict в `api/routes/web.py` передаётся через `_render()` в каждый шаблон
-- `POST /migrate` читает `content_types[]` (multiple checkbox) через `request.form().getlist()`; вычисляет `mode=full|tracks` для совместимости с worker'ами
-- OAuth callbacks (web.py/Jinja2 flow) сохраняют `auth_flow_from`/`auth_flow_to` в session; редиректят на `/?pf=...&pt=...` для восстановления флоу
-- `has_migrations` передаётся в шаблоны через `_render()` (default=False); в `GET /` и `GET /history` считается реальное значение из БД
 - `get_track_stats_batch(migration_ids)` в `core/db/crud.py` — один GROUP BY запрос для статистики N миграций (история без N+1); возвращает `dict[int, dict[str, int]]`
-- `GET /migrate/{id}/tracks-fragment` — HTMX sub-fragment: фильтр-табы + таблица треков + пагинация (50/стр); загружается инлайн при завершении миграции через `hx-trigger="load"` в `fragments/status.html`; `fragments/tracks_table.html` — шаблон фрагмента
-- `/migrate/{id}/result` → 301 редирект на `/migrate/{id}` (endpoint удалён как отдельная страница)
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
 - File import/export unified in main flow (MM-67): `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
 - `FileAdapter.id = "file"` (MM-69, ранее `"file_csv"`); i18n ключ `svc_file`; alembic миграция `i9j0k1l2m3n4` обновляет старые записи в БД
 - `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)
 - `score_track_match(source_artist, source_title, cand_artist, cand_title)` и `find_best_match(source_artist, source_title, ...)` — параметры переименованы из `ym_*`/`sc_*` в универсальные (MM-68); `TrackCandidate` — generic кандидат для любой целевой платформы (переименован из `SCCandidate`)
-- auth-gate (MM-70): кнопка submit в `flow_rest.html` disabled когда нужные сервисы не авторизованы; пикер файла и dropdown формата в одной строке с кнопкой (компактный inline layout)
 - `scripts/entrypoint.sh` — Docker entry для api: `alembic upgrade head` → uvicorn; при `DEV_MODE=true` также запускает `scripts/seed_dev.py`
 - dev mode (MM-80): `DEV_MODE=true` активирует: `_ensure_user_id()` возвращает фиксированный `"dev_user"`; `scripts/seed_dev.py` сидирует `UserSession(user_id='dev_user')` с фейковыми токенами (запускается из `entrypoint.sh` при `DEV_MODE=true`); `guard_dev_mode` `model_validator` в `config.py` автоматически сбрасывает `dev_mode=False` если `WEB_BASE_URL`/`API_BASE_URL` указывает на не-localhost домен; `docker-compose.dev.yml` — standalone стек без nginx/bot/worker; `.env.dev` — шаблон без реальных секретов (коммитится в git); `LOCAL_SETUP.md` — инструкция
-- OAuth routing (MM-79): `api/routes/oauth.py` — все OAuth redirect/callback (`/auth/yandex`, `/auth/spotify`, `/auth/soundcloud`, `/auth/logout`, `/api/auth/yandex/poll/{state}`); `api/routes/bot_auth.py` — internal bot auth; state в Redis `oauth_state:{provider}:{state}` TTL 600s; после OAuth → short-lived `oauth_code:{code}` (TTL 30s) → SPA обменивает на JWT через `POST /api/v1/auth/exchange`; callback routes также зарегистрированы на `/api/v1/auth/*/callback`
-- `_SERVICE_ICONS` в `api/routes/web.py` — inline SVG строки вместо emoji (MM-63); `width="1em" height="1em"` — масштаб через `text-2xl`/`text-lg` родителя; YM — звезда-эмблема из official wordmark (#FFBC0D); Spotify — simpleicons (#1ED760); SoundCloud — simpleicons (#FF3300); File — Feather document icon
+- DEV_MODE JWT bypass (MM-96): `get_current_user` в `api/security.py` при `settings.dev_mode=True` сразу возвращает `"dev_user"` без проверки Bearer JWT — все `/api/v1/` endpoints работают без токена; SPA при старте без refresh token пробует `GET /api/v1/auth/me` без заголовка: 200 → sentinel `"dev"` в память (авто-логин), 401 → обычный OAuth flow
+- SPA auth URL mapping (MM-96): `getOAuthStartUrl` в `frontend/src/api/auth.ts` использует `SERVICE_AUTH_SLUG = {yandex_music: 'yandex'}` — service ID `yandex_music` маппится на endpoint slug `yandex` (`/api/v1/auth/yandex`)
+- MM-98 file import via SPA: CSV/JSON парсится в браузере (`parseImportFile` в `migrations.ts`), треки передаются как `tracks_override: list[dict]` в JSON body `POST /api/v1/migrations`; file→SC → `run_file_migration_job(tracks=...)`, file→YM/Spotify → `tracks_override` в `run_yandex_migration_job`/`run_spotify_write_job`
+- MM-98 lang switcher: `LangContext` + `LangSwitcher` в `frontend/src/App.tsx`; язык хранится в `localStorage('lang')` — без бэкенд-endpoint, без DB
+- MM-98 export: кнопки CSV↓/JSON↓ в `ProgressPage` (to_service=file, status=done) → `GET /api/v1/migrations/{id}/export?fmt=csv|json` с `download` атрибутом
+- OAuth routing (MM-79/82): `api/routes/oauth.py` — pure utility module (no router): `_ensure_user_id`, `_state_save`, `_state_get`, `_issue_oauth_code`; `api/routes/bot_auth.py` — router (X-Internal-Token) for internal calls + router_public (no auth) for `GET /auth/yandex/bot`; state в Redis `oauth_state:{provider}:{state}` TTL 600s; после OAuth → short-lived `oauth_code:{code}` (TTL 30s) → SPA обменивает на JWT через `POST /api/v1/auth/exchange`; callback routes зарегистрированы на `/api/v1/auth/*/callback`
 - migration/ unified `to_*` naming (MM-76): `sc_tracks+sc_playlists+sc_artists` → `to_soundcloud.py`; `run_migration()` params renamed `migrate_playlists`/`migrate_artists` → `do_playlists`/`do_artists` to avoid name collision with the functions
 - MM-81 JWT SPA auth: access token = JWT HS256 TTL 15min (in memory), refresh token = opaque hex 64 chars stored encrypted in `UserSession.spa_refresh_token`; exchange flow: OAuth callback → `oauth_code:{code}` Redis TTL 30s → `POST /api/v1/auth/exchange` → JWT pair
 - MM-81 CORS: `CORSMiddleware(allow_credentials=False)` — JWT in `Authorization: Bearer` header, not cookies; origins from `cors_origins` setting (comma-separated)
-- MM-81 `/api/v1/` router always registered (outside `WEB_ENABLED` block); old Jinja2 UI + bot work in parallel during SPA transition (SessionMiddleware removed in Phase 2)
+- MM-81/82: `/api/v1/` router always registered; Jinja2 UI removed (MM-82) — SessionMiddleware kept always-on for OAuth flow (`_ensure_user_id`)
 - `get_user_id_by_spa_refresh_token` does linear scan of user_sessions + Fernet decrypt compare (no index on refresh token — acceptable for current user count)
 - Test patch targets for `/api/v1/` routes: use `api.routes.api_v1.func_name` (not `core.db.crud.func_name`) since functions are imported at module load time
 - MM-83 SPA OAuth callback redirect (bugfix): `api_v1.py` callbacks capture `code = await _issue_oauth_code(user_id)` and redirect to `{WEB_BASE_URL}/auth/callback?code={code}&flow_from=...&flow_to=...`; `WEB_BASE_URL=http://localhost:3000` in dev; SPA route `/auth/callback` exchanges code for JWT via `POST /api/v1/auth/exchange`
 - MM-83 SPA frontend: `frontend/` — Vite + React 19 + TypeScript + React Router v6; Vite proxy `/api` → `http://api:8000` (dev only, replaces nginx in prod); `docker-compose.dev.yml` runs `frontend` service on port 3000 with `node_modules` in Docker volume
+- MM-97 Admin SPA: `role` claim in JWT (set in `exchange_code`/`refresh_token` from DB); `require_admin` dep in `api/security.py` → 401/403; `get_current_user_role` dep (safe, no raise); `GET /api/v1/stats` + `GET /api/v1/users` (admin-only); `GET /api/v1/migrations` supports `?user_id=` + pagination for admin; `GET /api/v1/migrations/{id}` bypasses ownership for admin; frontend: `AdminRoute` + `AdminLayout` + `/dashboard`, `/migrations`, `/users` pages; `getTokenRole()` in `auth.ts`; `INITIAL_ADMIN_USER_ID` env var for bootstrap
+- MM-98 SPA UI fixes: auth badge removed from service cards; content_types selector (tracks/playlists/artists); file import (CSV/JSON picker) + export (sync download); language switcher via `LangContext` in `App.tsx` (localStorage, no backend); Spotify playlist name input

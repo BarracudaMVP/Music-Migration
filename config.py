@@ -57,10 +57,6 @@ class Settings(BaseSettings):
     # Admin UI (MVP8)
     admin_password: str = Field(default="admin")
 
-    # Web UI access control (MM-31)
-    web_enabled: bool = Field(default=True)          # false = disable web UI and admin (API/bot still work)
-    web_allowed_ips: str = Field(default="")         # comma-separated IPs; empty = allow all
-
     # Proxy для Яндекс Музыки (RU IP)
     ym_proxy_url: str = Field(default="")
 
@@ -89,6 +85,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default="change-me-jwt-secret")
     jwt_access_token_ttl: int = Field(default=900)        # seconds (15 min)
     jwt_refresh_token_ttl: int = Field(default=2592000)   # seconds (30 days)
+
+    # Admin bootstrap: set role=admin for this user_id on startup (MM-97)
+    # Use once to promote first admin, then remove from env (role persists in DB).
+    initial_admin_user_id: str = Field(default="")
 
     # Dev mode (local development only — NEVER enable in production)
     dev_mode: bool = Field(default=False)

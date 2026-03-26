@@ -122,8 +122,9 @@ async def test_exchange_code_success(app, mock_arq_pool):
     main_module._arq_pool = mock_arq_pool
     try:
         with patch("api.routes.api_v1.save_spa_refresh_token", new_callable=AsyncMock):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post("/api/v1/auth/exchange", json={"code": "test-code-123"})
+            with patch("api.routes.api_v1.load_user_session", new_callable=AsyncMock, return_value=None):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.post("/api/v1/auth/exchange", json={"code": "test-code-123"})
     finally:
         main_module._arq_pool = original_pool
 
@@ -335,7 +336,8 @@ async def test_list_migrations_with_auth(app, mock_arq_pool):
 
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
+    assert "migrations" in data
+    assert isinstance(data["migrations"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -373,3 +375,82 @@ async def test_get_migration_wrong_user(app, mock_arq_pool):
                 )
     # Route checks migration["user_id"] != user_id → 404
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# OAuth callbacks — code must appear in redirect URL (MM-83 fix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_yandex_callback_redirects_with_code(app, mock_arq_pool):
+    """Yandex OAuth callback must redirect to /auth/callback?code=<code>."""
+    mock_arq_pool.get = AsyncMock(return_value=json.dumps({"flow_from": "yandex_music", "flow_to": "soundcloud"}).encode())
+    mock_arq_pool.delete = AsyncMock()
+    mock_arq_pool.setex = AsyncMock()
+
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("bot.oauth.yandex.exchange_code_callback", new_callable=AsyncMock, return_value="ym_token_123"):
+                with patch("core.yandex.client.YandexMusicClient") as mock_ym:
+                    mock_ym.return_value.init = AsyncMock()
+                    with patch("api.routes.api_v1.save_yandex_token", new_callable=AsyncMock):
+                        with patch("api.routes.api_v1._ensure_user_id", return_value="user_abc"):
+                            with patch("api.routes.api_v1._state_get", new_callable=AsyncMock, return_value={"flow_from": "yandex_music", "flow_to": "soundcloud"}):
+                                with patch("config.settings.web_base_url", "http://localhost:3000"):
+                                    with patch("config.settings.api_base_url", "http://localhost:8000"):
+                                        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                                            response = await client.get("/api/v1/auth/yandex/callback?code=ym_code&state=web_abc")
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/auth/callback" in location
+    assert "code=" in location
+    assert "flow_from=yandex_music" in location
+
+
+@pytest.mark.asyncio
+async def test_spotify_callback_redirects_with_code(app, mock_arq_pool):
+    """Spotify OAuth callback must redirect to /auth/callback?code=<code>."""
+    mock_arq_pool.setex = AsyncMock()
+
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("api.routes.api_v1._state_get", new_callable=AsyncMock, return_value={"flow_from": "spotify", "flow_to": "soundcloud"}):
+                with patch("core.spotify.oauth.exchange_code", new_callable=AsyncMock, return_value={"access_token": "sp_tok", "refresh_token": "sp_ref"}):
+                    with patch("core.spotify.client.SpotifyClient") as mock_sp:
+                        mock_sp.return_value.init = AsyncMock(return_value=mock_sp.return_value)
+                        mock_sp.return_value.close = AsyncMock()
+                        with patch("api.routes.api_v1.save_spotify_token", new_callable=AsyncMock):
+                            with patch("api.routes.api_v1._ensure_user_id", return_value="user_abc"):
+                                with patch("config.settings.web_base_url", "http://localhost:3000"):
+                                    with patch("config.settings.api_base_url", "http://localhost:8000"):
+                                        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                                            response = await client.get("/api/v1/auth/spotify/callback?code=sp_code&state=sp_state")
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/auth/callback" in location
+    assert "code=" in location
+
+
+@pytest.mark.asyncio
+async def test_soundcloud_callback_redirects_with_code(app, mock_arq_pool):
+    """SoundCloud OAuth callback must redirect to /auth/callback?code=<code>."""
+    mock_arq_pool.setex = AsyncMock()
+
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("api.routes.api_v1._state_get", new_callable=AsyncMock, return_value={"code_verifier": "verifier_abc", "flow_from": "yandex_music", "flow_to": "soundcloud"}):
+                with patch("core.soundcloud.oauth.exchange_code", new_callable=AsyncMock, return_value={"access_token": "sc_tok", "refresh_token": "sc_ref"}):
+                    with patch("api.routes.api_v1.save_soundcloud_token", new_callable=AsyncMock):
+                        with patch("api.routes.api_v1._ensure_user_id", return_value="user_abc"):
+                            with patch("config.settings.web_base_url", "http://localhost:3000"):
+                                with patch("config.settings.api_base_url", "http://localhost:8000"):
+                                    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+                                        response = await client.get("/api/v1/auth/soundcloud/callback?code=sc_code&state=sc_state")
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/auth/callback" in location
+    assert "code=" in location

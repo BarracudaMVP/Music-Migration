@@ -7,7 +7,7 @@
 
 ## Стек
 
-- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83, в процессе)
+- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83 ✅, ветка `feature/spa`)
 - **БД**: PostgreSQL + SQLAlchemy 2.x async + Alembic
 - **Очередь**: arq (Redis)
 - **Бот**: aiogram 3.x
@@ -1972,90 +1972,48 @@ JWT_REFRESH_TOKEN_TTL=2592000
 
 ---
 
-### 🚧 MM-83 — React SPA: скаффолдинг + базовая навигация
+### ✅ MM-83 — React SPA: страницы и полный флоу
 
-> Создать React-фронтенд в `frontend/` на Vite + React + TypeScript + plain CSS.
-> Фронтенд работает параллельно с Jinja2 UI (бэкенд не меняется).
-> Ветка: `feature/spa`
+> Ветка: `feature/spa`. Все страницы реализованы.
 
-**Стек:**
-- Vite 8 + React 19 + TypeScript
-- React Router v6 (`BrowserRouter`)
-- Plain CSS (CSS-переменные, тёмная тема)
-- Нет Tailwind, нет TanStack Query (добавим позже при необходимости)
+**Стек:** Vite + React 19 + TypeScript + React Router v6 + plain CSS (тёмная тема)
 
-**Прокси:** `vite.config.ts` — `/api/*` → `http://localhost:8000`
+**Реализовано:**
+- [x] `frontend/` — Vite + React + TypeScript проект
+- [x] `api/` слой: `client.ts` (fetch wrapper, JWT Bearer), `auth.ts`, `services.ts`, `migrations.ts`
+- [x] Базовый CSS (тёмная тема, CSS-переменные) + стили для всех компонентов
+- [x] `App.tsx` — роутинг (BrowserRouter, 5 роутов)
+- [x] `AuthCallbackPage.tsx` — обмен code → JWT + redirect к flow_from/flow_to
+- [x] `docker-compose.dev.yml` — frontend сервис порт 3000
+- [x] `HomePage.tsx` — выбор from/to сервисов, auth-статусы на карточках, OAuth кнопки, `canProceed` gate
+- [x] `MigratePage.tsx` — настройки (limit, skip_already, like_tracks, spotify_playlist_mode) + старт
+- [x] `ProgressPage.tsx` — polling каждые 2с, прогресс-бар, статистика, terminal actions
+- [x] `HistoryPage.tsx` — список миграций, статус-бейджи, success/not_found, ссылка на плейлист
+- [x] `api/migrations.ts` — типы под реальные ответы API (TrackStats, MigrationDetail, TracksPage)
+- [x] `api/services.ts` — MatrixEntry, UserStatus, isConnected, fetchUserStatus
 
-**Структура `frontend/src/`:**
-```
-api/
-  client.ts       — fetch wrapper, JWT Bearer, ApiError
-  auth.ts         — exchangeCode, refreshAccessToken, logout, getOAuthStartUrl
-  services.ts     — fetchServices, fetchMatrix
-  migrations.ts   — startMigration, getMigrationStatus, getMigrations
-pages/
-  HomePage.tsx
-  AuthCallbackPage.tsx  — OAuth code → JWT exchange
-  MigratePage.tsx
-  ProgressPage.tsx
-  HistoryPage.tsx
-App.tsx           — Routes
-main.tsx          — BrowserRouter entry
-index.css         — базовый CSS (тёмная тема)
-```
-
-**Роуты:**
-- `/` — выбор сервисов (HomePage)
-- `/auth/callback?code=...` — OAuth callback (AuthCallbackPage)
-- `/migrate?from=X&to=Y` — настройка + запуск (MigratePage)
-- `/migrate/:id/progress` — прогресс (ProgressPage)
-- `/history` — история (HistoryPage)
-
-**Запуск:**
-```bash
-docker compose -f docker-compose.dev.yml up --build   # порт 3000
-```
-Node.js локально не нужен — `node_modules` живут в Docker volume.
-
-**Задачи:**
-- [x] Scaffolding: `npm create vite@latest frontend -- --template react-ts`
-- [x] Установить `react-router-dom`
-- [x] `vite.config.ts`: proxy `/api` → `localhost:8000`, port 3000
-- [x] `api/` слой: client, auth, services, migrations
-- [x] Страницы-заглушки для всех роутов
-- [x] Базовый CSS (тёмная тема, CSS-переменные)
-- [x] `main.tsx`: обернуть в `BrowserRouter`
-- [x] `.gitignore`: исключить `frontend/node_modules/`, `frontend/dist/`
-- [x] `LOCAL_SETUP.md`: инструкция по запуску фронтенда
-- [x] AuthCallbackPage: обмен code → JWT + redirect (реализована полностью)
-- [ ] **⏸ Ждём дизайн** — HomePage, MigratePage, ProgressPage, HistoryPage (заглушки)
-- [ ] HomePage: выбор from/to сервисов (карточки), кнопки OAuth
-- [ ] MigratePage: подтверждение, content types, запуск миграции
-- [ ] ProgressPage: polling статуса, прогресс-бар
-- [ ] HistoryPage: список миграций
-
-**⚠️ Бэкенд-баги, блокирующие SPA (выявлены при ревью):**
-
-- [x] **[КРИТИЧНО] OAuth code не передаётся в redirect** — `code = await _issue_oauth_code(user_id)` + redirect на `{WEB_BASE_URL}/auth/callback?code={code}&...`. Покрыто тестами.
-- [x] **[КРИТИЧНО] OAuth start URL mismatch** — убран `/start` суффикс в `frontend/src/api/auth.ts`.
-- [ ] **[ВЫСОКИЙ] File→XX через SPA невозможно** — `POST /api/v1/migrations` принимает JSON-тело, нет поддержки файла. Нужен multipart endpoint или отдельный `POST /api/v1/migrations/upload`.
-- [ ] **[СРЕДНИЙ] Нет cancel для пользователя** — только `POST /admin/migrations/{id}/cancel`. Добавить `POST /api/v1/migrations/{id}/cancel` (с проверкой owner).
-- [ ] **[НИЗКИЙ] Нет обновления lang** — `PATCH /api/v1/auth/me` или `POST /api/v1/auth/lang`.
-- [ ] **[НИЗКИЙ] Нет отключения сервиса** — `DELETE /api/v1/auth/{service}` (удалить токен отдельного сервиса без полного logout).
+**Не входит в MM-83 (отдельные задачи):**
+- File→XX upload (нет multipart endpoint в `/api/v1/`)
+- Cancel миграции пользователем (нет user-facing cancel API)
+- Disconnect сервиса, смена языка
 
 ---
 
-### 🔲 MM-82 — Удаление Jinja2 UI (после готовности SPA)
+### ✅ MM-82 — Удаление Jinja2 UI (после готовности SPA)
 
 > Финальный cleanup после того как SPA-фронтенд задеплоен и стабилен.
 
-- [ ] `WEB_ENABLED=false` в `.env` на EU сервере → отключить Jinja2 UI (бот и API продолжают работать)
-- [ ] Убрать `SessionMiddleware` из `api/main.py`
-- [ ] Удалить `api/templates/`, `api/routes/web.py`, `api/routes/oauth.py` (бот-роуты перенести в `bot_auth.py`)
-- [ ] Удалить HTMX-фрагменты: `GET /api/flow/*` (заменены SPA)
-- [ ] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py` и `api/middleware.py`
-- [ ] Обновить `docker-compose.yml`: добавить `frontend` сервис (nginx static)
-- [ ] Обновить CLAUDE.md, тесты
+- [x] Удалить `api/routes/web.py`, `api/routes/admin.py`, `api/middleware.py`, `api/templates/`
+- [x] `api/routes/oauth.py` → pure utility module (убрать router, оставить helpers для api_v1.py)
+- [x] Bot-роуты перенести в `bot_auth.py`: `GET /auth/yandex/bot` (router_public), `GET /api/auth/yandex/poll/{state_id}` (router с verify_internal_token)
+- [x] Удалить `WEB_ENABLED`, `web_allowed_ips` из `config.py`; удалить `api/middleware.py`
+- [x] `SessionMiddleware` оставить always-on (нужен для `_ensure_user_id` в OAuth flow)
+- [x] Создать `Dockerfile.frontend.prod` (multi-stage: node build → nginx:alpine serve)
+- [x] Создать `nginx/spa.conf` (SPA static: try_files → /index.html)
+- [x] Обновить `nginx/nginx.conf`: split routing — `/api/` + `/auth/` + `/health` → api:8000; `/` → frontend:80
+- [x] Обновить `docker-compose.yml`: добавить `frontend` сервис (Dockerfile.frontend.prod)
+- [x] Обновить тесты: удалить test_middleware.py, test_web_flow.py; обновить test_oauth.py, test_dev_mode.py, test_export_job.py
+- [x] pytest: 287 passed (1 pre-existing failure in test_pipeline.py)
 
 ---
 
@@ -2492,6 +2450,26 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-96 — SPA: фиксы auth URL, page_size, dev-mode авторизация
+
+**Проблема:** Три бага обнаруженных при первом запуске SPA в dev-режиме:
+1. `GET /api/v1/auth/yandex_music` → 404 — сервис ID `yandex_music` не совпадал с именем endpoint `/auth/yandex`
+2. `get_tracks_page(..., page_size=50)` → игнорировалось — параметр называется `per_page`
+3. SPA не могла авторизоваться в DEV_MODE — JWT не выдавался, хотя `dev_user` был в БД
+
+**Что исправлено:**
+
+- [x] `frontend/src/api/auth.ts` — `getOAuthStartUrl`: маппинг `SERVICE_AUTH_SLUG = {yandex_music: 'yandex'}` перед построением URL → фиксит 404 на `/auth/yandex_music`
+- [x] `api/routes/api_v1.py` — `get_migration_tracks`: `page_size=page_size` → `per_page=page_size` (имя параметра в crud)
+- [x] `api/security.py` — `get_current_user`: при `DEV_MODE=true` сразу возвращает `"dev_user"` без проверки JWT
+- [x] `frontend/src/api/auth.ts` — `refreshAccessToken`: при отсутствии refresh token в localStorage пробует `GET /auth/me` без заголовка; в DEV_MODE сервер отдаёт 200 → SPA ставит sentinel `"dev"` в память и продолжает работу; в проде → 401 → поведение прежнее
+
+**Принцип dev-bypass:** без нового endpoint — backend просто не проверяет JWT в DEV_MODE, frontend использует существующий `/auth/me` как зонд.
+
+**Файлы:** `frontend/src/api/auth.ts`, `api/routes/api_v1.py`, `api/security.py`
+
+---
+
 ### 🔲 MM-95 — Яндекс Музыка: режим создания плейлиста
 
 **Контекст:** Миграция → YM сейчас только лайкает треки. Нет режима плейлиста (аналогично SC `playlist_mode`). Галочка "Проставить лайки" для YM скрыта в UI (MM-94) именно потому что второго режима нет.
@@ -2517,4 +2495,98 @@ Extended Quota Mode недоступен (требует регистрации 
 
 ---
 
+### ✅ MM-97 — SPA: Admin Panel
+
+**Цель:** Перенести функционал Jinja2-админки в React SPA — без отдельного `/admin/*` роутера. Доступ через роль `role="admin"` в JWT, уже возвращаемой `/api/v1/auth/me`.
+
+#### Новые `/api/v1/` endpoints (admin-only)
+
+Зависимость `require_admin`:
+```python
+async def require_admin(user_id: str = Depends(get_current_user)):
+    session = await load_user_session(user_id)
+    if not session or session.get("role") != "admin":
+        raise HTTPException(403)
+    return user_id
+```
+
+- [x] `GET /api/v1/stats` — total_migrations, total_users, by_status, recent[10]; `require_admin`
+- [x] `GET /api/v1/users` — все юзеры + migration_count; `require_admin`
+- [x] `GET /api/v1/migrations` расширен: admin получает all + `?user_id=` filter + пагинация
+- [x] `GET /api/v1/migrations/{id}` расширен: admin bypass ownership check
+
+> `/api/v1/services` и `/api/v1/services/matrix` уже открыты — сервис-реестр показывается без нового endpoint.
+
+#### Существующие endpoints — расширение для admin
+
+- [x] JWT `create_access_token(user_id, role)` — role из БД в каждом exchange/refresh
+- [x] `require_admin` dep в `api/security.py` — 401 без токена, 403 если role!=admin
+- [x] `get_current_user_role` dep — возвращает role из JWT (не поднимает ошибок)
+- [x] `INITIAL_ADMIN_USER_ID` env var — bootstrap admin role на startup
+
+#### SPA (frontend)
+
+- [x] `App.tsx` — `AdminRoute` + routes `/dashboard`, `/migrations`, `/users`; redirect на `/` если role!=admin
+- [x] `AdminLayout.tsx` — sidebar nav + Outlet
+- [x] `AdminDashboardPage` — карточки + by_status + таблица recent[10]
+- [x] `AdminMigrationsPage` — таблица всех миграций, фильтры status/user_id, пагинация
+- [x] `AdminUsersPage` — таблица user_id/role/migration_count, пагинация
+- [x] `HomePage.tsx` — ссылка "Панель администратора →" если role=admin
+- [x] `auth.ts` — `getTokenRole()` — читает role из JWT payload
+- [x] `admin.ts` — `fetchStats()`, `listUsers()`
+- [x] `migrations.ts` — `listMigrations()` возвращает `MigrationsPage` (paginated)
+
+**Файлы:** `api/routes/api_v1.py`, `api/security.py` (require_admin), `frontend/src/pages/admin/*`, `frontend/src/App.tsx`
+
+---
+
+### ✅ MM-98 — SPA: UI фиксы и недостающие фичи
+
+- [x] `HomePage.tsx` — убраны `service-badge` с карточек FROM/TO
+- [x] `MigratePage.tsx` — content_types чекбоксы (tracks/playlists/artists, disabled для from=file)
+- [x] `StartMigrationRequest` — `content_types` теперь передаётся из UI
+- [x] File import: file-picker в `MigratePage`, `parseImportFile()` парсит CSV/JSON на клиенте, `tracks_override` в JSON body
+- [x] `api/routes/api_v1.py` — `tracks_override` в `StartMigrationRequest`; file→SC → `run_file_migration_job`; file→YM/Spotify → `tracks_override` в воркеры
+- [x] Export (to=file): кнопки CSV↓/JSON↓ в `ProgressPage` (status=done)
+- [x] Lang switcher: `LangContext` + `LangSwitcher` компонент в `App.tsx`, `localStorage` persist (без бэкенда)
+- [x] `MigratePage.tsx` — Spotify playlist name input (когда spotifyPlaylistMode=true)
+- [x] 5 новых тестов в `tests/test_mm98_spa_ui.py`; 295 passed total
+
+---
+
+### 🔲 MM-99 — Code Review: безопасность и качество кода
+
+**Цель:** исправить проблемы выявленные в ходе полного ревью кодовой базы (2026-03-25). Разбито по приоритету.
+
+#### Критические (блокирующие продакшн)
+
+- [ ] **Валидатор шифрования токенов** — `config.py`: добавить `model_validator` который выбрасывает `ValueError` если `db_encryption_key=""` и `dev_mode=False`; предотвращает случайный запуск прода без шифрования
+- [ ] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`, `api/routes/oauth.py`: вместо `str(e)[:120]` в URL — логировать ошибку, пользователю отдавать generic `"internal_error"`
+- [ ] **Валидация файловых загрузок** — `api/routes/web.py`: добавить проверку magic bytes (`python-magic` или встроенный `imghdr`-аналог), ограничение размера (10 MB), whitelist расширений `.csv`/`.json`
+
+#### Высокий приоритет
+
+- [ ] **Rate limit на auth endpoints** — `api/routes/api_v1.py`: добавить slowapi лимиты на `POST /auth/exchange` (10/мин) и `POST /auth/refresh` (30/мин)
+- [ ] **ARQ job timeout** — `worker/main.py`: добавить `job_timeout=3600` (1 час) в `WorkerSettings`; в каждую джоб-функцию добавить `max_tries=1`
+- [ ] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` логировать error и `raise ValueError("Token decryption failed")` вместо `return value` (encrypted строка как plain text — ломает API вызовы)
+- [ ] **Spotify token refresh mid-migration** — `worker/tasks.py` / `migration/to_spotify.py`: передавать `refresh_token` в `_SpotifyWriteSession`; при истечении access token (401 от API) — вызывать `refresh_access_token()` и продолжать
+- [ ] **Fix race condition job ID** — `api/routes/migrations.py`: сохранять job_id в Redis ДО старта джоба; использовать `arq.enqueue_job(..., job_id=pre_generated_id)` или атомарный set-then-enqueue
+- [ ] **CORS whitelist** — `api/main.py`: заменить `allow_methods=["*"]` → `["GET", "POST", "PUT", "DELETE", "OPTIONS"]`, `allow_headers=["*"]` → `["Authorization", "Content-Type", "Accept"]`
+- [ ] **`secrets.token_hex` для session ID** — `api/routes/oauth.py:52`: `uid = f"web_{uuid.uuid4().hex[:12]}"` → `f"web_{secrets.token_hex(16)}"`
+
+#### Средний приоритет
+
+- [ ] **Idempotency key для POST /migrations** — `api/routes/migrations.py`: принимать необязательный `Idempotency-Key` header; проверять Redis `idempotency:{key}` TTL 60s перед созданием новой миграции
+- [ ] **Exponential backoff для 429** — `core/soundcloud/client.py`, `core/spotify/client.py`: при `RateLimitError` — ждать 2^attempt секунд (макс 60с) перед retry
+- [ ] **Schema-валидация `tracks_override`** — `worker/tasks.py`: при `tracks_override is not None` — валидировать каждый элемент через `pydantic.TypeAdapter(list[TrackInput]).validate_python(tracks_override)` (добавить `TrackInput` модель)
+- [ ] **`/health` расширенный** — `api/main.py`: проверять ping к PostgreSQL (`select 1`) и Redis (`await redis.ping()`); возвращать `{"status": "ok", "db": "ok", "redis": "ok"}` или 503
+
+#### Не делать сейчас (зафиксировано, ждёт SPA Фаза 2)
+
+- Refresh token в `localStorage` — исправляется переходом на httpOnly cookie в MM-82 (после удаления Jinja2 и SessionMiddleware; требует `allow_credentials=True` в CORS)
+- Linear scan refresh tokens — допустимо для текущего объёма пользователей; индекс добавить позже
+
+**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `api/routes/migrations.py`, `api/routes/web.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `migration/to_spotify.py`, `core/soundcloud/client.py`, `core/spotify/client.py`
+
+---
 
