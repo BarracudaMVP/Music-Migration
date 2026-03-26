@@ -68,35 +68,45 @@
 
 ---
 
-## 🔲 MM-99 — Code Review: безопасность и качество кода — 2026-03-25
+## ✅ MM-99 — Code Review: безопасность и качество кода — 2026-03-26
 
-**Цель:** провести полное ревью кодовой базы — безопасность, надёжность, архитектура.
+**Цель:** исправить проблемы безопасности и надёжности, выявленные при полном ревью кодовой базы.
 
-**Что найдено (критические):**
-- `db_encryption_key = ""` по умолчанию — токены хранятся plain text без валидатора для прода (`config.py`)
-- `except Exception as e: return RedirectResponse(f"...{str(e)[:120]}")` — утечка деталей ошибок в OAuth redirects
-- Нет валидации файловых загрузок (MIME, размер, magic bytes)
-- `get_user_id_by_spa_refresh_token` — full table scan + Fernet decrypt, нет rate limit на `/auth/refresh`
+**Batch 1 (commit `ffd5182`):**
+- `POST /auth/logout` endpoint удалён из `api/routes/api_v1.py`; `logout()` удалена из `frontend/src/api/auth.ts` (нет хранилища токена на сервере — endpoint был no-op)
+- `worker/main.py`: `job_timeout = 2 * 3600` (2ч вместо 6ч)
+- `worker/tasks.py`: `except BaseException:` блок во всех 6 job-функциях (`run_yandex_migration_job`, `run_spotify_migration_job`, `run_spotify_write_job`, `run_migration_job`, `run_file_migration_job`, `run_export_job`) — ловит `asyncio.CancelledError` (BaseException, не Exception) и выставляет `status="failed"` в БД → фронтенд останавливает polling
+- `frontend/src/api/migrations.ts`: `parseImportFile` — проверка `file.size > 5 * 1024 * 1024` с понятным сообщением; JSON.parse в try-catch с валидацией что результат — массив
 
-**Что найдено (высокий приоритет):**
-- Race condition: ARQ job стартует раньше чем `arq.set(migration_job:{id})` в Redis
-- ARQ джобы без `job_timeout` — зависание на неограниченное время
-- Spotify access token не обновляется в середине длинной миграции (только в начале)
-- `decrypt_token` при ошибке: `return value` вместо raise (`core/crypto.py`)
-- CORS: `allow_methods=["*"], allow_headers=["*"]` (`api/main.py`)
-- Refresh token в `localStorage` SPA (`frontend/src/api/auth.ts:17`)
+**Batch 2 (commit `b0f7482`):**
+- `core/crypto.py`: `decrypt_token` — пустая строка возвращается без попытки decrypt; не-пустая при `InvalidToken` → `logger.error(...)` + `raise ValueError("Token decryption failed")`
+- `api/routes/oauth.py`: `import uuid` → `import secrets`; `uuid.uuid4().hex[:12]` → `secrets.token_hex(16)`; NameError в `_issue_oauth_code` (`uuid.uuid4().hex` → `secrets.token_hex(16)`) исправлен
+- `api/main.py`: `allow_methods=["GET","POST","PUT","DELETE","OPTIONS"]`, `allow_headers=["Authorization","Content-Type","Accept"]`
+- `api/main.py`: `health()` — `await arq.ping()` (Redis) + `SELECT 1` (PostgreSQL via engine.connect); 503 если что-то упало; `result["redis"]`/`result["db"]` = `"ok"`/`"error"`/`"unavailable"`
+- `api/routes/api_v1.py`: `_check_rate_limit(arq, key, limit, window)` — Redis INCR + EXPIRE fixed-window; `POST /auth/exchange` → 10/мин на IP; `POST /auth/refresh` → 30/мин на IP; 429 при превышении
+- `api/routes/api_v1.py`: OAuth callbacks (Yandex, Spotify, SoundCloud) — `logger.error(f"... OAuth callback error: {e}")` + `RedirectResponse("/?error=internal_error")` вместо `str(e)[:120]` в URL
+- `api/routes/migrations.py`: `job_id = secrets.token_hex(16)` + `await arq.set(f"migration_job:{migration_id}", job_id, ex=86400)` ДО `arq.enqueue_job(..., _job_id=job_id)` — race condition fix
+- `config.py`: `guard_encryption_key` model_validator — поднимает `ValueError` если `db_encryption_key` пустой и URL БД указывает не на localhost
+- Тесты: `test_api_health.py` полностью переписан (3 теста: ok/degraded/is_async); `test_api_integration.py::test_health_endpoint` и `test_concurrent_health_requests` обновлены (mock `get_arq_pool` + `engine`); `test_api_v1.py` и `test_mm97_admin_spa.py` — добавлены `pool.incr = AsyncMock(return_value=1)` + `pool.expire = AsyncMock()` в fixture; `test_crypto.py` — тесты переименованы и обновлены для нового поведения raise
 
-**Что найдено (средний приоритет):**
-- Нет rate limit на `/auth/exchange` и `/auth/refresh`
-- Нет exponential backoff при 429 от SC/Spotify
-- Нет idempotency key при `POST /migrations`
-- `uuid.uuid4().hex[:12]` для session ID (48 бит) — надо `secrets.token_hex(32)`
-- `/health` не проверяет Redis/Postgres
-- `tracks_override` без schema-валидации
+**Batch 3 (commit `b9d1e94`):**
+- `api/routes/api_v1.py`: `TrackInput(artist: str, title: str)` Pydantic BaseModel перед `StartMigrationRequest`; поле `tracks_override: list[TrackInput] | None = None`; `tracks_override_dicts = [t.model_dump() for t in body.tracks_override]` перед передачей в ARQ (Pydantic → dict)
+- `api/routes/api_v1.py`: `start_migration` принимает `x_idempotency_key: str | None = Header(default=None)`; если ключ есть и `arq.get(f"idempotency:{key}")` возвращает значение — вернуть cached `migration_id` без создания нового джоба; после создания миграции `arq.set(f"idempotency:{key}", str(migration_id), ex=60)`
+- `worker/tasks.py`: `TrackInput(BaseModel)` + `_tracks_override_validator = TypeAdapter(list[TrackInput])`; в `run_yandex_migration_job` и `run_spotify_write_job`: `validated = _tracks_override_validator.validate_python(tracks_override)` → `[t.model_dump() for t in validated]`
+- `frontend/src/i18n.ts`: ключи `nav_migrations`/`nav_users` в RU ("Миграции"/"Пользователи") и EN ("Migrations"/"Users")
+- `frontend/src/pages/admin/AdminLayout.tsx`: NavLink → `{t('nav_migrations', lang)}` / `{t('nav_users', lang)}`
+- `frontend/src/pages/admin/AdminMigrationsPage.tsx`: `<h1>` → `{t('nav_migrations', lang)}`
+- `frontend/src/pages/admin/AdminUsersPage.tsx`: `<h1>` → `{t('nav_users', lang)}`
+- Тесты (`tests/test_api_v1.py`): `test_track_input_model_valid`, `test_track_input_model_requires_artist_and_title`, `test_start_migration_rejects_bad_tracks_override` (422), `test_idempotency_key_returns_cached_migration_id`, `test_idempotency_key_stores_migration_id_on_first_call`, `test_exchange_rate_limited_after_10_requests`
 
-**Что хорошо:** async I/O корректен, SQLAlchemy ORM (нет SQL injection), `AdapterWriteSession` ABC, resumable миграции, `guard_dev_mode`.
+**Итог:** 292 passed (было 286 до MM-99). 1 pre-existing fail (`test_like_track_raises_on_404`).
 
-**Следующий шаг:** реализовывать фиксы по приоритету в рамках MM-99.
+**Не сделано (отложено):**
+- Exponential backoff при 429 от SC/Spotify → бэклог MM-91
+- Spotify mid-migration token refresh → access token живёт 1ч, миграции обычно быстрее
+- Refresh token в `localStorage` → отложено
+
+---
 
 ---
 

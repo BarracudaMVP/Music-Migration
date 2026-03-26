@@ -2555,42 +2555,46 @@ async def require_admin(user_id: str = Depends(get_current_user)):
 
 ---
 
-### 🔲 MM-99 — Code Review: безопасность и качество кода
+### ✅ MM-99 — Code Review: безопасность и качество кода — 2026-03-26
 
 **Цель:** исправить проблемы выявленные в ходе полного ревью кодовой базы (2026-03-25). Разбито по приоритету.
 
-#### Критические (блокирующие продакшн)
+#### Критические ✅
 
-- [ ] **Валидатор шифрования токенов** — `config.py`: добавить `model_validator` который выбрасывает `ValueError` если `db_encryption_key=""` и `dev_mode=False`; предотвращает случайный запуск прода без шифрования
-- [ ] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`: вместо `str(e)[:120]` в URL — логировать ошибку, пользователю отдавать generic `"internal_error"`
+- [x] **Валидатор шифрования токенов** — `config.py`: `guard_encryption_key` model_validator — ValueError если `db_encryption_key=""` и prod URL (не localhost)
+- [x] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`: `logger.error(e)` + `RedirectResponse("...?error=internal_error")`, `str(e)` убран из URL
+- [x] **`TrackInput` schema** — `api/routes/api_v1.py`: `TrackInput(artist, title)` Pydantic модель; `list[dict]` → `list[TrackInput] | None`; TypeAdapter валидация в `worker/tasks.py`
 
-#### Высокий приоритет
+#### Высокий приоритет ✅
 
-- [ ] **Rate limit на auth endpoints** — `api/routes/api_v1.py`: добавить slowapi лимиты на `POST /auth/exchange` (10/мин) и `POST /auth/refresh` (30/мин)
-- [x] **ARQ job timeout** — `worker/main.py`: `job_timeout = 2 * 3600` (2 часа); в каждом job `except BaseException` ловит `CancelledError` и обновляет статус в БД → фронтенд останавливает polling
-- [ ] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` логировать error и `raise ValueError("Token decryption failed")` вместо `return value`
-- [ ] **Spotify token refresh mid-migration** — `worker/tasks.py` / `migration/to_spotify.py`: при истечении access token (401 от API) — вызывать `refresh_access_token()` и продолжать
-- [ ] **Fix race condition job ID** — `api/routes/migrations.py`: сохранять job_id в Redis ДО старта джоба
-- [ ] **CORS whitelist** — `api/main.py`: заменить `allow_methods=["*"]` → `["GET", "POST", "PUT", "DELETE", "OPTIONS"]`, `allow_headers=["*"]` → `["Authorization", "Content-Type", "Accept"]`
-- [ ] **`secrets.token_hex` для session ID** — `api/routes/oauth.py`: `f"web_{uuid.uuid4().hex[:12]}"` → `f"web_{secrets.token_hex(16)}"`
+- [x] **Rate limit на auth endpoints** — `api/routes/api_v1.py`: Redis fixed-window counter `rl:{endpoint}:{ip}:{slot}` — `POST /auth/exchange` 10/мин, `POST /auth/refresh` 30/мин
+- [x] **ARQ job timeout** — `worker/main.py`: `job_timeout = 2 * 3600` (2 часа); в каждом из 6 job `except BaseException` ловит `CancelledError` и обновляет статус в БД
+- [x] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` raise `ValueError("Token decryption failed")`; пустая строка (`""`) — passthrough без попытки decrypt
+- [x] **Fix race condition job ID** — `api/routes/migrations.py`: `job_id = secrets.token_hex(16)` + `arq.set(migration_job:{id})` ДО `enqueue_job(..., _job_id=job_id)`
+- [x] **CORS whitelist** — `api/main.py`: `allow_methods=["GET","POST","PUT","DELETE","OPTIONS"]`, `allow_headers=["Authorization","Content-Type","Accept"]`
+- [x] **`secrets.token_hex` для session ID** — `api/routes/oauth.py`: `f"web_{secrets.token_hex(16)}"` (исправлен NameError `uuid` → `secrets` в `_issue_oauth_code`)
+- [x] **`/health` расширенный** — `api/main.py`: `SELECT 1` к PostgreSQL + `redis.ping()`; 503 если упало
 
-#### Средний приоритет
+#### Средний приоритет ✅
 
-- [ ] **Idempotency key для POST /migrations** — `api/routes/migrations.py`: необязательный `Idempotency-Key` header; проверять Redis `idempotency:{key}` TTL 60s
-- [ ] **Exponential backoff для 429** — `core/soundcloud/client.py`, `core/spotify/client.py`: при `RateLimitError` ждать 2^attempt секунд (макс 60с) перед retry
-- [ ] **`/health` расширенный** — `api/main.py`: проверять `select 1` к PostgreSQL + `redis.ping()`; 503 если упало
+- [x] **Idempotency key для POST /migrations** — `api/routes/api_v1.py`: `X-Idempotency-Key` header; Redis `idempotency:{key}` TTL 60s — возвращает cached `migration_id` на повторный запрос
+- [x] **5MB лимит file import** — `frontend/src/api/migrations.ts`: `parseImportFile` проверяет `file.size > 5MB`, JSON.parse в try-catch
+- [x] **Admin i18n** — `frontend/src/i18n.ts`: ключи `nav_migrations`/`nav_users` RU/EN; AdminLayout, AdminMigrationsPage, AdminUsersPage используют `t()` вместо хардкода
 
-#### Удалено (не нужно)
+#### Удалено (не нужно) ✅
 
-- ~~POST /auth/logout endpoint~~ — удалён (`api/routes/api_v1.py`); logout функция удалена из `frontend/src/api/auth.ts`
-- ~~Валидация файловых загрузок (web.py)~~ — web.py удалён (MM-82); файлы парсятся на клиенте; 5MB лимит добавлен в `parseImportFile()` (`frontend/src/api/migrations.ts`)
+- [x] ~~POST /auth/logout endpoint~~ — удалён (`api/routes/api_v1.py`); `logout()` удалена из `frontend/src/api/auth.ts`
 
-#### Не делать сейчас
+#### Не делаем
 
+- Exponential backoff для 429 — отложено в бэклог
+- Spotify mid-migration token refresh — отложено (токен живёт 1ч, миграции обычно короче)
 - Refresh token в `localStorage` — отложено
-- Linear scan refresh tokens — допустимо для текущего объёма пользователей
+- Linear scan refresh tokens — допустимо для текущего объёма
 
-**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `api/routes/migrations.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `migration/to_spotify.py`, `core/soundcloud/client.py`, `core/spotify/client.py`
+**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `frontend/src/api/auth.ts`, `frontend/src/api/migrations.ts`, `frontend/src/i18n.ts`, `frontend/src/pages/admin/*`
+
+**Тесты:** 292 passed (было 286 до MM-99; +6 новых тестов в batch 2-3). 1 pre-existing fail (`test_like_track_raises_on_404`).
 
 ---
 

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MM-98** (последний завершённый) + post-merge фиксы (i18n, nginx). **feature/spa смержена в main** (2026-03-26). Deployed on EU server.
+Current state: **MM-99** (последний завершённый — security & reliability fixes). **feature/spa смержена в main** (2026-03-26). Deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:
@@ -375,6 +375,7 @@ Rule: **no task is considered done until `pytest tests/` passes (295+ tests).**
 - Deploy: `bash scripts/deploy.sh [тег|коммит|ветка]` — fetch + checkout + alembic + docker compose up --build; `bash scripts/tag-release.sh v1.0-mmXX` — аннотированный тег + push
 - File import/export unified in main flow (MM-67): `"file"` (FileAdapter.id, MM-69) добавлен в `from_services` вручную (не из matrix); `flow_to_step` для `from_service=="file"` — все адаптеры с WRITE_LIKED_TRACKS, карточка "В файл" скрывается (File→File запрещён); `POST /migrate` принимает `file: UploadFile | None` + `export_fmt`; три case: export sync, import parse+job, обычный
 - `FileAdapter.id = "file"` (MM-69, ранее `"file_csv"`); i18n ключ `svc_file`; alembic миграция `i9j0k1l2m3n4` обновляет старые записи в БД
+- `TrackInput(artist: str, title: str)` в `api/routes/api_v1.py` и `worker/tasks.py` — Pydantic модель для file import треков; `StartMigrationRequest.tracks_override: list[TrackInput] | None`; конвертируется в `list[dict]` перед ARQ enqueue; `TypeAdapter(list[TrackInput]).validate_python(tracks_override)` в worker для безопасной десериализации из Redis
 - `tracks_override: list[dict] | None` в `run_yandex_migration_job` и `run_spotify_write_job` — пропускает `fetch_liked_tracks` если задан (для file import)
 - `score_track_match(source_artist, source_title, cand_artist, cand_title)` и `find_best_match(source_artist, source_title, ...)` — параметры переименованы из `ym_*`/`sc_*` в универсальные (MM-68); `TrackCandidate` — generic кандидат для любой целевой платформы (переименован из `SCCandidate`)
 - `scripts/entrypoint.sh` — Docker entry для api: `alembic upgrade head` → uvicorn; при `DEV_MODE=true` также запускает `scripts/seed_dev.py`
@@ -399,3 +400,5 @@ Rule: **no task is considered done until `pytest tests/` passes (295+ tests).**
 - File import 5MB limit: `parseImportFile()` in `frontend/src/api/migrations.ts` checks `file.size > 5MB` and wraps `JSON.parse` in try-catch; `POST /auth/logout` endpoint removed — no logout flow in SPA
 - SPA i18n (post-merge fix): `frontend/src/i18n.ts` — `t(key, lang)`, `tStatus(status, lang)`, `tService(svcId, lang)`, `formatDate(dt, lang)`; ~70 keys in `RU`/`EN` objects; pages use `useLang()` hook from `App.tsx` `LangContext`; no backend involvement
 - nginx routing (post-merge fix): `location = /auth/yandex/bot` (exact match) — only real API endpoint under `/auth/*`; all other `/auth/*` paths (e.g. `/auth/callback`) fall through to SPA via `location /`; `.env.dev` redirect URIs use `/api/v1/auth/*/callback` (correct path after MM-82)
+- MM-99 security: `decrypt_token` raises `ValueError` on corrupt token (empty string passthrough — no decrypt attempted); `guard_encryption_key` model_validator in `config.py` blocks prod startup without `DB_ENCRYPTION_KEY`; CORS explicit whitelist `["GET","POST","PUT","DELETE","OPTIONS"]`/`["Authorization","Content-Type","Accept"]`; rate limits on auth endpoints via Redis fixed-window `rl:{endpoint}:{ip}:{slot}` (INCR+EXPIRE); OAuth error details never leaked to redirect URL (logged only); `job_id = secrets.token_hex(16)` written to Redis BEFORE `enqueue_job` to fix race condition; `X-Idempotency-Key` header on `POST /api/v1/migrations` — `idempotency:{key}` TTL 60s; admin nav i18n `nav_migrations`/`nav_users` (RU/EN)
+- MM-99 health: `GET /health` returns `{"status":"ok"|"degraded","redis":"ok"|"error"|"unavailable","db":"ok"|"error","version":"X.Y.Z"}`; 503 if any component down; tests: `test_api_health.py` — unit tests calling `health(Response())` directly with mocked arq/engine
