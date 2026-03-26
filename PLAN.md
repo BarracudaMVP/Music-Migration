@@ -2598,3 +2598,23 @@ async def require_admin(user_id: str = Depends(get_current_user)):
 
 ---
 
+### ✅ MM-100 — Фронтенд UX: 8 багов — 2026-03-26
+
+**Цель:** исправить критические UX баги SPA после слияния feature/spa.
+
+**Что сделано:**
+- [ → ✅] **Auth persistence**: `refreshAccessToken()` в `auth.ts` — токен из localStorage удаляется только при 401/403, не при сетевых ошибках. Импортирован `ApiError` из `client.ts`.
+- [ → ✅] **File service возвращён**: `fromServices` в `HomePage.tsx` теперь явно добавляет `file` через `IMPORT_FILE` capability. `toServices` для `file→*` фильтрует по `WRITE_LIKED_TRACKS`.
+- [ → ✅] **Single-screen flow**: Все настройки и "Начать" перенесены в `HomePage.tsx`. `MigratePage.tsx` → redirect to "/".
+- [ → ✅] **Limit options**: изменены на 5/50/500/All (убрано 100).
+- [ → ✅] **Track list на ProgressPage**: `getMigrationTracks()` вызывается вместе с каждым poll (каждые 2с), показывает последние 20 не-pending треков со статусом и match score. Expandable список не найденных треков.
+- [ → ✅] **History match%**: `success/(success+notFound)*100`% показывается в строке истории. Expandable not-found список через `getMigrationTracks(id, 'not_found', 1)`.
+- [ → ✅] **Rounded buttons**: кнопки "Новая миграция" и "История" на ProgressPage — `borderRadius: '9999px'`.
+- [ → ✅] **i18n**: добавлены ключи `track_list`, `match_score_label`, `not_found_section`, `show_not_found`, `hide_not_found`, `match_pct_label`.
+
+**Файлы:** `frontend/src/api/auth.ts`, `frontend/src/pages/HomePage.tsx`, `frontend/src/pages/MigratePage.tsx`, `frontend/src/pages/ProgressPage.tsx`, `frontend/src/pages/HistoryPage.tsx`, `frontend/src/i18n.ts`
+
+**Тесты:** 292 passed (без изменений). `npm run build` — чистый билд.
+
+---
+
