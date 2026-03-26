@@ -215,28 +215,13 @@ async def test_me_valid_token_no_session(app, mock_arq_pool):
     assert data["ym_connected"] is False
 
 
-# ---------------------------------------------------------------------------
-# POST /api/v1/auth/logout
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_logout_missing_token(app, mock_arq_pool):
+async def test_logout_endpoint_removed(app, mock_arq_pool):
+    """POST /auth/logout was removed — endpoint no longer exists."""
     with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post("/api/v1/auth/logout")
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_logout_valid_token(app, mock_arq_pool):
-    token = _make_valid_token("user_logout")
-    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
-        with patch("api.routes.api_v1.revoke_spa_refresh_token", new_callable=AsyncMock) as mock_revoke:
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 204
-    mock_revoke.assert_called_once_with("user_logout")
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Project Overview
 
 Music Migration — service for migrating music libraries between streaming platforms.
-Current state: **MM-89** (последний завершённый), **MM-83** на паузе (React SPA, ветка `feature/spa`), deployed on EU server.
+Current state: **MM-98** (последний завершённый) + post-merge фиксы (i18n, nginx). **feature/spa смержена в main** (2026-03-26). Deployed on EU server.
 Supports: Yandex Music, Spotify, SoundCloud, File (CSV/JSON) — bidirectional migrations, Web UI, Telegram bot.
 
 Transfer matrix:
@@ -282,8 +282,10 @@ bot/
 
 config.py                               — Pydantic settings (all env vars)
 alembic/                                — DB migrations (alembic upgrade head)
-nginx/nginx.conf                        — Reverse proxy to api:8000
-docker-compose.yml                      — postgres + redis + api + bot + worker + nginx (log rotation)
+nginx/nginx.conf                        — Reverse proxy: /api/→api:8000, = /auth/yandex/bot→api:8000, /→frontend:80
+nginx/spa.conf                          — SPA static: try_files → /index.html
+Dockerfile.frontend.prod                — Multi-stage: node build → nginx:alpine static serve
+docker-compose.yml                      — postgres + redis + api + bot + worker + nginx + frontend (log rotation)
 docker-compose.monitoring.yml           — opt-in: Loki + Promtail + Grafana
 monitoring/
     ├── loki/config.yml                 — Loki local filesystem storage
@@ -327,7 +329,7 @@ After completing **every task** (MM-XX), write and run tests:
 2. Run `.venv/Scripts/pytest tests/` — must pass (133+ tests)
 3. If the task adds no new business logic — at minimum a smoke test that the new parameter flows through correctly
 
-Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
+Rule: **no task is considered done until `pytest tests/` passes (295+ tests).**
 
 ## Key Patterns
 
@@ -393,3 +395,7 @@ Rule: **no task is considered done until `pytest tests/` passes (209+ tests).**
 - MM-83 SPA frontend: `frontend/` — Vite + React 19 + TypeScript + React Router v6; Vite proxy `/api` → `http://api:8000` (dev only, replaces nginx in prod); `docker-compose.dev.yml` runs `frontend` service on port 3000 with `node_modules` in Docker volume
 - MM-97 Admin SPA: `role` claim in JWT (set in `exchange_code`/`refresh_token` from DB); `require_admin` dep in `api/security.py` → 401/403; `get_current_user_role` dep (safe, no raise); `GET /api/v1/stats` + `GET /api/v1/users` (admin-only); `GET /api/v1/migrations` supports `?user_id=` + pagination for admin; `GET /api/v1/migrations/{id}` bypasses ownership for admin; frontend: `AdminRoute` + `AdminLayout` + `/dashboard`, `/migrations`, `/users` pages; `getTokenRole()` in `auth.ts`; `INITIAL_ADMIN_USER_ID` env var for bootstrap
 - MM-98 SPA UI fixes: auth badge removed from service cards; content_types selector (tracks/playlists/artists); file import (CSV/JSON picker) + export (sync download); language switcher via `LangContext` in `App.tsx` (localStorage, no backend); Spotify playlist name input
+- ARQ job timeout: `worker/main.py` `job_timeout = 2 * 3600`; all job functions have `except BaseException` after `except Exception` — catches `asyncio.CancelledError` on ARQ timeout and sets migration `status="failed"` so frontend stops polling
+- File import 5MB limit: `parseImportFile()` in `frontend/src/api/migrations.ts` checks `file.size > 5MB` and wraps `JSON.parse` in try-catch; `POST /auth/logout` endpoint removed — no logout flow in SPA
+- SPA i18n (post-merge fix): `frontend/src/i18n.ts` — `t(key, lang)`, `tStatus(status, lang)`, `tService(svcId, lang)`, `formatDate(dt, lang)`; ~70 keys in `RU`/`EN` objects; pages use `useLang()` hook from `App.tsx` `LangContext`; no backend involvement
+- nginx routing (post-merge fix): `location = /auth/yandex/bot` (exact match) — only real API endpoint under `/auth/*`; all other `/auth/*` paths (e.g. `/auth/callback`) fall through to SPA via `location /`; `.env.dev` redirect URIs use `/api/v1/auth/*/callback` (correct path after MM-82)

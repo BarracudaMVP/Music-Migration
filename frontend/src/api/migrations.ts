@@ -88,12 +88,24 @@ export function getMigrationTracks(id: number, status?: string, page = 1): Promi
   return api.get<TracksPage>(`/migrations/${id}/tracks?${q}`)
 }
 
+const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+
 export async function parseImportFile(file: File): Promise<TrackImport[]> {
+  if (file.size > MAX_IMPORT_FILE_SIZE) {
+    throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB (max 5 MB)`)
+  }
+
   const text = await file.text()
 
   if (file.name.toLowerCase().endsWith('.json')) {
-    const data = JSON.parse(text) as TrackImport[]
-    return data.filter(t => t && typeof t.artist === 'string' && typeof t.title === 'string')
+    let data: unknown
+    try {
+      data = JSON.parse(text)
+    } catch {
+      throw new Error('Invalid JSON file')
+    }
+    if (!Array.isArray(data)) throw new Error('JSON must be an array of {artist, title} objects')
+    return (data as TrackImport[]).filter(t => t && typeof t.artist === 'string' && typeof t.title === 'string')
   }
 
   // CSV: first line is header, expect artist and title columns

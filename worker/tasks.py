@@ -80,6 +80,10 @@ async def run_yandex_migration_job(
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
             raise
+        except BaseException:
+            logger.warning(f"[job] YM migration #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
+            raise
 
 
 async def run_spotify_migration_job(
@@ -125,6 +129,10 @@ async def run_spotify_migration_job(
             logger.error(f"[job] Spotify migration #{migration_id} failed: {e}")
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
+            raise
+        except BaseException:
+            logger.warning(f"[job] Spotify migration #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
             raise
 
 
@@ -215,6 +223,10 @@ async def run_spotify_write_job(
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
             raise
+        except BaseException:
+            logger.warning(f"[job] Spotify WRITE migration #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
+            raise
 
 
 async def _refresh_sc_token_if_needed(sc_token: str, user_id: str) -> str:
@@ -282,6 +294,10 @@ async def run_migration_job(
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
             raise
+        except BaseException:
+            logger.warning(f"[job] Migration #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
+            raise
 
 
 _EXPORT_DATA_TTL = 86400  # 24h
@@ -326,6 +342,10 @@ async def run_export_job(
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
             raise
+        except BaseException:
+            logger.warning(f"[job] Export #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
+            raise
 
 
 async def run_file_migration_job(
@@ -366,4 +386,8 @@ async def run_file_migration_job(
             logger.error(f"[job] File migration #{migration_id} failed: {e}")
             await update_migration(migration_id, status="failed")
             await notify_telegram(user_id, migration_failed_text(migration_id, lang=lang))
+            raise
+        except BaseException:
+            logger.warning(f"[job] File migration #{migration_id} cancelled (timeout or shutdown)")
+            await update_migration(migration_id, status="failed")
             raise

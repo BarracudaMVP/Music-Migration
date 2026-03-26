@@ -49,15 +49,6 @@ export async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
-export async function logout(): Promise<void> {
-  try {
-    await api.post('/auth/logout')
-  } finally {
-    localStorage.removeItem('refresh_token')
-    setAccessToken(null)
-  }
-}
-
 const SERVICE_AUTH_SLUG: Record<string, string> = {
   yandex_music: 'yandex',
 }

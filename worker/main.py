@@ -35,5 +35,5 @@ class WorkerSettings:
     cron_jobs = []
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 5
-    job_timeout = 6 * 3600   # 6 hours
+    job_timeout = 2 * 3600   # 2 hours — after this ARQ cancels the job coroutine
     keep_result = 3600

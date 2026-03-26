@@ -7,7 +7,7 @@
 
 ## Стек
 
-- **API**: FastAPI + Jinja2 + HTMX (legacy) / React SPA (MM-83 ✅, ветка `feature/spa`)
+- **API**: FastAPI + React SPA (MM-82/83 ✅, смержено в main 2026-03-26)
 - **БД**: PostgreSQL + SQLAlchemy 2.x async + Alembic
 - **Очередь**: arq (Redis)
 - **Бот**: aiogram 3.x
@@ -19,30 +19,29 @@
 ## Архитектура
 
 ```
-┌─────────────────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
-│   Telegram Bot      │  │  Web UI (Jinja2 + HTMX)  │  │   SPA Frontend         │
-│   (aiogram 3.x)     │  │  / /migrate /history     │  │   (React/Vue/etc.)     │
-│   FSM: пошаговый    │  │  /auth/* /api/flow/*     │  │   localhost:3000 / CDN │
-└──────────┬──────────┘  └─────────────┬────────────┘  └──────────┬─────────────┘
-           │ HTTP (internal API)        │ HTTP                      │ HTTP (JWT Bearer)
-           └────────────────┬──────────┘                           │
-                            ▼                                       │
-              ┌─────────────────────────────────────────────────────┤
+┌─────────────────────┐  ┌────────────────────────────────────────────────────┐
+│   Telegram Bot      │  │   React SPA Frontend (Vite + React 19 + TS)        │
+│   (aiogram 3.x)     │  │   Nginx:80 (prod) / localhost:3000 (dev)           │
+│   FSM: пошаговый    │  │   i18n: frontend/src/i18n.ts (t/tStatus/tService)  │
+└──────────┬──────────┘  └──────────────────────┬───────────────────────────┘
+           │ HTTP (internal API, X-Internal-Token)│ HTTP (JWT Bearer)
+           └────────────────┬─────────────────────┘
+                            ▼
+              ┌─────────────────────────────────────────────────────┐
               │              FastAPI Server                          │
-              │  /api/v1/*   — SPA JSON API (JWT, always on)        │
-              │  /auth/*     — OAuth redirect/callback (oauth.py)   │
-              │  /api/*      — Internal (bot, worker)               │
-              │  /admin/*    — Admin UI (gated by WEB_ENABLED)      │
-              │  Middleware: CORS, IP whitelist, AllowedUsers, Rate  │
+              │  /api/v1/*    — SPA JSON API (JWT, always on)       │
+              │  = /auth/yandex/bot — Bot OAuth redirect (exact)    │
+              │  /api/*       — Internal (bot, worker)              │
+              │  Middleware: CORS, SessionMiddleware (OAuth flow)   │
               └────────┬────────────────────────────────────────────┘
                        │
-            ┌──────────┼────────────┐
-            ▼          ▼            ▼
-      [PostgreSQL]   [Redis]   [Sessions]
-       (tokens,     (ARQ jobs,  (cookies — Jinja2 only)
-        migrations,  OAuth state, spa_refresh_token in DB)
-        tracks)      progress,
-                     rate limit)
+            ┌──────────┼──────────────┐
+            ▼          ▼              ▼
+      [PostgreSQL]   [Redis]   [SessionMiddleware]
+       (tokens,     (ARQ jobs,  (server-side session —
+        migrations,  OAuth state, нужен для _ensure_user_id
+        tracks)      jwt codes,   в OAuth flow; JWT хранится
+                     rate limit)  в SPA-памяти/localStorage)
                        │
                        ▼
           ┌────────────────────────┐
@@ -2014,6 +2013,8 @@ JWT_REFRESH_TOKEN_TTL=2592000
 - [x] Обновить `docker-compose.yml`: добавить `frontend` сервис (Dockerfile.frontend.prod)
 - [x] Обновить тесты: удалить test_middleware.py, test_web_flow.py; обновить test_oauth.py, test_dev_mode.py, test_export_job.py
 - [x] pytest: 287 passed (1 pre-existing failure in test_pipeline.py)
+- [x] **Post-merge fix** (`eeac5bb`): `.env.dev` redirect URIs исправлены на `/api/v1/auth/*/callback`; `frontend/src/i18n.ts` — полная RU/EN i18n (t/tStatus/tService/formatDate); все 9 страниц переведены через `useLang()`
+- [x] **Post-merge fix** (`c366afe`): `nginx/nginx.conf` — `location /auth/` → `location = /auth/yandex/bot` (exact match); `/auth/callback` теперь падает на SPA
 
 ---
 
@@ -2561,32 +2562,35 @@ async def require_admin(user_id: str = Depends(get_current_user)):
 #### Критические (блокирующие продакшн)
 
 - [ ] **Валидатор шифрования токенов** — `config.py`: добавить `model_validator` который выбрасывает `ValueError` если `db_encryption_key=""` и `dev_mode=False`; предотвращает случайный запуск прода без шифрования
-- [ ] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`, `api/routes/oauth.py`: вместо `str(e)[:120]` в URL — логировать ошибку, пользователю отдавать generic `"internal_error"`
-- [ ] **Валидация файловых загрузок** — `api/routes/web.py`: добавить проверку magic bytes (`python-magic` или встроенный `imghdr`-аналог), ограничение размера (10 MB), whitelist расширений `.csv`/`.json`
+- [ ] **Скрыть детали ошибок в OAuth redirects** — `api/routes/api_v1.py`: вместо `str(e)[:120]` в URL — логировать ошибку, пользователю отдавать generic `"internal_error"`
 
 #### Высокий приоритет
 
 - [ ] **Rate limit на auth endpoints** — `api/routes/api_v1.py`: добавить slowapi лимиты на `POST /auth/exchange` (10/мин) и `POST /auth/refresh` (30/мин)
-- [ ] **ARQ job timeout** — `worker/main.py`: добавить `job_timeout=3600` (1 час) в `WorkerSettings`; в каждую джоб-функцию добавить `max_tries=1`
-- [ ] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` логировать error и `raise ValueError("Token decryption failed")` вместо `return value` (encrypted строка как plain text — ломает API вызовы)
-- [ ] **Spotify token refresh mid-migration** — `worker/tasks.py` / `migration/to_spotify.py`: передавать `refresh_token` в `_SpotifyWriteSession`; при истечении access token (401 от API) — вызывать `refresh_access_token()` и продолжать
-- [ ] **Fix race condition job ID** — `api/routes/migrations.py`: сохранять job_id в Redis ДО старта джоба; использовать `arq.enqueue_job(..., job_id=pre_generated_id)` или атомарный set-then-enqueue
+- [x] **ARQ job timeout** — `worker/main.py`: `job_timeout = 2 * 3600` (2 часа); в каждом job `except BaseException` ловит `CancelledError` и обновляет статус в БД → фронтенд останавливает polling
+- [ ] **Fix `decrypt_token` fallback** — `core/crypto.py`: при `InvalidToken` логировать error и `raise ValueError("Token decryption failed")` вместо `return value`
+- [ ] **Spotify token refresh mid-migration** — `worker/tasks.py` / `migration/to_spotify.py`: при истечении access token (401 от API) — вызывать `refresh_access_token()` и продолжать
+- [ ] **Fix race condition job ID** — `api/routes/migrations.py`: сохранять job_id в Redis ДО старта джоба
 - [ ] **CORS whitelist** — `api/main.py`: заменить `allow_methods=["*"]` → `["GET", "POST", "PUT", "DELETE", "OPTIONS"]`, `allow_headers=["*"]` → `["Authorization", "Content-Type", "Accept"]`
-- [ ] **`secrets.token_hex` для session ID** — `api/routes/oauth.py:52`: `uid = f"web_{uuid.uuid4().hex[:12]}"` → `f"web_{secrets.token_hex(16)}"`
+- [ ] **`secrets.token_hex` для session ID** — `api/routes/oauth.py`: `f"web_{uuid.uuid4().hex[:12]}"` → `f"web_{secrets.token_hex(16)}"`
 
 #### Средний приоритет
 
-- [ ] **Idempotency key для POST /migrations** — `api/routes/migrations.py`: принимать необязательный `Idempotency-Key` header; проверять Redis `idempotency:{key}` TTL 60s перед созданием новой миграции
-- [ ] **Exponential backoff для 429** — `core/soundcloud/client.py`, `core/spotify/client.py`: при `RateLimitError` — ждать 2^attempt секунд (макс 60с) перед retry
-- [ ] **Schema-валидация `tracks_override`** — `worker/tasks.py`: при `tracks_override is not None` — валидировать каждый элемент через `pydantic.TypeAdapter(list[TrackInput]).validate_python(tracks_override)` (добавить `TrackInput` модель)
-- [ ] **`/health` расширенный** — `api/main.py`: проверять ping к PostgreSQL (`select 1`) и Redis (`await redis.ping()`); возвращать `{"status": "ok", "db": "ok", "redis": "ok"}` или 503
+- [ ] **Idempotency key для POST /migrations** — `api/routes/migrations.py`: необязательный `Idempotency-Key` header; проверять Redis `idempotency:{key}` TTL 60s
+- [ ] **Exponential backoff для 429** — `core/soundcloud/client.py`, `core/spotify/client.py`: при `RateLimitError` ждать 2^attempt секунд (макс 60с) перед retry
+- [ ] **`/health` расширенный** — `api/main.py`: проверять `select 1` к PostgreSQL + `redis.ping()`; 503 если упало
 
-#### Не делать сейчас (зафиксировано, ждёт SPA Фаза 2)
+#### Удалено (не нужно)
 
-- Refresh token в `localStorage` — исправляется переходом на httpOnly cookie в MM-82 (после удаления Jinja2 и SessionMiddleware; требует `allow_credentials=True` в CORS)
-- Linear scan refresh tokens — допустимо для текущего объёма пользователей; индекс добавить позже
+- ~~POST /auth/logout endpoint~~ — удалён (`api/routes/api_v1.py`); logout функция удалена из `frontend/src/api/auth.ts`
+- ~~Валидация файловых загрузок (web.py)~~ — web.py удалён (MM-82); файлы парсятся на клиенте; 5MB лимит добавлен в `parseImportFile()` (`frontend/src/api/migrations.ts`)
 
-**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `api/routes/migrations.py`, `api/routes/web.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `migration/to_spotify.py`, `core/soundcloud/client.py`, `core/spotify/client.py`
+#### Не делать сейчас
+
+- Refresh token в `localStorage` — отложено
+- Linear scan refresh tokens — допустимо для текущего объёма пользователей
+
+**Файлы:** `config.py`, `api/main.py`, `api/routes/api_v1.py`, `api/routes/oauth.py`, `api/routes/migrations.py`, `core/crypto.py`, `worker/main.py`, `worker/tasks.py`, `migration/to_spotify.py`, `core/soundcloud/client.py`, `core/spotify/client.py`
 
 ---
 

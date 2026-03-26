@@ -6,7 +6,6 @@ Parallel to old Jinja2 web UI — both work simultaneously during transition.
 Routes:
   POST /api/v1/auth/exchange               exchange oauth_code → {access_token, refresh_token}
   POST /api/v1/auth/refresh                refresh_token → {access_token}
-  POST /api/v1/auth/logout                 invalidate refresh_token
   GET  /api/v1/auth/me                     current user info
 
   GET  /api/v1/auth/yandex                 redirect → Yandex OAuth provider
@@ -56,7 +55,6 @@ from core.db import (
     get_user_id_by_spa_refresh_token,
     get_user_migrations,
     load_user_session,
-    revoke_spa_refresh_token,
     save_soundcloud_token,
     save_spa_refresh_token,
     save_spotify_token,
@@ -140,12 +138,6 @@ async def refresh_token(body: RefreshRequest):
         access_token=access_token,
         expires_in=settings.jwt_access_token_ttl,
     )
-
-
-@router.post("/auth/logout", status_code=204)
-async def logout(user_id: str = Depends(get_current_user)):
-    """Invalidate the refresh token (logout)."""
-    await revoke_spa_refresh_token(user_id)
 
 
 @router.get("/auth/me")
