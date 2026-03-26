@@ -441,3 +441,114 @@ async def test_soundcloud_callback_redirects_with_code(app, mock_arq_pool):
     location = response.headers["location"]
     assert "/auth/callback" in location
     assert "code=" in location
+
+
+# ---------------------------------------------------------------------------
+# MM-99: TrackInput validation in StartMigrationRequest
+# ---------------------------------------------------------------------------
+
+
+def test_track_input_model_valid():
+    from api.routes.api_v1 import TrackInput
+    t = TrackInput(artist="Radiohead", title="Creep")
+    assert t.artist == "Radiohead"
+    assert t.title == "Creep"
+
+
+def test_track_input_model_requires_artist_and_title():
+    from pydantic import ValidationError
+    from api.routes.api_v1 import TrackInput
+    with pytest.raises(ValidationError):
+        TrackInput(artist="Radiohead")  # missing title
+    with pytest.raises(ValidationError):
+        TrackInput(title="Creep")  # missing artist
+
+
+@pytest.mark.asyncio
+async def test_start_migration_rejects_bad_tracks_override(app, mock_arq_pool):
+    """tracks_override with missing required fields should return 422."""
+    token = _make_valid_token("user_trk")
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/migrations",
+                    json={
+                        "from_service": "file",
+                        "to_service": "yandex_music",
+                        "tracks_override": [{"wrong_field": "x"}],
+                    },
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# MM-99: Idempotency-Key header
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_idempotency_key_returns_cached_migration_id(app, mock_arq_pool):
+    """Second call with same Idempotency-Key must return same migration_id without creating new job."""
+    token = _make_valid_token("user_idem")
+    mock_arq_pool.get = AsyncMock(return_value=b"42")
+
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/migrations",
+                    json={"from_service": "yandex_music", "to_service": "soundcloud"},
+                    headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": "key-abc"},
+                )
+
+    assert response.status_code == 201
+    assert response.json()["migration_id"] == 42
+    mock_arq_pool.enqueue_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_idempotency_key_stores_migration_id_on_first_call(app, mock_arq_pool):
+    """First call with Idempotency-Key must store migration_id in Redis."""
+    token = _make_valid_token("user_idem2")
+    mock_arq_pool.get = AsyncMock(return_value=None)
+    mock_arq_pool.set = AsyncMock()
+
+    fake_session = {
+        "yandex_token": "ym_tok", "soundcloud_token": "sc_tok",
+        "spotify_token": None, "spotify_refresh_token": None,
+        "soundcloud_refresh_token": None, "lang": "ru",
+    }
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            with patch("api.routes.api_v1.load_user_session", new_callable=AsyncMock, return_value=fake_session):
+                with patch("api.routes.api_v1.create_migration", new_callable=AsyncMock, return_value=77):
+                    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                        response = await client.post(
+                            "/api/v1/migrations",
+                            json={"from_service": "yandex_music", "to_service": "soundcloud"},
+                            headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": "key-xyz"},
+                        )
+
+    assert response.status_code == 201
+    assert response.json()["migration_id"] == 77
+    mock_arq_pool.set.assert_called_once_with("idempotency:key-xyz", "77", ex=60)
+
+
+# ---------------------------------------------------------------------------
+# MM-99: Rate limiting on /auth/exchange
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_exchange_rate_limited_after_10_requests(app, mock_arq_pool):
+    """11th call to /auth/exchange from same IP should return 429."""
+    mock_arq_pool.incr = AsyncMock(return_value=11)  # over limit
+
+    with patch("api.main.create_pool", new_callable=AsyncMock, return_value=mock_arq_pool):
+        with patch("api.main.get_arq_pool", return_value=mock_arq_pool):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/v1/auth/exchange", json={"code": "x"})
+
+    assert response.status_code == 429

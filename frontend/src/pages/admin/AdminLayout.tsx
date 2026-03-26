@@ -16,10 +16,10 @@ export default function AdminLayout() {
             {t('dashboard', lang)}
           </NavLink>
           <NavLink to="/migrations" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
-            Migrations
+            {t('nav_migrations', lang)}
           </NavLink>
           <NavLink to="/users" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
-            Users
+            {t('nav_users', lang)}
           </NavLink>
         </nav>
       </div>

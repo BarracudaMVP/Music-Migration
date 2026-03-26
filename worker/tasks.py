@@ -1,5 +1,14 @@
 """ARQ job definitions for the migration worker."""
+from pydantic import BaseModel, TypeAdapter
 from loguru import logger
+
+
+class TrackInput(BaseModel):
+    artist: str
+    title: str
+
+
+_tracks_override_validator = TypeAdapter(list[TrackInput])
 
 _CURRENT_TRACK_TTL = 86400  # seconds
 
@@ -53,7 +62,8 @@ async def run_yandex_migration_job(
     with logger.contextualize(migration_id=migration_id, user_id=user_id):
         try:
             if tracks_override is not None:
-                tracks_data = tracks_override
+                validated = _tracks_override_validator.validate_python(tracks_override)
+                tracks_data = [t.model_dump() for t in validated]
                 if track_limit:
                     tracks_data = tracks_data[:track_limit]
                 logger.info(f"[job] Using {len(tracks_data)} override tracks for migration #{migration_id}")
@@ -178,7 +188,8 @@ async def run_spotify_write_job(
 
             artists_data: list[dict] = []
             if tracks_override is not None:
-                tracks_data = tracks_override
+                validated = _tracks_override_validator.validate_python(tracks_override)
+                tracks_data = [t.model_dump() for t in validated]
                 if track_limit:
                     tracks_data = tracks_data[:track_limit]
                 logger.info(f"[job] Using {len(tracks_data)} override tracks for migration #{migration_id}")

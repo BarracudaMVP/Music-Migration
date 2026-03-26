@@ -78,6 +78,8 @@ const translations = {
     svc_spotify: 'Spotify',
     svc_soundcloud: 'SoundCloud',
     svc_file: 'Файл (CSV/JSON)',
+    nav_migrations: 'Миграции',
+    nav_users: 'Пользователи',
   },
   en: {
     from: 'From',
@@ -156,6 +158,8 @@ const translations = {
     svc_spotify: 'Spotify',
     svc_soundcloud: 'SoundCloud',
     svc_file: 'File (CSV/JSON)',
+    nav_migrations: 'Migrations',
+    nav_users: 'Users',
   },
 } as const
 

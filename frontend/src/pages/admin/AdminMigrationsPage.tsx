@@ -40,7 +40,7 @@ export default function AdminMigrationsPage() {
 
   return (
     <div className="admin-page">
-      <h1 className="title" style={{ marginBottom: 20 }}>Migrations</h1>
+      <h1 className="title" style={{ marginBottom: 20 }}>{t('nav_migrations', lang)}</h1>
 
       {/* Filters */}
       <div className="admin-filters">

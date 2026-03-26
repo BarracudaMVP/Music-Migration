@@ -35,7 +35,7 @@ import time
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -406,6 +406,11 @@ async def get_matrix():
 # ---------------------------------------------------------------------------
 
 
+class TrackInput(BaseModel):
+    artist: str
+    title: str
+
+
 class StartMigrationRequest(BaseModel):
     from_service: str
     to_service: str
@@ -416,13 +421,14 @@ class StartMigrationRequest(BaseModel):
     spotify_playlist_mode: bool = False
     spotify_playlist_name: str = "Music Migration"
     export_fmt: str = "csv"
-    tracks_override: list[dict] | None = None  # for file import: parsed on frontend
+    tracks_override: list[TrackInput] | None = None  # for file import: parsed on frontend
 
 
 @router.post("/migrations", status_code=201)
 async def start_migration(
     body: StartMigrationRequest,
     user_id: str = Depends(get_current_user),
+    x_idempotency_key: str | None = Header(default=None),
 ):
     """Start a new migration job. Returns {migration_id}."""
     from api.main import get_arq_pool
@@ -430,6 +436,13 @@ async def start_migration(
     arq = get_arq_pool()
     if not arq:
         raise HTTPException(status_code=503, detail="Redis unavailable")
+
+    # Idempotency: return existing migration_id if same key already used
+    if x_idempotency_key:
+        cached = await arq.get(f"idempotency:{x_idempotency_key}")
+        if cached is not None:
+            cached_id = int(cached.decode() if isinstance(cached, bytes) else cached)
+            return {"migration_id": cached_id}
 
     db_session = await load_user_session(user_id)
     if not db_session:
@@ -446,20 +459,26 @@ async def start_migration(
     mode = "full" if any(ct in body.content_types for ct in ("playlists", "artists")) else "tracks"
 
     migration_id = await create_migration(user_id, body.from_service, body.to_service)
+    if x_idempotency_key:
+        await arq.set(f"idempotency:{x_idempotency_key}", str(migration_id), ex=60)
     token_ym = db_session.get("yandex_token") or ""
     token_sc = db_session.get("soundcloud_token") or ""
     token_sp = db_session.get("spotify_token") or ""
     token_sp_refresh = db_session.get("spotify_refresh_token") or ""
     token_sc_refresh = db_session.get("soundcloud_refresh_token") or ""
 
+    tracks_override_dicts = (
+        [t.model_dump() for t in body.tracks_override] if body.tracks_override else None
+    )
+
     # File import via SoundCloud: use dedicated job with tracks list
     if body.from_service == "file" and body.to_service == "soundcloud":
-        if not body.tracks_override:
+        if not tracks_override_dicts:
             raise HTTPException(status_code=400, detail="tracks_override required for file import")
         await arq.enqueue_job("run_file_migration_job",
             migration_id=migration_id,
             sc_token=token_sc,
-            tracks=body.tracks_override,
+            tracks=tracks_override_dicts,
             user_id=user_id,
             track_limit=body.limit or None,
             like_tracks=body.like_tracks,
@@ -480,7 +499,7 @@ async def start_migration(
     if body.to_service == "yandex_music":
         await arq.enqueue_job("run_yandex_migration_job", **{
             **job_kwargs,
-            "tracks_override": body.tracks_override,
+            "tracks_override": tracks_override_dicts,
         })
     elif body.to_service == "spotify":
         await arq.enqueue_job("run_spotify_write_job", **{
@@ -489,7 +508,7 @@ async def start_migration(
             "spotify_refresh_token": token_sp_refresh,
             "playlist_mode": body.spotify_playlist_mode,
             "playlist_name": body.spotify_playlist_name,
-            "tracks_override": body.tracks_override,
+            "tracks_override": tracks_override_dicts,
         })
     else:
         if body.from_service == "spotify":

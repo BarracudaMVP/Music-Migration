@@ -21,7 +21,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="admin-page">
-      <h1 className="title" style={{ marginBottom: 20 }}>Users</h1>
+      <h1 className="title" style={{ marginBottom: 20 }}>{t('nav_users', lang)}</h1>
 
       {error && <div className="alert alert-error">{error}</div>}
       {loading && <p className="muted">{t('loading', lang)}</p>}
