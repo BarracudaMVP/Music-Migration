@@ -26,7 +26,7 @@ export default function AuthCallbackPage() {
         const flowFrom = params.get('flow_from')
         const flowTo = params.get('flow_to')
         if (flowFrom && flowTo) {
-          navigate(`/migrate?from=${flowFrom}&to=${flowTo}`, { replace: true })
+          navigate(`/?from=${flowFrom}&to=${flowTo}`, { replace: true })
         } else {
           navigate('/', { replace: true })
         }

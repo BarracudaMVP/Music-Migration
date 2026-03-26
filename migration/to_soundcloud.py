@@ -134,10 +134,8 @@ async def migrate_tracks(
     await update_migration(migration_id, status="running")
 
     logger.info("Шаг 1/3: загружаю треки из Яндекс Музыки...")
-    ym_tracks = await ym_client.get_liked_tracks()
-    if track_limit:
-        ym_tracks = ym_tracks[:track_limit]
-        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(ym_tracks)}")
+    ym_tracks = await ym_client.get_liked_tracks(limit=track_limit)
+    logger.info(f"Загружено {len(ym_tracks)} треков" + (f" (лимит {track_limit})" if track_limit else ""))
 
     if not ym_tracks:
         logger.warning("Нет лайкнутых треков в Яндекс Музыке")
@@ -192,16 +190,14 @@ async def migrate_spotify_tracks(
     await update_migration(migration_id, status="running")
 
     logger.info("Шаг 1/3: загружаю треки из Spotify...")
-    sp_tracks = await spotify_client.get_liked_tracks()
+    sp_tracks = await spotify_client.get_liked_tracks(limit=track_limit)
 
     if not sp_tracks:
         logger.warning("Нет лайкнутых треков в Spotify")
         await update_migration(migration_id, status="done")
         return MigrationStats()
 
-    if track_limit:
-        sp_tracks = sp_tracks[:track_limit]
-        logger.info(f"Лимит треков: {track_limit}, будет обработано {len(sp_tracks)}")
+    logger.info(f"Загружено {len(sp_tracks)} треков" + (f" (лимит {track_limit})" if track_limit else ""))
     logger.info(f"Шаг 2/3: сохраняю {len(sp_tracks)} треков в БД...")
     migration_record = await get_migration(migration_id) or {}
     user_id = migration_record.get("user_id", "")

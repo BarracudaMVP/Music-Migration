@@ -51,6 +51,9 @@ export default function ProgressPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tracks, setTracks] = useState<TrackRow[]>([])
+  const [trackTotal, setTrackTotal] = useState(0)
+  const [trackPages, setTrackPages] = useState(1)
+  const [trackPage, setTrackPage] = useState(1)
   const [showNotFound, setShowNotFound] = useState(false)
   const [notFoundTracks, setNotFoundTracks] = useState<TrackRow[]>([])
   const [loadingNotFound, setLoadingNotFound] = useState(false)
@@ -62,15 +65,17 @@ export default function ProgressPage() {
     }
   }
 
-  async function poll() {
+  async function poll(page = trackPage) {
     if (!id) return
     try {
       const [data, tracksPage] = await Promise.all([
         getMigration(Number(id)),
-        getMigrationTracks(Number(id), undefined, 1),
+        getMigrationTracks(Number(id), undefined, page),
       ])
       setDetail(data)
-      setTracks(tracksPage.tracks.filter(tr => tr.status !== 'pending').slice(0, 20))
+      setTracks(tracksPage.tracks)
+      setTrackTotal(tracksPage.total)
+      setTrackPages(tracksPage.pages)
       setLoading(false)
       if (TERMINAL_STATUSES.has(data.migration.status)) {
         stopPolling()
@@ -170,15 +175,21 @@ export default function ProgressPage() {
 
         {/* Progress bar */}
         <div className="section">
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <p className="muted" style={{ marginTop: 6 }}>
-            {doneCount} / {total} {t('tracks_count', lang)} ({pct}%)
-          </p>
+          {total === 0 && !isTerminal ? (
+            <p className="muted">{t('preparing', lang)}</p>
+          ) : (
+            <>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="muted" style={{ marginTop: 6 }}>
+                {doneCount} / {total} {t('tracks_count', lang)} ({pct}%)
+              </p>
+            </>
+          )}
         </div>
 
         {/* Current track */}
@@ -216,10 +227,17 @@ export default function ProgressPage() {
           </div>
         </div>
 
-        {/* Track list (processed, non-pending) */}
-        {tracks.length > 0 && (
+        {/* Track list with pagination (50 per page) */}
+        {trackTotal > 0 && (
           <div className="section">
-            <div className="section-label">{t('track_list', lang)}</div>
+            <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{t('track_list', lang)} ({trackTotal})</span>
+              {trackPages > 1 && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {t('page', lang)} {trackPage} / {trackPages}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {tracks.map(tr => (
                 <div
@@ -245,6 +263,32 @@ export default function ProgressPage() {
                 </div>
               ))}
             </div>
+            {trackPages > 1 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={trackPage <= 1}
+                  onClick={() => {
+                    const newPage = trackPage - 1
+                    setTrackPage(newPage)
+                    poll(newPage)
+                  }}
+                >
+                  {t('prev', lang)}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={trackPage >= trackPages}
+                  onClick={() => {
+                    const newPage = trackPage + 1
+                    setTrackPage(newPage)
+                    poll(newPage)
+                  }}
+                >
+                  {t('next_page', lang)}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

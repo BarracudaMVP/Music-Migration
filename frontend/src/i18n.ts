@@ -86,6 +86,8 @@ const translations = {
     show_not_found: 'показать не найденные',
     hide_not_found: 'скрыть',
     match_pct_label: 'совпало',
+    preparing: 'Подготовка…',
+    page: 'стр.',
   },
   en: {
     from: 'From',
@@ -172,6 +174,8 @@ const translations = {
     show_not_found: 'show not found',
     hide_not_found: 'hide',
     match_pct_label: 'match rate',
+    preparing: 'Preparing…',
+    page: 'p.',
   },
 } as const
 
