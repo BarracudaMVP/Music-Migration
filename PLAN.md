@@ -2618,3 +2618,24 @@ async def require_admin(user_id: str = Depends(get_current_user)):
 
 ---
 
+### ✅ MM-102 — Frontend UX fixes II — 2026-03-27
+
+**Цель:** исправить баги и улучшения, выявленные после MM-100.
+
+**Что сделано:**
+- `frontend/index.html`: title "frontend" → "Music Migration" (показывается во вкладке браузера)
+- Auth badges: значок "✓ Подключено" на карточках FROM/TO сервисов (виден без выбора FROM+TO)
+- Export to File: добавлен `file` в `toServices` для не-file источников (через `EXPORT_FILE` capability)
+- OAuth callback: `AuthCallbackPage` теперь переходит на `/?from=...&to=...` вместо `/migrate?...` — сохраняет выбор сервисов
+- `HomePage`: читает `from`/`to` из URL-параметров при монтировании — восстанавливает выбор после OAuth
+- Backend track limit (`migration/to_soundcloud.py`): `get_liked_tracks()` теперь принимает `limit=track_limit` — перестал грузить все треки перед обрезкой
+- `ProgressPage`: "Подготовка…" вместо "0/0 треков (0%)" пока треки не вставлены в БД
+- `ProgressPage`: пагинация списка треков (50/стр.) с кнопками "Назад/Вперёд"
+- i18n: добавлены ключи `preparing`, `page` (RU/EN)
+
+**Файлы:** `frontend/index.html`, `frontend/src/pages/AuthCallbackPage.tsx`, `frontend/src/pages/HomePage.tsx`, `frontend/src/pages/ProgressPage.tsx`, `frontend/src/i18n.ts`, `migration/to_soundcloud.py`
+
+**Тесты:** 292 passed. `npm run build` — чистый билд.
+
+---
+
